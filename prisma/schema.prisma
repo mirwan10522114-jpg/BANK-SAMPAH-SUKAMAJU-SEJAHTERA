@@ -25,6 +25,10 @@ model User {
   memberJoinedAt  DateTime?
   emailVerifiedAt DateTime?
   password        String   @default("password")
+  // OTP untuk verifikasi email (dikirim via Resend email service)
+  otpCode         String?  // 6-digit OTP code
+  otpExpiresAt    DateTime? // kapan OTP expired (default 10 menit)
+  otpAttempts     Int      @default(0) // jumlah salah coba OTP (max 5)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

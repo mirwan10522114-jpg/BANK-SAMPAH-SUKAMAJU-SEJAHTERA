@@ -964,9 +964,12 @@ export function RegisterPage({
         throw new Error('Respons registrasi tidak valid')
       }
       setUserId(res.userId)
-      setDemoOtp(res.otp ?? null)
       setOtp('')
-      toast.success('Akun dibuat. Silakan verifikasi email dengan kode OTP.')
+      if (res.emailSent) {
+        toast.success(`Kode OTP telah dikirim ke ${form.email}. Cek inbox email Anda.`)
+      } else {
+        toast.error('Akun dibuat, tapi email OTP gagal dikirim. Klik "Kirim Ulang" di bawah.')
+      }
       setStep('otp')
     } catch (err: any) {
       toast.error(err?.message || 'Gagal mendaftar. Coba lagi.')
@@ -998,13 +1001,26 @@ export function RegisterPage({
     }
   }
 
-  function handleResend() {
-    if (demoOtp) {
-      toast.info(`Kode OTP dikirim ulang (demo): ${demoOtp}`, {
-        duration: 8000,
+  async function handleResend() {
+    if (!userId) {
+      toast.error('Sesi tidak valid. Silakan daftar ulang.')
+      setStep('form')
+      return
+    }
+    try {
+      const res = await fetch('/api/auth/resend-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
       })
-    } else {
-      toast.info('Kode OTP tidak tersedia. Silakan daftar ulang.')
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Gagal mengirim ulang OTP')
+        return
+      }
+      toast.success(data.message || `Kode OTP baru telah dikirim ke ${form.email}`)
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal mengirim ulang OTP')
     }
   }
 
@@ -1424,23 +1440,19 @@ function OtpVerifyView({
           </CardHeader>
 
           <CardContent className="px-0">
-            {/* Demo OTP info box */}
-            {demoOtp && (
-              <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
-                <AlertCircle className="mt-0.5 size-5 shrink-0 text-amber-600" />
-                <div className="min-w-0">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-amber-800">
-                    Mode Demo
-                  </div>
-                  <div className="text-sm text-amber-900">
-                    Kode OTP Anda (demo):{' '}
-                    <span className="font-mono text-base font-bold tracking-widest text-amber-900">
-                      {demoOtp}
-                    </span>
-                  </div>
+            {/* Info box: OTP dikirim via email Resend (tidak ada lagi demo OTP) */}
+            <div className="mb-6 flex items-start gap-3 rounded-xl border border-emerald-300 bg-emerald-50 p-4">
+              <AlertCircle className="mt-0.5 size-5 shrink-0 text-emerald-600" />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                  Email Terkirim
+                </div>
+                <div className="text-sm text-emerald-900">
+                  Kode OTP telah dikirim ke <strong>{email}</strong>. Cek inbox email Anda
+                  (juga cek folder spam/promosi). Kode berlaku 10 menit.
                 </div>
               </div>
-            )}
+            </div>
 
             <form onSubmit={onVerify} className="space-y-6">
               <div className="flex flex-col items-center gap-3">

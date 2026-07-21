@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
 // POST /api/auth/verify-otp
-// Verifies the OTP code (mock — any 6-digit code accepted for now)
-// Marks user as email-verified
+// Verifies the OTP code (REAL — cek OTP yang tersimpan di DB)
+// Marks user as email-verified jika OTP cocok & belum expired
 export async function POST(req: NextRequest) {
   const { userId, otp } = await req.json()
 
@@ -27,10 +27,67 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 })
   }
 
-  // Mark email as verified
+  // ============================================================
+  // Validasi OTP dari DB (bukan accept any code)
+  // ============================================================
+
+  // Cek apakah user sudah verifikasi sebelumnya
+  if (user.emailVerifiedAt) {
+    return NextResponse.json({ error: 'Email sudah terverifikasi sebelumnya' }, { status: 400 })
+  }
+
+  // Cek apakah OTP ada di DB
+  if (!user.otpCode || !user.otpExpiresAt) {
+    return NextResponse.json({
+      error: 'OTP belum dibuat. Silakan daftar ulang atau kirim ulang OTP.'
+    }, { status: 400 })
+  }
+
+  // Cek apakah OTP sudah expired (10 menit)
+  if (new Date() > user.otpExpiresAt) {
+    return NextResponse.json({
+      error: 'Kode OTP sudah kedaluwarsa. Silakan kirim ulang OTP.'
+    }, { status: 400 })
+  }
+
+  // Cek apakah sudah terlalu banyak percobaan salah (max 5)
+  if (user.otpAttempts >= 5) {
+    // Reset OTP untuk keamanan
+    await db.user.update({
+      where: { id: userId },
+      data: {
+        otpCode: null,
+        otpExpiresAt: null,
+        otpAttempts: 0,
+      },
+    })
+    return NextResponse.json({
+      error: 'Terlalu banyak percobaan salah. OTP telah direset. Silakan kirim ulang OTP.'
+    }, { status: 400 })
+  }
+
+  // Cek apakah OTP cocok
+  if (user.otpCode !== otp) {
+    // Increment attempt counter
+    await db.user.update({
+      where: { id: userId },
+      data: { otpAttempts: user.otpAttempts + 1 },
+    })
+    const remainingAttempts = 5 - (user.otpAttempts + 1)
+    return NextResponse.json({
+      error: `Kode OTP salah. Sisa percobaan: ${remainingAttempts} kali.`
+    }, { status: 400 })
+  }
+
+  // OTP cocok — mark email as verified & clear OTP
   const updated = await db.user.update({
     where: { id: userId },
-    data: { emailVerifiedAt: new Date() },
+    data: {
+      emailVerifiedAt: new Date(),
+      otpCode: null,
+      otpExpiresAt: null,
+      otpAttempts: 0,
+    },
   })
 
   const roles = JSON.parse(updated.roles || '[]')

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { nextMemberCode } from '@/lib/business'
+import { sendOtpEmail, generateOtp } from '@/lib/resend'
 
 // POST /api/auth/register
-// Step 1: Create user (unverified), generate OTP, return OTP for demo
+// Step 1: Create user (unverified), generate OTP, kirim OTP via email Resend
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { name, email, phone, password, address, nik, isNasabah, isKoperasi } = body
@@ -50,7 +51,12 @@ export async function POST(req: NextRequest) {
     memberCode = await nextMemberCode('BS')
   }
 
-  // Create user
+  // Generate OTP sebelum create user
+  const otp = generateOtp()
+  // OTP berlaku 10 menit
+  const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000)
+
+  // Create user dengan OTP tersimpan di DB
   const user = await db.user.create({
     data: {
       memberCode,
@@ -63,6 +69,9 @@ export async function POST(req: NextRequest) {
       isMember: hasNasabah,
       memberJoinedAt: hasNasabah ? new Date() : null,
       password,
+      otpCode: otp,
+      otpExpiresAt,
+      otpAttempts: 0,
     },
   })
 
@@ -100,17 +109,38 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Generate OTP (6 digits) — in production, send via email/SMS
-  const otp = String(Math.floor(100000 + Math.random() * 900000))
+  // ============================================================
+  // Kirim OTP via email Resend (REAL, bukan simulasi)
+  // ============================================================
+  const emailResult = await sendOtpEmail({
+    to: user.email,
+    otp,
+    userName: user.name,
+  })
 
-  // Store OTP in a temporary table or cache (using email_otps if exists, or just return for demo)
-  // For demo: return OTP directly so client can show it
-  // In production: send via email and don't return
+  if (!emailResult.success) {
+    // Email gagal dikirim — tetap return sukses tapi kasih warning
+    // User bisa request resend OTP nanti
+    console.error('[register] Gagal kirim email OTP:', emailResult.error)
+    return NextResponse.json({
+      userId: user.id,
+      emailSent: false,
+      message: 'Akun dibuat, tapi email OTP gagal dikirim. Klik "Kirim Ulang OTP" untuk coba lagi.',
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        memberCode,
+        nomorAnggota,
+      },
+    }, { status: 201 })
+  }
 
+  // Email berhasil dikirim — JANGAN return OTP ke frontend (keamanan)
   return NextResponse.json({
     userId: user.id,
-    otp, // Demo only — in production this would be sent via email
-    message: 'Akun dibuat. Verifikasi dengan kode OTP.',
+    emailSent: true,
+    message: `Akun dibuat. Kode OTP telah dikirim ke ${user.email}. Cek inbox (atau folder spam).`,
     user: {
       id: user.id,
       name: user.name,
