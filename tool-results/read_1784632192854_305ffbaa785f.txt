@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { toast } from 'sonner'
+     5→import { motion, AnimatePresence } from 'framer-motion'
+     6→import {
+     7→  ArrowLeft,
+     8→  ArrowRight,
+     9→  ChevronRight,
+    10→  Search,
+    11→  ShoppingCart,
+    12→  Plus,
+    13→  Minus,
+    14→  Trash2,
+    15→  Package,
+    16→  CheckCircle2,
+    17→  Loader2,
+    18→  AlertCircle,
+    19→  ShoppingBag,
+    20→  MapPin,
+    21→  Phone,
+    22→  User,
+    23→  Mail,
+    24→  Truck,
+    25→  Clock,
+    26→  XCircle,
+    27→  CreditCard,
+    28→  Copy,
+    29→  Star,
+    30→  PackageCheck,
+    31→  Box,
+    32→  Weight,
+    33→  Tag,
+    34→  Recycle,
+    35→} from 'lucide-react'
+    36→
+    37→import { Button } from '@/components/ui/button'
+    38→import { Input } from '@/components/ui/input'
+    39→import { Label } from '@/components/ui/label'
+    40→import { Textarea } from '@/components/ui/textarea'
+    41→import { Separator } from '@/components/ui/separator'
+    42→import { Skeleton } from '@/components/ui/skeleton'
+    43→import { Badge } from '@/components/ui/badge'
+    44→import { Card, CardContent } from '@/components/ui/card'
+    45→import {
+    46→  Select,
+    47→  SelectContent,
+    48→  SelectItem,
+    49→  SelectTrigger,
+    50→  SelectValue,
+    51→} from '@/components/ui/select'
+    52→
+    53→import { formatRupiah } from '@/lib/format'
+    54→import { cn } from '@/lib/utils'
+    55→
+    56→// =====================================================================
+    57→// Theme palette (matches public-pages.tsx)
+    58→// =====================================================================
+    59→const COLORS = {
+    60→  darkGreen: '#2d5016',
+    61→  beige: '#f5f5dc',
+    62→  green: '#4caf50',
+    63→  yellow: '#ffc107',
+    64→  teal: '#0d9488',
+    65→  footerDark: '#2d2d2d',
+    66→} as const
+    67→
+    68→// =====================================================================
+    69→// Types
+    70→// =====================================================================
+    71→type MerchView = 'catalog' | 'detail' | 'cart' | 'checkout' | 'payment' | 'success' | 'tracking'
+    72→
+    73→interface CartItem {
+    74→  productId: string
+    75→  name: string
+    76→  price: number
+    77→  image: string
+    78→  quantity: number
+    79→  weightGram: number
+    80→  minOrderQty: number
+    81→  stock: number
+    82→  unit: string
+    83→  slug: string
+    84→}
+    85→
+    86→interface Product {
+    87→  id: string
+    88→  slug: string
+    89→  name: string
+    90→  description: string
+    91→  price: number
+    92→  images: string[]
+    93→  category: string | null
+    94→  stock: number
+    95→  minOrderQty: number
+    96→  weightGram: number
+    97→  unit: string
+    98→}
+    99→
+   100→// Defensive normalizer: API may return images as string or object
+   101→function normalizeProduct(p: any): Product {
+   102→  let images: string[] = []
+   103→  if (p.images) {
+   104→    if (Array.isArray(p.images)) {
+   105→      images = p.images
+   106→    } else if (typeof p.images === 'string') {
+   107→      try { images = JSON.parse(p.images) } catch { images = [] }
+   108→    }
+   109→  }
+   110→  const category = typeof p.category === 'object' && p.category?.name
+   111→    ? p.category.name
+   112→    : (p.category || null)
+   113→  return { ...p, images, category } as Product
+   114→}
+   115→
+   116→interface OrderData {
+   117→  orderNumber: string
+   118→  items: CartItem[]
+   119→  total: number
+   120→  buyerName: string
+   121→  buyerPhone: string
+   122→  buyerEmail: string
+   123→  address: string
+   124→  province: string
+   125→  city: string
+   126→  district: string
+   127→  postalCode: string
+   128→}
+   129→
+   130→// =====================================================================
+   131→// Fallback API (safe direct fetch)
+   132→// =====================================================================
+   133→async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
+   134→  const res = await fetch(`/api${path}`, {
+   135→    ...options,
+   136→    headers: { 'Content-Type': 'application/json', ...(options?.headers as any) },
+   137→  })
+   138→  if (!res.ok) {
+   139→    const err = await res.json().catch(() => ({ error: 'Request failed' }))
+   140→    throw new Error(err.error || `HTTP ${res.status}`)
+   141→  }
+   142→  return res.json()
+   143→}
+   144→
+   145→// =====================================================================
+   146→// Cart helpers (localStorage persistence)
+   147→// =====================================================================
+   148→const CART_KEY = 'toko-cart'
+   149→
+   150→function getCart(): CartItem[] {
+   151→  if (typeof window === 'undefined') return []
+   152→  try {
+   153→    const raw = localStorage.getItem(CART_KEY)
+   154→    return raw ? JSON.parse(raw) : []
+   155→  } catch {
+   156→    return []
+   157→  }
+   158→}
+   159→
+   160→function saveCart(items: CartItem[]) {
+   161→  if (typeof window === 'undefined') return
+   162→  localStorage.setItem(CART_KEY, JSON.stringify(items))
+   163→}
+   164→
+   165→function addToCart(product: Product, qty: number) {
+   166→  const cart = getCart()
+   167→  const existing = cart.find((c) => c.productId === product.id)
+   168→  if (existing) {
+   169→    existing.quantity = Math.min(existing.quantity + qty, product.stock)
+   170→  } else {
+   171→    cart.push({
+   172→      productId: product.id,
+   173→      name: product.name,
+   174→      price: product.price,
+   175→      image: product.images?.[0] || '',
+   176→      quantity: qty,
+   177→      weightGram: product.weightGram || 0,
+   178→      minOrderQty: product.minOrderQty || 1,
+   179→      stock: product.stock,
+   180→      unit: product.unit || 'pcs',
+   181→      slug: product.slug,
+   182→    })
+   183→  }
+   184→  saveCart(cart)
+   185→  return cart
+   186→}
+   187→
+   188→function updateQuantity(productId: string, qty: number) {
+   189→  let cart = getCart()
+   190→  const item = cart.find((c) => c.productId === productId)
+   191→  if (!item) return cart
+   192→  if (qty <= 0) {
+   193→    cart = cart.filter((c) => c.productId !== productId)
+   194→  } else {
+   195→    item.quantity = Math.min(qty, item.stock)
+   196→  }
+   197→  saveCart(cart)
+   198→  return cart
+   199→}
+   200→
+   201→function removeFromCart(productId: string) {
+   202→  const cart = getCart().filter((c) => c.productId !== productId)
+   203→  saveCart(cart)
+   204→  return cart
+   205→}
+   206→
+   207→function clearCart() {
+   208→  saveCart([])
+   209→}
+   210→
+   211→function getCartTotal(cart: CartItem[]) {
+   212→  return cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+   213→}
+   214→
+   215→function getCartCount(cart: CartItem[]) {
+   216→  return cart.reduce((sum, item) => sum + item.quantity, 0)
+   217→}
+   218→
+   219→// =====================================================================
+   220→// Provinces list
+   221→// =====================================================================
+   222→const PROVINSI = [
+   223→  'Jawa Barat',
+   224→  'Jawa Tengah',
+   225→  'Jawa Timur',
+   226→  'DKI Jakarta',
+   227→  'Banten',
+   228→  'DI Yogyakarta',
+   229→  'Sumatera Utara',
+   230→  'Sumatera Selatan',
+   231→  'Sumatera Barat',
+   232→  'Lampung',
+   233→  'Bali',
+   234→  'Nusa Tenggara Barat',
+   235→  'Nusa Tenggara Timur',
+   236→  'Kalimantan Barat',
+   237→  'Kalimantan Selatan',
+   238→  'Kalimantan Timur',
+   239→  'Sulawesi Selatan',
+   240→  'Sulawesi Utara',
+   241→  'Sulawesi Tengah',
+   242→  'Papua',
+   243→  'Maluku',
+   244→]
+   245→
+   246→// =====================================================================
+   247→// Category config
+   248→// =====================================================================
+   249→const CATEGORIES = [
+   250→  { value: '', label: 'Semua' },
+   251→  { value: 'Daur Ulang', label: 'Daur Ulang' },
+   252→  { value: 'Kerajinan', label: 'Kerajinan' },
+   253→  { value: 'Merchandise', label: 'Merchandise' },
+   254→]
+   255→
+   256→// =====================================================================
+   257→// Animation variants
+   258→// =====================================================================
+   259→const fadeSlide = {
+   260→  initial: { opacity: 0, y: 12 },
+   261→  animate: { opacity: 1, y: 0 },
+   262→  exit: { opacity: 0, y: -12 },
+   263→  transition: { duration: 0.25, ease: 'easeOut' },
+   264→}
+   265→
+   266→const staggerContainer = {
+   267→  animate: { transition: { staggerChildren: 0.05 } },
+   268→}
+   269→
+   270→const staggerItem = {
+   271→  initial: { opacity: 0, y: 16 },
+   272→  animate: { opacity: 1, y: 0 },
+   273→}
+   274→
+   275→// =====================================================================
+   276→// Placeholder product images (using SVG data URIs with colored backgrounds)
+   277→// =====================================================================
+   278→function getProductPlaceholder(name: string, index: number) {
+   279→  const colors = ['#4caf50', '#0d9488', '#2d5016', '#ffc107', '#45a049', '#00897b']
+   280→  const bg = colors[index % colors.length]
+   281→  const initial = name.charAt(0).toUpperCase()
+   282→  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400"><rect fill="${bg}" width="400" height="400" rx="16"/><text x="200" y="220" text-anchor="middle" fill="white" font-size="120" font-family="sans-serif" font-weight="bold">${initial}</text></svg>`)}`
+   283→}
+   284→
+   285→// =====================================================================
+   286→// Main MerchandisePage component
+   287→// =====================================================================
+   288→export function MerchandisePage({ onBack, initialView }: { onBack: () => void; initialView?: MerchView }) {
+   289→  const [view, setView] = React.useState<MerchView>(initialView || 'catalog')
+   290→  const [cart, setCart] = React.useState<CartItem[]>([])
+   291→  const [selectedSlug, setSelectedSlug] = React.useState<string>('')
+   292→  const [orderData, setOrderData] = React.useState<OrderData | null>(null)
+   293→
+   294→  // Sync cart from localStorage on mount
+   295→  React.useEffect(() => {
+   296→    setCart(getCart())
+   297→  }, [])
+   298→
+   299→  const refreshCart = React.useCallback((newCart?: CartItem[]) => {
+   300→    setCart(newCart ?? getCart())
+   301→  }, [])
+   302→
+   303→  const handleAddToCart = React.useCallback((product: Product, qty: number) => {
+   304→    const newCart = addToCart(product, qty)
+   305→    refreshCart(newCart)
+   306→    toast.success(`${product.name} ditambahkan ke keranjang`)
+   307→  }, [refreshCart])
+   308→
+   309→  const handleUpdateQty = React.useCallback((productId: string, qty: number) => {
+   310→    const newCart = updateQuantity(productId, qty)
+   311→    refreshCart(newCart)
+   312→  }, [refreshCart])
+   313→
+   314→  const handleRemoveItem = React.useCallback((productId: string) => {
+   315→    const newCart = removeFromCart(productId)
+   316→    refreshCart(newCart)
+   317→  }, [refreshCart])
+   318→
+   319→  const handleClearCart = React.useCallback(() => {
+   320→    clearCart()
+   321→    refreshCart([])
+   322→  }, [refreshCart])
+   323→
+   324→  const handleGotoDetail = React.useCallback((slug: string) => {
+   325→    setSelectedSlug(slug)
+   326→    setView('detail')
+   327→  }, [])
+   328→
+   329→  const handleGotoCart = React.useCallback(() => {
+   330→    setView('cart')
+   331→  }, [])
+   332→
+   333→  const handleGotoCheckout = React.useCallback(() => {
+   334→    setView('checkout')
+   335→  }, [])
+   336→
+   337→  const handleGotoPayment = React.useCallback((data: OrderData) => {
+   338→    setOrderData(data)
+   339→    setView('payment')
+   340→  }, [])
+   341→
+   342→  const handleGotoSuccess = React.useCallback(() => {
+   343→    clearCart()
+   344→    refreshCart([])
+   345→    setView('success')
+   346→  }, [refreshCart])
+   347→
+   348→  const handleGotoTracking = React.useCallback(() => {
+   349→    setView('tracking')
+   350→  }, [])
+   351→
+   352→  const handleGotoCatalog = React.useCallback(() => {
+   353→    setView('catalog')
+   354→  }, [])
+   355→
+   356→  const cartCount = getCartCount(cart)
+   357→
+   358→  return (
+   359→    <div className="flex min-h-screen flex-col bg-white">
+   360→      {/* Shared Header */}
+   361→      <MerchHeader
+   362→        view={view}
+   363→        cartCount={cartCount}
+   364→        onBack={view === 'catalog' ? onBack : () => setView('catalog')}
+   365→        onCart={handleGotoCart}
+   366→        onGotoCatalog={handleGotoCatalog}
+   367→        onGotoTracking={handleGotoTracking}
+   368→      />
+   369→
+   370→      {/* Main content area */}
+   371→      <main className="flex-1">
+   372→        <AnimatePresence mode="wait">
+   373→          {view === 'catalog' && (
+   374→            <motion.div key="catalog" {...fadeSlide}>
+   375→              <CatalogView onGotoDetail={handleGotoDetail} onAddToCart={handleAddToCart} />
+   376→            </motion.div>
+   377→          )}
+   378→          {view === 'detail' && (
+   379→            <motion.div key="detail" {...fadeSlide}>
+   380→              <DetailView
+   381→                slug={selectedSlug}
+   382→                onBack={() => setView('catalog')}
+   383→                onAddToCart={handleAddToCart}
+   384→                onGotoDetail={handleGotoDetail}
+   385→              />
+   386→            </motion.div>
+   387→          )}
+   388→          {view === 'cart' && (
+   389→            <motion.div key="cart" {...fadeSlide}>
+   390→              <CartView
+   391→                cart={cart}
+   392→                onUpdateQty={handleUpdateQty}
+   393→                onRemoveItem={handleRemoveItem}
+   394→                onClearCart={handleClearCart}
+   395→                onCheckout={handleGotoCheckout}
+   396→                onGotoCatalog={handleGotoCatalog}
+   397→              />
+   398→            </motion.div>
+   399→          )}
+   400→          {view === 'checkout' && (
+   401→            <motion.div key="checkout" {...fadeSlide}>
+   402→              <CheckoutView
+   403→                cart={cart}
+   404→                onBack={() => setView('cart')}
+   405→                onGotoPayment={handleGotoPayment}
+   406→              />
+   407→            </motion.div>
+   408→          )}
+   409→          {view === 'payment' && (
+   410→            <motion.div key="payment" {...fadeSlide}>
+   411→              <PaymentView
+   412→                orderData={orderData}
+   413→                onBack={() => setView('checkout')}
+   414→                onSuccess={handleGotoSuccess}
+   415→              />
+   416→            </motion.div>
+   417→          )}
+   418→          {view === 'success' && (
+   419→            <motion.div key="success" {...fadeSlide}>
+   420→              <SuccessView
+   421→                orderData={orderData}
+   422→                onGotoCatalog={handleGotoCatalog}
+   423→                onGotoTracking={handleGotoTracking}
+   424→              />
+   425→            </motion.div>
+   426→          )}
+   427→          {view === 'tracking' && (
+   428→            <motion.div key="tracking" {...fadeSlide}>
+   429→              <TrackingView onGotoCatalog={handleGotoCatalog} />
+   430→            </motion.div>
+   431→          )}
+   432→        </AnimatePresence>
+   433→      </main>
+   434→
+   435→      {/* Footer (only on catalog) */}
+   436→      {view === 'catalog' && <MerchFooter />}
+   437→    </div>
+   438→  )
+   439→}
+   440→
+   441→// =====================================================================
+   442→// Shared Header
+   443→// =====================================================================
+   444→function MerchHeader({
+   445→  view,
+   446→  cartCount,
+   447→  onBack,
+   448→  onCart,
+   449→  onGotoCatalog,
+   450→  onGotoTracking,
+   451→}: {
+   452→  view: MerchView
+   453→  cartCount: number
+   454→  onBack: () => void
+   455→  onCart: () => void
+   456→  onGotoCatalog: () => void
+   457→  onGotoTracking: () => void
+   458→}) {
+   459→  const isRoot = view === 'catalog'
+   460→  const title =
+   461→    view === 'cart'
+   462→      ? 'Keranjang Belanja'
+   463→      : view === 'checkout'
+   464→        ? 'Checkout'
+   465→        : view === 'payment'
+   466→          ? 'Pembayaran'
+   467→          : view === 'success'
+   468→            ? 'Pesanan Berhasil'
+   469→            : view === 'tracking'
+   470→              ? 'Lacak Pesanan'
+   471→              : 'Merchandise Bank Sampah'
+   472→
+   473→  return (
+   474→    <header
+   475→      className="sticky top-0 z-30 w-full"
+   476→      style={{ backgroundColor: COLORS.darkGreen }}
+   477→    >
+   478→      <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
+   479→        <div className="flex items-center gap-3">
+   480→          <button
+   481→            type="button"
+   482→            onClick={onBack}
+   483→            className="flex items-center justify-center rounded-lg p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+   484→            aria-label="Kembali"
+   485→          >
+   486→            <ArrowLeft className="size-5" />
+   487→          </button>
+   488→          {isRoot ? (
+   489→            <div className="flex items-center gap-2">
+   490→              <div className="flex size-8 items-center justify-center rounded-full bg-white/15">
+   491→                <ShoppingBag className="size-4 text-white" />
+   492→              </div>
+   493→              <h1 className="text-sm font-bold tracking-wide text-white sm:text-base">
+   494→                Merchandise
+   495→              </h1>
+   496→            </div>
+   497→          ) : (
+   498→            <h1 className="text-sm font-bold text-white sm:text-base">{title}</h1>
+   499→          )}
+   500→        </div>
+   501→
+   502→        <div className="flex items-center gap-2">
+   503→          {isRoot && (
+   504→            <button
+   505→              type="button"
+   506→              onClick={onGotoTracking}
+   507→              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+   508→              aria-label="Lacak Pesanan"
+   509→            >
+   510→              <Truck className="size-3.5" />
+   511→              <span className="hidden sm:inline">Lacak Pesanan</span>
+   512→            </button>
+   513→          )}
+   514→          {!isRoot && view !== 'cart' && (
+   515→            <button
+   516→              type="button"
+   517→              onClick={onGotoCatalog}
+   518→              className="hidden items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:flex"
+   519→            >
+   520→              <ShoppingBag className="size-3.5" />
+   521→              Katalog
+   522→            </button>
+   523→          )}
+   524→          <button
+   525→            type="button"
+   526→            onClick={onCart}
+   527→            className="relative flex items-center justify-center rounded-lg p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+   528→            aria-label="Keranjang"
+   529→          >
+   530→            <ShoppingCart className="size-5" />
+   531→            {cartCount > 0 && (
+   532→              <span className="absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-[#ffc107] text-[10px] font-bold text-emerald-950">
+   533→                {cartCount > 99 ? '99+' : cartCount}
+   534→              </span>
+   535→            )}
+   536→          </button>
+   537→        </div>
+   538→      </div>
+   539→    </header>
+   540→  )
+   541→}
+   542→
+   543→// =====================================================================
+   544→// Catalog View
+   545→// =====================================================================
+   546→function CatalogView({
+   547→  onGotoDetail,
+   548→  onAddToCart,
+   549→}: {
+   550→  onGotoDetail: (slug: string) => void
+   551→  onAddToCart: (product: Product, qty: number) => void
+   552→}) {
+   553→  const [products, setProducts] = React.useState<Product[]>([])
+   554→  const [loading, setLoading] = React.useState(true)
+   555→  const [search, setSearch] = React.useState('')
+   556→  const [category, setCategory] = React.useState('')
+   557→  const [sort, setSort] = React.useState<'terbaru' | 'termurah' | 'termahal'>('terbaru')
+   558→
+   559→  React.useEffect(() => {
+   560→    let mounted = true
+   561→    setLoading(true)
+   562→    const params = new URLSearchParams()
+   563→    if (category) params.set('category', category)
+   564→    if (sort === 'termurah') params.set('sort', 'price_asc')
+   565→    if (sort === 'termahal') params.set('sort', 'price_desc')
+   566→
+   567→    fetchApi<{ data: Product[] } | Product[]>(`/toko/katalog?${params.toString()}`)
+   568→      .then((res) => {
+   569→        if (!mounted) return
+   570→        const arr = Array.isArray(res) ? res : (res as any).data || []
+   571→        setProducts(arr.map(normalizeProduct))
+   572→      })
+   573→      .catch(() => {
+   574→        if (mounted) {
+   575→          // Fallback: show demo products for showcase
+   576→          setProducts(getDemoProducts())
+   577→        }
+   578→      })
+   579→      .finally(() => {
+   580→        if (mounted) setLoading(false)
+   581→      })
+   582→    return () => { mounted = false }
+   583→  }, [category, sort])
+   584→
+   585→  const handleSearch = (e: React.FormEvent) => {
+   586→    e.preventDefault()
+   587→    // Client-side search handles filtering via the `filtered` memo.
+   588→    // If search was cleared, re-fetch to get full product list from server.
+   589→    if (!search.trim()) {
+   590→      setLoading(true)
+   591→      const params = new URLSearchParams()
+   592→      if (category) params.set('category', category)
+   593→      if (sort === 'termurah') params.set('sort', 'price_asc')
+   594→      if (sort === 'termahal') params.set('sort', 'price_desc')
+   595→
+   596→      fetchApi<{ data: Product[] } | Product[]>(`/toko/katalog?${params.toString()}`)
+   597→        .then((res) => {
+   598→          const arr = Array.isArray(res) ? res : (res as any).data || []
+   599→          setProducts(arr.map(normalizeProduct))
+   600→        })
+   601→        .catch(() => {
+   602→          setProducts(getDemoProducts())
+   603→        })
+   604→        .finally(() => setLoading(false))
+   605→    }
+   606→    // If search has text, the client-side `filtered` memo handles it
+   607→  }
+   608→
+   609→  // Client-side search filter
+   610→  const filtered = React.useMemo(() => {
+   611→    let result = [...products]
+   612→    if (search.trim()) {
+   613→      const q = search.toLowerCase()
+   614→      result = result.filter((p) =>
+   615→        p.name.toLowerCase().includes(q) ||
+   616→        (typeof p.category === 'string' && p.category.toLowerCase().includes(q))
+   617→      )
+   618→    }
+   619→    if (sort === 'termurah') result.sort((a, b) => a.price - b.price)
+   620→    if (sort === 'termahal') result.sort((a, b) => b.price - a.price)
+   621→    return result
+   622→  }, [products, search, sort])
+   623→
+   624→  return (
+   625→    <div>
+   626→      {/* Search & Filter Bar */}
+   627→      <div
+   628→        className="border-b border-emerald-900/10"
+   629→        style={{ backgroundColor: COLORS.beige }}
+   630→      >
+   631→        <div className="mx-auto w-full max-w-6xl px-4 py-4 sm:px-6">
+   632→          {/* Search */}
+   633→          <form onSubmit={handleSearch} className="mb-3 flex gap-2">
+   634→            <div className="relative flex-1">
+   635→              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-emerald-700/50" />
+   636→              <Input
+   637→                type="text"
+   638→                placeholder="Cari produk..."
+   639→                value={search}
+   640→                onChange={(e) => setSearch(e.target.value)}
+   641→                className="border-emerald-900/15 bg-white pl-9 focus-visible:border-[#4caf50] focus-visible:ring-[#4caf50]/30"
+   642→              />
+   643→            </div>
+   644→            <Button
+   645→              type="submit"
+   646→              className="bg-[#4caf50] text-white hover:bg-[#43a047]"
+   647→              style={{ backgroundColor: COLORS.green }}
+   648→            >
+   649→              <Search className="size-4 sm:mr-0" />
+   650→              <span className="hidden sm:inline">Cari</span>
+   651→            </Button>
+   652→          </form>
+   653→
+   654→          {/* Category pills + Sort */}
+   655→          <div className="flex items-center justify-between gap-3">
+   656→            <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+   657→              {CATEGORIES.map((cat) => (
+   658→                <button
+   659→                  key={cat.value}
+   660→                  type="button"
+   661→                  onClick={() => setCategory(cat.value)}
+   662→                  className={cn(
+   663→                    'shrink-0 rounded-full px-4 py-1.5 text-xs font-semibold transition-all',
+   664→                    category === cat.value
+   665→                      ? 'bg-[#2d5016] text-white shadow-sm'
+   666→                      : 'bg-white text-emerald-900/70 border border-emerald-900/15 hover:bg-emerald-900/5'
+   667→                  )}
+   668→                >
+   669→                  {cat.label}
+   670→                </button>
+   671→              ))}
+   672→            </div>
+   673→            <Select
+   674→              value={sort}
+   675→              onValueChange={(v) => setSort(v as typeof sort)}
+   676→            >
+   677→              <SelectTrigger className="w-[140px] shrink-0 border-emerald-900/15 bg-white text-xs">
+   678→                <SelectValue />
+   679→              </SelectTrigger>
+   680→              <SelectContent>
+   681→                <SelectItem value="terbaru">Terbaru</SelectItem>
+   682→                <SelectItem value="termurah">Termurah</SelectItem>
+   683→                <SelectItem value="termahal">Termahal</SelectItem>
+   684→              </SelectContent>
+   685→            </Select>
+   686→          </div>
+   687→        </div>
+   688→      </div>
+   689→
+   690→      {/* Product Grid */}
+   691→      <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+   692→        {loading ? (
+   693→          <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+   694→            {Array.from({ length: 8 }).map((_, i) => (
+   695→              <div key={i} className="space-y-3">
+   696→                <Skeleton className="aspect-square w-full rounded-xl" />
+   697→                <Skeleton className="h-4 w-3/4" />
+   698→                <Skeleton className="h-5 w-1/2" />
+   699→                <Skeleton className="h-8 w-full rounded-lg" />
+   700→              </div>
+   701→            ))}
+   702→          </div>
+   703→        ) : filtered.length === 0 ? (
+   704→          <div className="flex flex-col items-center justify-center py-20 text-center">
+   705→            <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-emerald-100">
+   706→              <Package className="size-8 text-emerald-600" />
+   707→            </div>
+   708→            <h3 className="mb-1 text-lg font-bold text-[#2d5016]">
+   709→              Produk tidak ditemukan
+   710→            </h3>
+   711→            <p className="text-sm text-emerald-900/60">
+   712→              Coba ubah filter atau kata kunci pencarian Anda
+   713→            </p>
+   714→          </div>
+   715→        ) : (
+   716→          <motion.div
+   717→            className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"
+   718→            variants={staggerContainer}
+   719→            initial="initial"
+   720→            animate="animate"
+   721→          >
+   722→            {filtered.map((product, idx) => (
+   723→              <motion.div key={product.id} variants={staggerItem}>
+   724→                <ProductCard
+   725→                  product={product}
+   726→                  placeholderIndex={idx}
+   727→                  onClick={() => onGotoDetail(product.slug)}
+   728→                  onAddToCart={(qty) => onAddToCart(product, qty)}
+   729→                />
+   730→              </motion.div>
+   731→            ))}
+   732→          </motion.div>
+   733→        )}
+   734→      </div>
+   735→    </div>
+   736→  )
+   737→}
+   738→
+   739→// =====================================================================
+   740→// Product Card (Catalog)
+   741→// =====================================================================
+   742→function ProductCard({
+   743→  product,
+   744→  placeholderIndex,
+   745→  onClick,
+   746→  onAddToCart,
+   747→}: {
+   748→  product: Product
+   749→  placeholderIndex: number
+   750→  onClick: () => void
+   751→  onAddToCart: (qty: number) => void
+   752→}) {
+   753→  const [adding, setAdding] = React.useState(false)
+   754→  const isOutOfStock = product.stock <= 0
+   755→  const imageSrc = product.images?.[0] || getProductPlaceholder(product.name, placeholderIndex)
+   756→
+   757→  const handleAdd = () => {
+   758→    const qty = product.minOrderQty || 1
+   759→    setAdding(true)
+   760→    onAddToCart(qty)
+   761→    setTimeout(() => setAdding(false), 600)
+   762→  }
+   763→
+   764→  return (
+   765→    <Card
+   766→      className="group cursor-pointer overflow-hidden rounded-xl border-emerald-900/10 transition-all hover:shadow-lg hover:-translate-y-0.5"
+   767→      onClick={onClick}
+   768→    >
+   769→      <div className="relative aspect-square overflow-hidden bg-gray-100">
+   770→        <img
+   771→          src={imageSrc}
+   772→          alt={product.name}
+   773→          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+   774→          onError={(e) => {
+   775→            ;(e.target as HTMLImageElement).src = getProductPlaceholder(product.name, placeholderIndex)
+   776→          }}
+   777→        />
+   778→        {product.category && (
+   779→          <Badge className="absolute left-2 top-2 rounded-full bg-[#2d5016]/80 text-[10px] font-semibold text-white backdrop-blur-sm">
+   780→            {typeof product.category === 'object' ? product.category.name : product.category}
+   781→          </Badge>
+   782→        )}
+   783→        {product.weightGram > 0 && (
+   784→          <Badge className="absolute right-2 top-2 rounded-full bg-white/90 text-[10px] font-medium text-emerald-900 backdrop-blur-sm">
+   785→            <Weight className="mr-0.5 size-2.5" />
+   786→            {product.weightGram >= 1000
+   787→              ? `${(product.weightGram / 1000).toFixed(1)} kg`
+   788→              : `${product.weightGram} g`}
+   789→          </Badge>
+   790→        )}
+   791→      </div>
+   792→      <CardContent className="p-3 sm:p-4">
+   793→        <h3 className="mb-1 line-clamp-2 text-xs font-bold text-[#2d5016] sm:text-sm leading-snug">
+   794→          {product.name}
+   795→        </h3>
+   796→        <p className="mb-2 text-sm font-extrabold text-[#0d9488] sm:text-base">
+   797→          {formatRupiah(product.price)}
+   798→        </p>
+   799→        <div className="mb-3 flex items-center gap-2">
+   800→          <span
+   801→            className={cn(
+   802→              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+   803→              isOutOfStock
+   804→                ? 'bg-red-50 text-red-600'
+   805→                : 'bg-emerald-50 text-emerald-700'
+   806→            )}
+   807→          >
+   808→            <span
+   809→              className={cn(
+   810→                'size-1.5 rounded-full',
+   811→                isOutOfStock ? 'bg-red-500' : 'bg-emerald-500'
+   812→              )}
+   813→            />
+   814→            {isOutOfStock ? 'Habis' : 'Tersedia'}
+   815→          </span>
+   816→          {!isOutOfStock && (
+   817→            <span className="text-[10px] text-emerald-900/50">
+   818→              Stok: {product.stock}
+   819→            </span>
+   820→          )}
+   821→        </div>
+   822→        <Button
+   823→          type="button"
+   824→          size="sm"
+   825→          disabled={isOutOfStock || adding}
+   826→          onClick={(e) => {
+   827→            e.stopPropagation()
+   828→            handleAdd()
+   829→          }}
+   830→          className={cn(
+   831→            'w-full text-xs font-semibold shadow-sm transition-all sm:text-sm',
+   832→            isOutOfStock
+   833→              ? 'cursor-not-allowed bg-gray-200 text-gray-500'
+   834→              : 'bg-[#4caf50] text-white hover:bg-[#43a047] active:scale-[0.97]'
+   835→          )}
+   836→        >
+   837→          {adding ? (
+   838→            <Loader2 className="size-3.5 animate-spin" />
+   839→          ) : isOutOfStock ? (
+   840→            'Stok Habis'
+   841→          ) : (
+   842→            <>
+   843→              <ShoppingCart className="mr-1 size-3.5" />
+   844→              Tambah
+   845→            </>
+   846→          )}
+   847→        </Button>
+   848→      </CardContent>
+   849→    </Card>
+   850→  )
+   851→}
+   852→
+   853→// =====================================================================
+   854→// Detail View
+   855→// =====================================================================
+   856→function DetailView({
+   857→  slug,
+   858→  onBack,
+   859→  onAddToCart,
+   860→  onGotoDetail,
+   861→}: {
+   862→  slug: string
+   863→  onBack: () => void
+   864→  onAddToCart: (product: Product, qty: number) => void
+   865→  onGotoDetail: (slug: string) => void
+   866→}) {
+   867→  const [product, setProduct] = React.useState<Product | null>(null)
+   868→  const [loading, setLoading] = React.useState(true)
+   869→  const [qty, setQty] = React.useState(1)
+   870→  const [adding, setAdding] = React.useState(false)
+   871→  const [selectedImage, setSelectedImage] = React.useState(0)
+   872→
+   873→  React.useEffect(() => {
+   874→    let mounted = true
+   875→    setLoading(true)
+   876→    setQty(1)
+   877→    setSelectedImage(0)
+   878→
+   879→    fetchApi<any>(`/toko/produk/${encodeURIComponent(slug)}`)
+   880→      .then((data) => {
+   881→        if (mounted) setProduct(normalizeProduct(data))
+   882→      })
+   883→      .catch(() => {
+   884→        if (mounted) {
+   885→          // Fallback to demo product
+   886→          const demo = getDemoProducts().find((p) => p.slug === slug) || getDemoProducts()[0]
+   887→          setProduct(demo)
+   888→        }
+   889→      })
+   890→      .finally(() => {
+   891→        if (mounted) setLoading(false)
+   892→      })
+   893→    return () => { mounted = false }
+   894→  }, [slug])
+   895→
+   896→  const handleAdd = () => {
+   897→    if (!product) return
+   898→    setAdding(true)
+   899→    onAddToCart(product, qty)
+   900→    setTimeout(() => setAdding(false), 600)
+   901→  }
+   902→
+   903→  const decreaseQty = () => {
+   904→    setQty((q) => Math.max((product?.minOrderQty || 1), q - 1))
+   905→  }
+   906→
+   907→  const increaseQty = () => {
+   908→    if (!product) return
+   909→    setQty((q) => Math.min(product.stock, q + 1))
+   910→  }
+   911→
+   912→  // Related products (same category, different product) — fetched from API
+   913→  const [related, setRelated] = React.useState<Product[]>([])
+   914→
+   915→  React.useEffect(() => {
+   916→    if (!product?.category) { setRelated([]); return }
+   917→    let mounted = true
+   918→    fetchApi<Product[]>(`/toko/katalog?category=${encodeURIComponent(product.category)}`)
+   919→      .then((arr) => {
+   920→        if (!mounted) return
+   921→        setRelated(
+   922→          (Array.isArray(arr) ? arr : [])
+   923→            .map(normalizeProduct)
+   924→            .filter((p) => p.slug !== product!.slug)
+   925→            .slice(0, 4)
+   926→        )
+   927→      })
+   928→      .catch(() => { if (mounted) setRelated([]) })
+   929→    return () => { mounted = false }
+   930→  }, [product?.category, product?.slug])
+   931→
+   932→  if (loading) {
+   933→    return (
+   934→      <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
+   935→        <div className="grid gap-6 md:grid-cols-2">
+   936→          <Skeleton className="aspect-square w-full rounded-xl" />
+   937→          <div className="space-y-4">
+   938→            <Skeleton className="h-8 w-3/4" />
+   939→            <Skeleton className="h-6 w-1/3" />
+   940→            <Skeleton className="h-20 w-full" />
+   941→            <Skeleton className="h-12 w-full rounded-lg" />
+   942→          </div>
+   943→        </div>
+   944→      </div>
+   945→    )
+   946→  }
+   947→
+   948→  if (!product) return null
+   949→
+   950→  const images = product.images?.length > 0
+   951→    ? product.images
+   952→    : [getProductPlaceholder(product.name, 0)]
+   953→  const isOutOfStock = product.stock <= 0
+   954→
+   955→  return (
+   956→    <div className="mx-auto w-full max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
+   957→      {/* Breadcrumb */}
+   958→      <button
+   959→        type="button"
+   960→        onClick={onBack}
+   961→        className="mb-4 inline-flex items-center gap-1 text-xs font-medium text-emerald-900/70 transition-colors hover:text-[#2d5016]"
+   962→      >
+   963→        <ArrowLeft className="size-3.5" />
+   964→        Kembali ke Katalog
+   965→      </button>
+   966→
+   967→      <div className="grid gap-6 md:grid-cols-2 lg:gap-10">
+   968→        {/* Image Gallery */}
+   969→        <div className="space-y-3">
+   970→          <div className="aspect-square overflow-hidden rounded-xl bg-gray-100">
+   971→            <img
+   972→              src={images[selectedImage] || images[0]}
+   973→              alt={product.name}
+   974→              className="h-full w-full object-cover"
+   975→              onError={(e) => {
+   976→                ;(e.target as HTMLImageElement).src = getProductPlaceholder(product.name, 0)
+   977→              }}
+   978→            />
+   979→          </div>
+   980→          {images.length > 1 && (
+   981→            <div className="flex gap-2 overflow-x-auto pb-1">
+   982→              {images.map((img, i) => (
+   983→                <button
+   984→                  key={i}
+   985→                  type="button"
+   986→                  onClick={() => setSelectedImage(i)}
+   987→                  className={cn(
+   988→                    'shrink-0 overflow-hidden rounded-lg border-2 transition-all',
+   989→                    selectedImage === i
+   990→                      ? 'border-[#4caf50] ring-2 ring-[#4caf50]/30'
+   991→                      : 'border-transparent opacity-60 hover:opacity-100'
+   992→                  )}
+   993→                >
+   994→                  <img
+   995→                    src={img}
+   996→                    alt={`${product.name} ${i + 1}`}
+   997→                    className="size-16 object-cover sm:size-20"
+   998→                    onError={(e) => {
+   999→                      ;(e.target as HTMLImageElement).src = getProductPlaceholder(product.name, i)
+  1000→                    }}
+  1001→                  />
+  1002→                </button>
+  1003→              ))}
+  1004→            </div>
+  1005→          )}
+  1006→        </div>
+  1007→
+  1008→        {/* Product Info */}
+  1009→        <div className="flex flex-col">
+  1010→          {product.category && (
+  1011→            <Badge className="mb-2 w-fit rounded-full bg-[#4caf50]/15 text-[#2d5016] text-xs font-semibold">
+  1012→              <Tag className="mr-1 size-3" />
+  1013→              {typeof product.category === 'object' ? product.category.name : product.category}
+  1014→            </Badge>
+  1015→          )}
+  1016→
+  1017→          <h1 className="mb-2 text-xl font-extrabold text-[#2d5016] sm:text-2xl lg:text-3xl">
+  1018→            {product.name}
+  1019→          </h1>
+  1020→
+  1021→          <p className="mb-4 text-2xl font-extrabold text-[#0d9488] sm:text-3xl">
+  1022→            {formatRupiah(product.price)}
+  1023→          </p>
+  1024→
+  1025→          {product.description && (
+  1026→            <p className="mb-4 text-sm leading-relaxed text-emerald-900/70">
+  1027→              {product.description}
+  1028→            </p>
+  1029→          )}
+  1030→
+  1031→          <div className="mb-4 flex flex-wrap gap-3">
+  1032→            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2">
+  1033→              <Box className="size-4 text-emerald-700" />
+  1034→              <div>
+  1035→                <div className="text-[10px] font-medium text-emerald-900/50 uppercase tracking-wide">Stok</div>
+  1036→                <div className={cn('text-sm font-bold', isOutOfStock ? 'text-red-600' : 'text-emerald-800')}>
+  1037→                  {isOutOfStock ? 'Habis' : `${product.stock} ${product.unit || 'pcs'}`}
+  1038→                </div>
+  1039→              </div>
+  1040→            </div>
+  1041→            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2">
+  1042→              <Weight className="size-4 text-emerald-700" />
+  1043→              <div>
+  1044→                <div className="text-[10px] font-medium text-emerald-900/50 uppercase tracking-wide">Berat</div>
+  1045→                <div className="text-sm font-bold text-emerald-800">
+  1046→                  {product.weightGram >= 1000
+  1047→                    ? `${(product.weightGram / 1000).toFixed(1)} kg`
+  1048→                    : `${product.weightGram} g`}
+  1049→                </div>
+  1050→              </div>
+  1051→            </div>
+  1052→            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2">
+  1053→              <Star className="size-4 text-emerald-700" />
+  1054→              <div>
+  1055→                <div className="text-[10px] font-medium text-emerald-900/50 uppercase tracking-wide">Min. Order</div>
+  1056→                <div className="text-sm font-bold text-emerald-800">
+  1057→                  {product.minOrderQty || 1} {product.unit || 'pcs'}
+  1058→                </div>
+  1059→              </div>
+  1060→            </div>
+  1061→          </div>
+  1062→
+  1063→          <Separator className="my-4 bg-emerald-900/10" />
+  1064→
+  1065→          {/* Quantity Selector */}
+  1066→          <div className="mb-6">
+  1067→            <div className="text-sm font-semibold text-emerald-950 mb-2">Jumlah</div>
+  1068→            <div className="flex items-center gap-3">
+  1069→              <button
+  1070→                type="button"
+  1071→                onClick={decreaseQty}
+  1072→                disabled={qty <= (product.minOrderQty || 1)}
+  1073→                className="flex size-10 items-center justify-center rounded-lg border border-emerald-900/15 text-emerald-900/70 transition-colors hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed"
+  1074→              >
+  1075→                <Minus className="size-4" />
+  1076→              </button>
+  1077→              <Input
+  1078→                type="number"
+  1079→                value={qty}
+  1080→                onChange={(e) => {
+  1081→                  const v = parseInt(e.target.value) || 1
+  1082→                  setQty(Math.max(product.minOrderQty || 1, Math.min(product.stock, v)))
+  1083→                }}
+  1084→                className="h-10 w-20 text-center border-emerald-900/15 font-bold text-emerald-950"
+  1085→                min={product.minOrderQty || 1}
+  1086→                max={product.stock}
+  1087→              />
+  1088→              <button
+  1089→                type="button"
+  1090→                onClick={increaseQty}
+  1091→                disabled={qty >= product.stock}
+  1092→                className="flex size-10 items-center justify-center rounded-lg border border-emerald-900/15 text-emerald-900/70 transition-colors hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed"
+  1093→              >
+  1094→                <Plus className="size-4" />
+  1095→              </button>
+  1096→            </div>
+  1097→            <p className="mt-1 text-xs text-emerald-900/50">
+  1098→              Minimal pembelian: {product.minOrderQty || 1} {product.unit || 'pcs'}
+  1099→            </p>
+  1100→          </div>
+  1101→
+  1102→          {/* Add to Cart */}
+  1103→          <Button
+  1104→            type="button"
+  1105→            size="lg"
+  1106→            disabled={isOutOfStock || adding}
+  1107→            onClick={handleAdd}
+  1108→            className={cn(
+  1109→              'w-full text-base font-bold shadow-lg transition-all sm:text-lg',
+  1110→              isOutOfStock
+  1111→                ? 'cursor-not-allowed bg-gray-200 text-gray-500 shadow-none'
+  1112→                : adding
+  1113→                  ? 'bg-[#43a047]'
+  1114→                  : 'bg-[#4caf50] text-white hover:bg-[#43a047] active:scale-[0.98]'
+  1115→            )}
+  1116→          >
+  1117→            {adding ? (
+  1118→              <>
+  1119→                <Loader2 className="mr-2 size-5 animate-spin" />
+  1120→                Menambahkan...
+  1121→              </>
+  1122→            ) : isOutOfStock ? (
+  1123→              'Stok Habis'
+  1124→            ) : (
+  1125→              <>
+  1126→                <ShoppingCart className="mr-2 size-5" />
+  1127→                Tambah ke Keranjang
+  1128→              </>
+  1129→            )}
+  1130→          </Button>
+  1131→        </div>
+  1132→      </div>
+  1133→
+  1134→      {/* Related Products */}
+  1135→      {related.length > 0 && (
+  1136→        <div className="mt-10 sm:mt-14">
+  1137→          <h2 className="mb-4 text-lg font-bold text-[#2d5016] sm:text-xl">
+  1138→            Produk Terkait
+  1139→          </h2>
+  1140→          <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
+  1141→            {related.map((p, idx) => (
+  1142→              <ProductCard
+  1143→                key={p.id}
+  1144→                product={p}
+  1145→                placeholderIndex={idx}
+  1146→                onClick={() => onGotoDetail(p.slug)}
+  1147→                onAddToCart={(q) => onAddToCart(p, q)}
+  1148→              />
+  1149→            ))}
+  1150→          </div>
+  1151→        </div>
+  1152→      )}
+  1153→    </div>
+  1154→  )
+  1155→}
+  1156→
+  1157→// =====================================================================
+  1158→// Cart View
+  1159→// =====================================================================
+  1160→function CartView({
+  1161→  cart,
+  1162→  onUpdateQty,
+  1163→  onRemoveItem,
+  1164→  onClearCart,
+  1165→  onCheckout,
+  1166→  onGotoCatalog,
+  1167→}: {
+  1168→  cart: CartItem[]
+  1169→  onUpdateQty: (productId: string, qty: number) => void
+  1170→  onRemoveItem: (productId: string) => void
+  1171→  onClearCart: () => void
+  1172→  onCheckout: () => void
+  1173→  onGotoCatalog: () => void
+  1174→}) {
+  1175→  const subtotal = getCartTotal(cart)
+  1176→
+  1177→  // Validation
+  1178→  const hasBelowMin = cart.some((item) => item.quantity < item.minOrderQty)
+  1179→  const hasOutOfStock = cart.some((item) => item.stock <= 0)
+  1180→  const canCheckout = cart.length > 0 && !hasBelowMin && !hasOutOfStock
+  1181→
+  1182→  if (cart.length === 0) {
+  1183→    return (
+  1184→      <div className="mx-auto flex max-w-md flex-col items-center justify-center px-4 py-20 text-center">
+  1185→        <div className="mb-4 flex size-20 items-center justify-center rounded-full bg-emerald-100">
+  1186→          <ShoppingCart className="size-10 text-emerald-500" />
+  1187→        </div>
+  1188→        <h2 className="mb-2 text-xl font-bold text-[#2d5016]">
+  1189→          Keranjang kosong
+  1190→        </h2>
+  1191→        <p className="mb-6 text-sm text-emerald-900/60">
+  1192→          Belum ada produk di keranjang belanja Anda
+  1193→        </p>
+  1194→        <Button
+  1195→          type="button"
+  1196→          onClick={onGotoCatalog}
+  1197→          className="bg-[#4caf50] text-white hover:bg-[#43a047]"
+  1198→        >
+  1199→          <ShoppingBag className="mr-2 size-4" />
+  1200→          Mulai Belanja
+  1201→        </Button>
+  1202→      </div>
+  1203→    )
+  1204→  }
+  1205→
+  1206→  return (
+  1207→    <div className="mx-auto w-full max-w-4xl px-4 py-4 sm:px-6 sm:py-6">
+  1208→      {/* Warnings */}
+  1209→      {hasBelowMin && (
+  1210→        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+  1211→          <AlertCircle className="mt-0.5 size-4 shrink-0" />
+  1212→          <div>
+  1213→            Beberapa produk belum memenuhi jumlah minimal pembelian. Silakan sesuaikan sebelum checkout.
+  1214→          </div>
+  1215→        </div>
+  1216→      )}
+  1217→      {hasOutOfStock && (
+  1218→        <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+  1219→          <AlertCircle className="mt-0.5 size-4 shrink-0" />
+  1220→          <div>
+  1221→            Beberapa produk sudah tidak tersedia. Silakan hapus dari keranjang.
+  1222→          </div>
+  1223→        </div>
+  1224→      )}
+  1225→
+  1226→      {/* Cart Items */}
+  1227→      <div className="space-y-3">
+  1228→        {cart.map((item) => (
+  1229→          <CartItemRow
+  1230→            key={item.productId}
+  1231→            item={item}
+  1232→            onUpdateQty={onUpdateQty}
+  1233→            onRemove={onRemoveItem}
+  1234→          />
+  1235→        ))}
+  1236→      </div>
+  1237→
+  1238→      {/* Cart Summary (sticky bottom on mobile) */}
+  1239→      <div className="sticky bottom-0 z-10 mt-4 -mx-4 border-t border-emerald-900/10 bg-white px-4 py-4 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] sm:static sm:mx-0 sm:rounded-xl sm:border sm:shadow-md">
+  1240→        <div className="flex items-center justify-between mb-3">
+  1241→          <span className="text-sm text-emerald-900/70">
+  1242→            Subtotal ({getCartCount(cart)} item)
+  1243→          </span>
+  1244→          <span className="text-lg font-extrabold text-[#2d5016]">
+  1245→            {formatRupiah(subtotal)}
+  1246→          </span>
+  1247→        </div>
+  1248→        <div className="flex gap-2">
+  1249→          <Button
+  1250→            type="button"
+  1251→            variant="outline"
+  1252→            onClick={onGotoCatalog}
+  1253→            className="flex-1 border-emerald-900/15 text-emerald-900 hover:bg-emerald-50"
+  1254→          >
+  1255→            Lanjut Belanja
+  1256→          </Button>
+  1257→          <Button
+  1258→            type="button"
+  1259→            disabled={!canCheckout}
+  1260→            onClick={onCheckout}
+  1261→            className="flex-[2] bg-[#4caf50] text-white hover:bg-[#43a047] disabled:bg-gray-200 disabled:text-gray-400"
+  1262→          >
+  1263→            {hasBelowMin || hasOutOfStock ? (
+  1264→              'Perbaiki Keranjang'
+  1265→            ) : (
+  1266→              <>
+  1267→                Lanjut Checkout
+  1268→                <ArrowRight className="ml-2 size-4" />
+  1269→              </>
+  1270→            )}
+  1271→          </Button>
+  1272→        </div>
+  1273→      </div>
+  1274→    </div>
+  1275→  )
+  1276→}
+  1277→
+  1278→// =====================================================================
+  1279→// Cart Item Row
+  1280→// =====================================================================
+  1281→function CartItemRow({
+  1282→  item,
+  1283→  onUpdateQty,
+  1284→  onRemove,
+  1285→}: {
+  1286→  item: CartItem
+  1287→  onUpdateQty: (productId: string, qty: number) => void
+  1288→  onRemove: (productId: string) => void
+  1289→}) {
+  1290→  const isBelowMin = item.quantity < item.minOrderQty
+  1291→  const isOutOfStock = item.stock <= 0
+  1292→
+  1293→  return (
+  1294→    <div className={cn(
+  1295→      'flex gap-3 rounded-xl border bg-white p-3 sm:p-4 transition-all',
+  1296→      isOutOfStock ? 'border-red-200 bg-red-50/50' : 'border-emerald-900/10'
+  1297→    )}>
+  1298→      {/* Image */}
+  1299→      <div
+  1300→        className="size-20 shrink-0 overflow-hidden rounded-lg bg-gray-100 sm:size-24"
+  1301→        onClick={() => onRemove(item.productId)}
+  1302→        role="button"
+  1303→        tabIndex={0}
+  1304→      >
+  1305→        <img
+  1306→          src={item.image || getProductPlaceholder(item.name, 0)}
+  1307→          alt={item.name}
+  1308→          className="h-full w-full object-cover"
+  1309→          onError={(e) => {
+  1310→            ;(e.target as HTMLImageElement).src = getProductPlaceholder(item.name, 0)
+  1311→          }}
+  1312→        />
+  1313→      </div>
+  1314→
+  1315→      {/* Info */}
+  1316→      <div className="flex flex-1 flex-col justify-between min-w-0">
+  1317→        <div>
+  1318→          <div className="flex items-start justify-between gap-2">
+  1319→            <h3 className="line-clamp-2 text-sm font-bold text-[#2d5016]">
+  1320→              {item.name}
+  1321→            </h3>
+  1322→            <button
+  1323→              type="button"
+  1324→              onClick={() => onRemove(item.productId)}
+  1325→              className="shrink-0 rounded-lg p-1 text-emerald-900/40 transition-colors hover:bg-red-50 hover:text-red-500"
+  1326→              aria-label="Hapus"
+  1327→            >
+  1328→              <Trash2 className="size-4" />
+  1329→            </button>
+  1330→          </div>
+  1331→          <p className="mt-0.5 text-sm font-bold text-[#0d9488]">
+  1332→            {formatRupiah(item.price)}
+  1333→          </p>
+  1334→          {isBelowMin && (
+  1335→            <Badge variant="outline" className="mt-1 w-fit border-amber-300 bg-amber-50 text-[10px] text-amber-700">
+  1336→              Min. {item.minOrderQty} {item.unit}
+  1337→            </Badge>
+  1338→          )}
+  1339→        </div>
+  1340→
+  1341→        <div className="flex items-center justify-between mt-2">
+  1342→          {/* Qty Controls */}
+  1343→          <div className="flex items-center gap-1.5">
+  1344→            <button
+  1345→              type="button"
+  1346→              onClick={() => onUpdateQty(item.productId, item.quantity - 1)}
+  1347→              className="flex size-7 items-center justify-center rounded-md border border-emerald-900/15 text-emerald-900/60 hover:bg-emerald-50"
+  1348→            >
+  1349→              <Minus className="size-3" />
+  1350→            </button>
+  1351→            <span className="w-8 text-center text-sm font-bold text-emerald-950">
+  1352→              {item.quantity}
+  1353→            </span>
+  1354→            <button
+  1355→              type="button"
+  1356→              onClick={() => onUpdateQty(item.productId, item.quantity + 1)}
+  1357→              disabled={item.quantity >= item.stock}
+  1358→              className="flex size-7 items-center justify-center rounded-md border border-emerald-900/15 text-emerald-900/60 hover:bg-emerald-50 disabled:opacity-30"
+  1359→            >
+  1360→              <Plus className="size-3" />
+  1361→            </button>
+  1362→          </div>
+  1363→
+  1364→          {/* Subtotal */}
+  1365→          <p className="text-sm font-extrabold text-[#2d5016]">
+  1366→            {formatRupiah(item.price * item.quantity)}
+  1367→          </p>
+  1368→        </div>
+  1369→      </div>
+  1370→    </div>
+  1371→  )
+  1372→}
+  1373→
+  1374→// =====================================================================
+  1375→// Checkout View
+  1376→// =====================================================================
+  1377→function CheckoutView({
+  1378→  cart,
+  1379→  onBack,
+  1380→  onGotoPayment,
+  1381→}: {
+  1382→  cart: CartItem[]
+  1383→  onBack: () => void
+  1384→  onGotoPayment: (data: OrderData) => void
+  1385→}) {
+  1386→  const [step, setStep] = React.useState<1 | 2 | 3>(1)
+  1387→  const [loading, setLoading] = React.useState(false)
+  1388→  const [form, setForm] = React.useState({
+  1389→    nama: '',
+  1390→    hp: '',
+  1391→    email: '',
+  1392→    provinsi: '',
+  1393→    kota: '',
+  1394→    kecamatan: '',
+  1395→    kodePos: '',
+  1396→    alamat: '',
+  1397→  })
+  1398→
+  1399→  const subtotal = getCartTotal(cart)
+  1400→  const ongkir = subtotal > 0 ? 15000 : 0 // Fixed estimate for demo
+  1401→  const total = subtotal + ongkir
+  1402→
+  1403→  const updateField = (field: string, value: string) => {
+  1404→    setForm((prev) => ({ ...prev, [field]: value }))
+  1405→  }
+  1406→
+  1407→  const isValidForm =
+  1408→    form.nama.trim() !== '' &&
+  1409→    form.hp.trim() !== '' &&
+  1410→    form.provinsi !== '' &&
+  1411→    form.kota.trim() !== '' &&
+  1412→    form.kecamatan.trim() !== '' &&
+  1413→    form.kodePos.trim() !== '' &&
+  1414→    form.alamat.trim() !== ''
+  1415→
+  1416→  const handleSubmit = async () => {
+  1417→    if (!isValidForm) {
+  1418→      toast.error('Lengkapi semua data yang wajib diisi')
+  1419→      return
+  1420→    }
+  1421→    setLoading(true)
+  1422→    try {
+  1423→      const orderItems = cart.map((item) => ({
+  1424→        productId: item.productId,
+  1425→        name: item.name,
+  1426→        price: item.price,
+  1427→        quantity: item.quantity,
+  1428→        weightGram: item.weightGram,
+  1429→      }))
+  1430→
+  1431→      const res = await fetchApi<any>('/toko/checkout', {
+  1432→        method: 'POST',
+  1433→        body: JSON.stringify({
+  1434→          items: orderItems,
+  1435→          buyer: {
+  1436→            name: form.nama,
+  1437→            phone: form.hp,
+  1438→            email: form.email || undefined,
+  1439→          },
+  1440→          shipping: {
+  1441→            province: form.provinsi,
+  1442→            city: form.kota,
+  1443→            district: form.kecamatan,
+  1444→            postalCode: form.kodePos,
+  1445→            address: form.alamat,
+  1446→          },
+  1447→        }),
+  1448→      })
+  1449→
+  1450→      setStep(2)
+  1451→
+  1452→      const orderData: OrderData = {
+  1453→        orderNumber: res.order?.orderNumber || '',
+  1454→        items: cart,
+  1455→        total: res.order?.totalBayar || total,
+  1456→        buyerName: form.nama,
+  1457→        buyerPhone: form.hp,
+  1458→        buyerEmail: form.email,
+  1459→        address: form.alamat,
+  1460→        province: form.provinsi,
+  1461→        city: form.kota,
+  1462→        district: form.kecamatan,
+  1463→        postalCode: form.kodePos,
+  1464→      }
+  1465→
+  1466→      onGotoPayment(orderData)
+  1467→    } catch (err: any) {
+  1468→      toast.error(err?.message || 'Gagal memproses checkout. Silakan coba lagi.')
+  1469→    } finally {
+  1470→      setLoading(false)
+  1471→    }
+  1472→  }
+  1473→
+  1474→  return (
+  1475→    <div className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6 sm:py-6">
+  1476→      {/* Step Indicator */}
+  1477→      <div className="mb-6 flex items-center justify-center gap-0">
+  1478→        {[
+  1479→          { num: 1, label: 'Data Pembeli' },
+  1480→          { num: 2, label: 'Pembayaran' },
+  1481→          { num: 3, label: 'Selesai' },
+  1482→        ].map((s, i) => (
+  1483→          <React.Fragment key={s.num}>
+  1484→            <div className="flex items-center gap-2">
+  1485→              <div
+  1486→                className={cn(
+  1487→                  'flex size-8 items-center justify-center rounded-full text-xs font-bold transition-colors',
+  1488→                  step >= s.num
+  1489→                    ? 'bg-[#4caf50] text-white'
+  1490→                    : 'bg-gray-200 text-gray-500'
+  1491→                )}
+  1492→              >
+  1493→                {step > s.num ? <CheckCircle2 className="size-4" /> : s.num}
+  1494→              </div>
+  1495→              <span
+  1496→                className={cn(
+  1497→                  'hidden text-xs font-medium sm:inline',
+  1498→                  step >= s.num ? 'text-[#2d5016]' : 'text-gray-400'
+  1499→                )}
+  1500→              >
+  1501→                {s.label}
+  1502→              </span>
+  1503→            </div>
+  1504→            {i < 2 && (
+  1505→              <div
+  1506→                className={cn(
+  1507→                  'mx-2 h-0.5 w-8 sm:w-16 transition-colors',
+  1508→                  step > s.num ? 'bg-[#4caf50]' : 'bg-gray-200'
+  1509→                )}
+  1510→              />
+  1511→            )}
+  1512→          </React.Fragment>
+  1513→        ))}
+  1514→      </div>
+  1515→
+  1516→      <div className="grid gap-6 lg:grid-cols-5">
+  1517→        {/* Buyer Form */}
+  1518→        <div className="lg:col-span-3">
+  1519→          <Card className="rounded-xl border-emerald-900/10 shadow-sm">
+  1520→            <CardContent className="p-4 sm:p-6">
+  1521→              <h2 className="mb-4 text-lg font-bold text-[#2d5016]">
+  1522→                Data Pembeli
+  1523→              </h2>
+  1524→
+  1525→              <div className="space-y-4">
+  1526→                <div className="grid gap-4 sm:grid-cols-2">
+  1527→                  <div className="space-y-1.5">
+  1528→                    <Label className="text-sm font-medium text-emerald-950">
+  1529→                      Nama Lengkap <span className="text-rose-600">*</span>
+  1530→                    </Label>
+  1531→                    <div className="relative">
+  1532→                      <User className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-emerald-700/50" />
+  1533→                      <Input
+  1534→                        placeholder="Nama lengkap"
+  1535→                        value={form.nama}
+  1536→                        onChange={(e) => updateField('nama', e.target.value)}
+  1537→                        className="border-emerald-900/15 pl-9"
+  1538→                      />
+  1539→                    </div>
+  1540→                  </div>
+  1541→                  <div className="space-y-1.5">
+  1542→                    <Label className="text-sm font-medium text-emerald-950">
+  1543→                      No. HP <span className="text-rose-600">*</span>
+  1544→                    </Label>
+  1545→                    <div className="relative">
+  1546→                      <Phone className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-emerald-700/50" />
+  1547→                      <Input
+  1548→                        placeholder="08xxxxxxxxxx"
+  1549→                        value={form.hp}
+  1550→                        onChange={(e) => updateField('hp', e.target.value)}
+  1551→                        className="border-emerald-900/15 pl-9"
+  1552→                      />
+  1553→                    </div>
+  1554→                  </div>
+  1555→                </div>
+  1556→
+  1557→                <div className="space-y-1.5">
+  1558→                  <Label className="text-sm font-medium text-emerald-950">
+  1559→                    Email <span className="text-xs text-emerald-900/40">(opsional)</span>
+  1560→                  </Label>
+  1561→                  <div className="relative">
+  1562→                    <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-emerald-700/50" />
+  1563→                    <Input
+  1564→                      type="email"
+  1565→                      placeholder="email@contoh.com"
+  1566→                      value={form.email}
+  1567→                      onChange={(e) => updateField('email', e.target.value)}
+  1568→                      className="border-emerald-900/15 pl-9"
+  1569→                    />
+  1570→                  </div>
+  1571→                </div>
+  1572→
+  1573→                <Separator className="bg-emerald-900/10" />
+  1574→
+  1575→                <h3 className="flex items-center gap-2 text-sm font-bold text-[#2d5016]">
+  1576→                  <MapPin className="size-4 text-emerald-600" />
+  1577→                  Alamat Pengiriman
+  1578→                </h3>
+  1579→
+  1580→                <div className="space-y-1.5">
+  1581→                  <Label className="text-sm font-medium text-emerald-950">
+  1582→                    Provinsi <span className="text-rose-600">*</span>
+  1583→                  </Label>
+  1584→                  <Select
+  1585→                    value={form.provinsi}
+  1586→                    onValueChange={(v) => updateField('provinsi', v)}
+  1587→                  >
+  1588→                    <SelectTrigger className="border-emerald-900/15">
+  1589→                      <SelectValue placeholder="Pilih provinsi" />
+  1590→                    </SelectTrigger>
+  1591→                    <SelectContent>
+  1592→                      {PROVINSI.map((p) => (
+  1593→                        <SelectItem key={p} value={p}>{p}</SelectItem>
+  1594→                      ))}
+  1595→                    </SelectContent>
+  1596→                  </Select>
+  1597→                </div>
+  1598→
+  1599→                <div className="grid gap-4 sm:grid-cols-2">
+  1600→                  <div className="space-y-1.5">
+  1601→                    <Label className="text-sm font-medium text-emerald-950">
+  1602→                      Kota/Kabupaten <span className="text-rose-600">*</span>
+  1603→                    </Label>
+  1604→                    <Input
+  1605→                      placeholder="Kota atau Kabupaten"
+  1606→                      value={form.kota}
+  1607→                      onChange={(e) => updateField('kota', e.target.value)}
+  1608→                      className="border-emerald-900/15"
+  1609→                    />
+  1610→                  </div>
+  1611→                  <div className="space-y-1.5">
+  1612→                    <Label className="text-sm font-medium text-emerald-950">
+  1613→                      Kecamatan <span className="text-rose-600">*</span>
+  1614→                    </Label>
+  1615→                    <Input
+  1616→                      placeholder="Kecamatan"
+  1617→                      value={form.kecamatan}
+  1618→                      onChange={(e) => updateField('kecamatan', e.target.value)}
+  1619→                      className="border-emerald-900/15"
+  1620→                    />
+  1621→                  </div>
+  1622→                </div>
+  1623→
+  1624→                <div className="w-32 space-y-1.5">
+  1625→                  <Label className="text-sm font-medium text-emerald-950">
+  1626→                    Kode Pos <span className="text-rose-600">*</span>
+  1627→                  </Label>
+  1628→                  <Input
+  1629→                    placeholder="40123"
+  1630→                    value={form.kodePos}
+  1631→                    onChange={(e) => updateField('kodePos', e.target.value)}
+  1632→                    className="border-emerald-900/15"
+  1633→                  />
+  1634→                </div>
+  1635→
+  1636→                <div className="space-y-1.5">
+  1637→                  <Label className="text-sm font-medium text-emerald-950">
+  1638→                    Detail Alamat <span className="text-rose-600">*</span>
+  1639→                  </Label>
+  1640→                  <Textarea
+  1641→                    placeholder="Nama jalan, RT/RW, nomor rumah, patokan..."
+  1642→                    rows={3}
+  1643→                    value={form.alamat}
+  1644→                    onChange={(e) => updateField('alamat', e.target.value)}
+  1645→                    className="border-emerald-900/15"
+  1646→                  />
+  1647→                </div>
+  1648→              </div>
+  1649→            </CardContent>
+  1650→          </Card>
+  1651→        </div>
+  1652→
+  1653→        {/* Order Summary Sidebar */}
+  1654→        <div className="lg:col-span-2">
+  1655→          <Card className="sticky top-20 rounded-xl border-emerald-900/10 shadow-sm">
+  1656→            <CardContent className="p-4 sm:p-6">
+  1657→              <h2 className="mb-4 text-lg font-bold text-[#2d5016]">
+  1658→                Ringkasan Pesanan
+  1659→              </h2>
+  1660→
+  1661→              <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
+  1662→                {cart.map((item) => (
+  1663→                  <div key={item.productId} className="flex items-center gap-3">
+  1664→                    <div className="size-12 shrink-0 overflow-hidden rounded-lg bg-gray-100">
+  1665→                      <img
+  1666→                        src={item.image || getProductPlaceholder(item.name, 0)}
+  1667→                        alt={item.name}
+  1668→                        className="h-full w-full object-cover"
+  1669→                        onError={(e) => {
+  1670→                          ;(e.target as HTMLImageElement).src = getProductPlaceholder(item.name, 0)
+  1671→                        }}
+  1672→                      />
+  1673→                    </div>
+  1674→                    <div className="flex-1 min-w-0">
+  1675→                      <p className="line-clamp-1 text-xs font-semibold text-[#2d5016]">
+  1676→                        {item.name}
+  1677→                      </p>
+  1678→                      <p className="text-xs text-emerald-900/50">{item.quantity}x</p>
+  1679→                    </div>
+  1680→                    <p className="text-xs font-bold text-[#2d5016]">
+  1681→                      {formatRupiah(item.price * item.quantity)}
+  1682→                    </p>
+  1683→                  </div>
+  1684→                ))}
+  1685→              </div>
+  1686→
+  1687→              <Separator className="mb-3 bg-emerald-900/10" />
+  1688→
+  1689→              <div className="space-y-2 text-sm">
+  1690→                <div className="flex justify-between text-emerald-900/70">
+  1691→                  <span>Subtotal produk</span>
+  1692→                  <span>{formatRupiah(subtotal)}</span>
+  1693→                </div>
+  1694→                <div className="flex justify-between text-emerald-900/70">
+  1695→                  <span>Estimasi ongkir</span>
+  1696→                  <span className="text-xs italic text-emerald-900/50">
+  1697→                    {ongkir > 0 ? formatRupiah(ongkir) : 'Dihitung setelah checkout'}
+  1698→                  </span>
+  1699→                </div>
+  1700→                <Separator className="bg-emerald-900/10" />
+  1701→                <div className="flex justify-between text-base font-extrabold text-[#2d5016]">
+  1702→                  <span>Total Bayar</span>
+  1703→                  <span>{formatRupiah(total)}</span>
+  1704→                </div>
+  1705→              </div>
+  1706→
+  1707→              <Button
+  1708→                type="button"
+  1709→                size="lg"
+  1710→                disabled={!isValidForm || loading}
+  1711→                onClick={handleSubmit}
+  1712→                className="mt-4 w-full bg-[#4caf50] text-white hover:bg-[#43a047] disabled:bg-gray-200 disabled:text-gray-400 shadow-md"
+  1713→              >
+  1714→                {loading ? (
+  1715→                  <>
+  1716→                    <Loader2 className="mr-2 size-4 animate-spin" />
+  1717→                    Memproses...
+  1718→                  </>
+  1719→                ) : (
+  1720→                  <>
+  1721→                    <CreditCard className="mr-2 size-4" />
+  1722→                    Bayar Sekarang
+  1723→                  </>
+  1724→                )}
+  1725→              </Button>
+  1726→            </CardContent>
+  1727→          </Card>
+  1728→        </div>
+  1729→      </div>
+  1730→    </div>
+  1731→  )
+  1732→}
+  1733→
+  1734→// =====================================================================
+  1735→// Payment View
+  1736→// =====================================================================
+  1737→function PaymentView({
+  1738→  orderData,
+  1739→  onBack,
+  1740→  onSuccess,
+  1741→}: {
+  1742→  orderData: OrderData | null
+  1743→  onBack: () => void
+  1744→  onSuccess: () => void
+  1745→}) {
+  1746→  const [loading, setLoading] = React.useState(false)
+  1747→  const [countdown, setCountdown] = React.useState(24 * 60 * 60) // 24 hours in seconds
+  1748→
+  1749→  // Countdown timer
+  1750→  React.useEffect(() => {
+  1751→    const timer = setInterval(() => {
+  1752→      setCountdown((c) => Math.max(0, c - 1))
+  1753→    }, 1000)
+  1754→    return () => clearInterval(timer)
+  1755→  }, [])
+  1756→
+  1757→  const hours = Math.floor(countdown / 3600)
+  1758→  const minutes = Math.floor((countdown % 3600) / 60)
+  1759→  const seconds = countdown % 60
+  1760→
+  1761→  const handleSimulatePayment = async () => {
+  1762→    setLoading(true)
+  1763→    try {
+  1764→      // Call confirm-payment API to update order status to 'dibayar' (payment confirmed)
+  1765→      await fetchApi<any>(`/toko/order/${orderData.orderNumber}/confirm-payment`, {
+  1766→        method: 'POST',
+  1767→      })
+  1768→      toast.success('Pembayaran berhasil dikonfirmasi! Status: Dibayar.')
+  1769→      onSuccess()
+  1770→    } catch (err: any) {
+  1771→      toast.error(err?.message || 'Gagal mengonfirmasi pembayaran')
+  1772→    } finally {
+  1773→      setLoading(false)
+  1774→    }
+  1775→  }
+  1776→
+  1777→  if (!orderData) return null
+  1778→
+  1779→  return (
+  1780→    <div className="mx-auto w-full max-w-lg px-4 py-6 sm:px-6">
+  1781→      <div className="mb-6 text-center">
+  1782→        <div className="mx-auto mb-3 flex size-14 items-center justify-center rounded-full bg-[#4caf50]/15">
+  1783→          <CreditCard className="size-7 text-[#2d5016]" />
+  1784→        </div>
+  1785→        <h2 className="text-xl font-bold text-[#2d5016]">Pembayaran</h2>
+  1786→      </div>
+  1787→
+  1788→      <Card className="rounded-xl border-emerald-900/10 shadow-sm">
+  1789→        <CardContent className="p-4 sm:p-6">
+  1790→          {/* Order Info */}
+  1791→          <div className="mb-4 rounded-lg bg-emerald-50 p-4">
+  1792→            <div className="text-xs font-medium text-emerald-900/50 uppercase tracking-wide mb-1">
+  1793→              Nomor Pesanan
+  1794→            </div>
+  1795→            <div className="flex items-center justify-between">
+  1796→              <span className="text-lg font-extrabold text-[#2d5016]">
+  1797→                {orderData.orderNumber}
+  1798→              </span>
+  1799→              <button
+  1800→                type="button"
+  1801→                onClick={() => {
+  1802→                  navigator.clipboard?.writeText(orderData.orderNumber)
+  1803→                  toast.success('Nomor pesanan disalin')
+  1804→                }}
+  1805→                className="rounded-lg p-1.5 text-emerald-700/60 transition-colors hover:bg-emerald-100 hover:text-emerald-800"
+  1806→              >
+  1807→                <Copy className="size-4" />
+  1808→              </button>
+  1809→            </div>
+  1810→          </div>
+  1811→
+  1812→          {/* Payment Method - Manual (Simulated) */}
+  1813→          <div className="mb-4">
+  1814→            <h3 className="mb-3 text-sm font-bold text-[#2d5016]">
+  1815→              Pembayaran Manual
+  1816→            </h3>
+  1817→            <div className="space-y-3 rounded-lg border border-emerald-900/10 p-4">
+  1818→              <div className="flex items-center gap-3">
+  1819→                <div className="flex size-10 items-center justify-center rounded-lg bg-blue-50">
+  1820→                  <span className="text-xs font-bold text-blue-700">BCA</span>
+  1821→                </div>
+  1822→                <div>
+  1823→                  <p className="text-sm font-semibold text-emerald-950">Bank BCA</p>
+  1824→                  <p className="text-xs text-emerald-900/50">Transfer Manual</p>
+  1825→                </div>
+  1826→              </div>
+  1827→              <Separator className="bg-emerald-900/10" />
+  1828→              <div>
+  1829→                <p className="text-xs text-emerald-900/50">Nomor Rekening</p>
+  1830→                <div className="flex items-center gap-2">
+  1831→                  <p className="text-sm font-bold text-[#2d5016]">8120-3456-78</p>
+  1832→                  <button
+  1833→                    type="button"
+  1834→                    onClick={() => {
+  1835→                      navigator.clipboard?.writeText('8120345678')
+  1836→                      toast.success('Nomor rekening disalin')
+  1837→                    }}
+  1838→                    className="text-emerald-700/60 hover:text-emerald-800"
+  1839→                  >
+  1840→                    <Copy className="size-3.5" />
+  1841→                  </button>
+  1842→                </div>
+  1843→                <p className="text-xs text-emerald-900/50">a.n. Bank Sampah Sukamaju Sejahtera</p>
+  1844→              </div>
+  1845→              <div>
+  1846→                <p className="text-xs text-emerald-900/50">Total yang harus dibayar</p>
+  1847→                <p className="text-xl font-extrabold text-[#0d9488]">
+  1848→                  {formatRupiah(orderData.total)}
+  1849→                </p>
+  1850→              </div>
+  1851→            </div>
+  1852→          </div>
+  1853→
+  1854→          {/* Countdown Timer */}
+  1855→          <div className="mb-4 flex items-center justify-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
+  1856→            <Clock className="size-4 text-amber-600" />
+  1857→            <span className="text-xs font-medium text-amber-700">
+  1858→              Batas waktu pembayaran:
+  1859→            </span>
+  1860→            <span className="text-sm font-bold text-amber-800 font-mono">
+  1861→              {String(hours).padStart(2, '0')}:{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
+  1862→            </span>
+  1863→          </div>
+  1864→
+  1865→          {/* Order Items Summary */}
+  1866→          <div className="mb-4 max-h-40 overflow-y-auto space-y-2">
+  1867→            {orderData.items.map((item) => (
+  1868→              <div key={item.productId} className="flex justify-between text-sm">
+  1869→                <span className="text-emerald-900/70">
+  1870→                  {item.name} x{item.quantity}
+  1871→                </span>
+  1872→                <span className="font-semibold text-[#2d5016]">
+  1873→                  {formatRupiah(item.price * item.quantity)}
+  1874→                </span>
+  1875→              </div>
+  1876→            ))}
+  1877→          </div>
+  1878→
+  1879→          <Separator className="mb-4 bg-emerald-900/10" />
+  1880→
+  1881→          <div className="mb-4 flex justify-between text-base font-extrabold text-[#2d5016]">
+  1882→            <span>Total</span>
+  1883→            <span>{formatRupiah(orderData.total)}</span>
+  1884→          </div>
+  1885→
+  1886→          {/* Confirm Payment Button */}
+  1887→          <Button
+  1888→            type="button"
+  1889→            size="lg"
+  1890→            disabled={loading}
+  1891→            onClick={handleSimulatePayment}
+  1892→            className="w-full bg-[#4caf50] text-white hover:bg-[#43a047] shadow-lg"
+  1893→          >
+  1894→            {loading ? (
+  1895→              <>
+  1896→                <Loader2 className="mr-2 size-5 animate-spin" />
+  1897→                Memproses pembayaran...
+  1898→              </>
+  1899→            ) : (
+  1900→              <>
+  1901→                <CheckCircle2 className="mr-2 size-5" />
+  1902→                Konfirmasi Sudah Dibayar
+  1903→              </>
+  1904→            )}
+  1905→          </Button>
+  1906→
+  1907→          <p className="mt-3 text-center text-xs text-emerald-900/50">
+  1908→            *Ini adalah simulasi pembayaran untuk demo
+  1909→          </p>
+  1910→        </CardContent>
+  1911→      </Card>
+  1912→    </div>
+  1913→  )
+  1914→}
+  1915→
+  1916→// =====================================================================
+  1917→// Success View
+  1918→// =====================================================================
+  1919→function SuccessView({
+  1920→  orderData,
+  1921→  onGotoCatalog,
+  1922→  onGotoTracking,
+  1923→}: {
+  1924→  orderData: OrderData | null
+  1925→  onGotoCatalog: () => void
+  1926→  onGotoTracking: () => void
+  1927→}) {
+  1928→  return (
+  1929→    <div className="mx-auto flex max-w-lg flex-col items-center px-4 py-12 text-center sm:px-6 sm:py-20">
+  1930→      {/* Animated Success Icon */}
+  1931→      <motion.div
+  1932→        initial={{ scale: 0, opacity: 0 }}
+  1933→        animate={{ scale: 1, opacity: 1 }}
+  1934→        transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.1 }}
+  1935→        className="mb-6 flex size-24 items-center justify-center rounded-full bg-[#4caf50]/15 ring-8 ring-[#4caf50]/10"
+  1936→      >
+  1937→        <motion.div
+  1938→          initial={{ scale: 0 }}
+  1939→          animate={{ scale: 1 }}
+  1940→          transition={{ type: 'spring', stiffness: 300, damping: 15, delay: 0.3 }}
+  1941→        >
+  1942→          <CheckCircle2 className="size-14 text-[#4caf50]" />
+  1943→        </motion.div>
+  1944→      </motion.div>
+  1945→
+  1946→      <motion.h1
+  1947→        initial={{ opacity: 0, y: 10 }}
+  1948→        animate={{ opacity: 1, y: 0 }}
+  1949→        transition={{ delay: 0.4 }}
+  1950→        className="mb-2 text-2xl font-extrabold text-[#2d5016] sm:text-3xl"
+  1951→      >
+  1952→        Pesanan Berhasil!
+  1953→      </motion.h1>
+  1954→
+  1955→      <motion.p
+  1956→        initial={{ opacity: 0, y: 10 }}
+  1957→        animate={{ opacity: 1, y: 0 }}
+  1958→        transition={{ delay: 0.5 }}
+  1959→        className="mb-6 text-sm text-emerald-900/60"
+  1960→      >
+  1961→        Terima kasih atas pesanan Anda
+  1962→      </motion.p>
+  1963→
+  1964→      {orderData && (
+  1965→        <motion.div
+  1966→          initial={{ opacity: 0, y: 10 }}
+  1967→          animate={{ opacity: 1, y: 0 }}
+  1968→          transition={{ delay: 0.6 }}
+  1969→          className="mb-6 w-full rounded-xl border border-emerald-900/10 bg-emerald-50 p-4"
+  1970→        >
+  1971→          <p className="text-xs text-emerald-900/50 uppercase tracking-wide">Nomor Pesanan</p>
+  1972→          <p className="mt-1 text-lg font-extrabold text-[#2d5016]">
+  1973→            {orderData.orderNumber}
+  1974→          </p>
+  1975→          <Separator className="my-3 bg-emerald-900/10" />
+  1976→          <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-50 px-3 py-2">
+  1977→            <span className="text-xs font-medium text-blue-700/70 uppercase tracking-wide">Status Pesanan</span>
+  1978→            <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 px-3 py-1 text-xs font-bold">
+  1979→              Dibayar
+  1980→            </Badge>
+  1981→          </div>
+  1982→          {orderData.items.map((item) => (
+  1983→            <div key={item.productId} className="flex justify-between text-sm mb-1">
+  1984→              <span className="text-emerald-900/70">{item.name} x{item.quantity}</span>
+  1985→              <span className="font-semibold text-[#2d5016]">{formatRupiah(item.price * item.quantity)}</span>
+  1986→            </div>
+  1987→          ))}
+  1988→          <Separator className="my-3 bg-emerald-900/10" />
+  1989→          <div className="flex justify-between font-extrabold text-[#2d5016]">
+  1990→            <span>Total Dibayar</span>
+  1991→            <span>{formatRupiah(orderData.total)}</span>
+  1992→          </div>
+  1993→        </motion.div>
+  1994→      )}
+  1995→
+  1996→      <motion.p
+  1997→        initial={{ opacity: 0 }}
+  1998→        animate={{ opacity: 1 }}
+  1999→        transition={{ delay: 0.7 }}
+  2000→        className="mb-6 flex items-center justify-center gap-1.5 text-xs text-emerald-900/50"
+
+[showing lines 1-2000 of 2480; use offset=2001 with limit to continue reading]

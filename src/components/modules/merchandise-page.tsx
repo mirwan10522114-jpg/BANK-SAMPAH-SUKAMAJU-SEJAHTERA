@@ -244,14 +244,19 @@ const PROVINSI = [
 ]
 
 // =====================================================================
-// Category config
+// Category types & helpers
 // =====================================================================
-const CATEGORIES = [
-  { value: '', label: 'Semua' },
-  { value: 'Daur Ulang', label: 'Daur Ulang' },
-  { value: 'Kerajinan', label: 'Kerajinan' },
-  { value: 'Merchandise', label: 'Merchandise' },
-]
+interface Category {
+  id: string
+  name: string
+  slug: string
+  image: string | null
+  productCount: number
+}
+
+// "Semua" is always the first pill; the rest are populated dynamically
+// from /api/toko/kategori (matching whatever categories exist in the DB).
+const ALL_CATEGORY_PILL = { value: '', label: 'Semua' }
 
 // =====================================================================
 // Animation variants
@@ -551,10 +556,26 @@ function CatalogView({
   onAddToCart: (product: Product, qty: number) => void
 }) {
   const [products, setProducts] = React.useState<Product[]>([])
+  const [categories, setCategories] = React.useState<Category[]>([])
   const [loading, setLoading] = React.useState(true)
   const [search, setSearch] = React.useState('')
   const [category, setCategory] = React.useState('')
   const [sort, setSort] = React.useState<'terbaru' | 'termurah' | 'termahal'>('terbaru')
+
+  // Fetch product categories from DB once on mount so the filter pills
+  // always match whatever categories actually exist (e.g. "Daur Ulang Plastik").
+  React.useEffect(() => {
+    let mounted = true
+    fetchApi<Category[]>('/toko/kategori')
+      .then((res) => {
+        if (mounted) setCategories(Array.isArray(res) ? res : [])
+      })
+      .catch(() => {
+        // Silent fail — pills will fall back to just "Semua"
+        if (mounted) setCategories([])
+      })
+    return () => { mounted = false }
+  }, [])
 
   React.useEffect(() => {
     let mounted = true
@@ -654,9 +675,12 @@ function CatalogView({
           {/* Category pills + Sort */}
           <div className="flex items-center justify-between gap-3">
             <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-              {CATEGORIES.map((cat) => (
+              {[
+                ALL_CATEGORY_PILL,
+                ...categories.map((c) => ({ value: c.name, label: c.name })),
+              ].map((cat) => (
                 <button
-                  key={cat.value}
+                  key={cat.value || 'all'}
                   type="button"
                   onClick={() => setCategory(cat.value)}
                   className={cn(
