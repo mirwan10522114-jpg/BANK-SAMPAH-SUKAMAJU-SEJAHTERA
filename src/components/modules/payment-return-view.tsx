@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Loader2, CheckCircle2, XCircle, Clock, RefreshCw, Home } from 'lucide-react'
+import { Loader2, CheckCircle2, XCircle, Clock, RefreshCw, Home, CreditCard } from 'lucide-react'
 
 // =====================================================================
 // PaymentReturnView — halaman status pembayaran setelah redirect Midtrans
@@ -290,10 +290,31 @@ export function PaymentReturnView({ orderNumber, onBackToHome }: PaymentReturnVi
               )}
             </button>
           ) : isPending ? (
-            <div className="text-center text-xs text-amber-600">
-              <Loader2 className="mx-auto mb-1 size-4 animate-spin" />
-              Menunggu konfirmasi pembayaran dari Midtrans...
-            </div>
+            <>
+              {/* Tombol "Lakukan Pembayaran" — muncul saat status menunggu */}
+              {/* User bisa klik ini untuk buka Midtrans lagi kalau belum bayar */}
+              <button
+                onClick={handleRetry}
+                disabled={retrying}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#4caf50] px-4 py-3 text-sm font-bold text-white shadow-md hover:bg-[#43a047] disabled:opacity-50"
+              >
+                {retrying ? (
+                  <>
+                    <Loader2 className="size-5 animate-spin" />
+                    Menyiapkan pembayaran...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="size-5" />
+                    Lakukan Pembayaran
+                  </>
+                )}
+              </button>
+              <div className="mt-3 text-center text-xs text-amber-600">
+                <Loader2 className="mx-auto mb-1 size-4 animate-spin" />
+                Status update otomatis setelah pembayaran sukses
+              </div>
+            </>
           ) : null}
 
           {/* Back to home */}
