@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { reduceProductStock, recordBankSampahKas } from '@/lib/business'
 import { toNumber } from '@/lib/format'
+import { getRajaOngkirRates } from '@/lib/rajaongkir'
 
 // Generate order number: TKO-YYYYMMDD-XXXX
 async function generateOrderNumber(): Promise<string> {
@@ -22,6 +23,31 @@ async function generateOrderNumber(): Promise<string> {
   }
 
   return `${prefix}${String(seq).padStart(4, '0')}`
+}
+
+// Fallback ongkir calculator using old TokoSetting formula.
+// Used when RajaOngkir is not configured / fails / missing fields.
+function fallbackOngkirBySetting(
+  setting: any,
+  totalWeightGram: number,
+  jarakKm?: number
+): number {
+  const ratePerKg = toNumber(setting.ongkirRatePerKg)
+  const ratePerKm = toNumber(setting.ongkirRatePerKm)
+  const ongkirTetap = toNumber(setting.ongkirTetap)
+  const beratMinKg = toNumber(setting.beratMinimumKg) || 1
+
+  if (ratePerKg > 0) {
+    return Math.ceil(totalWeightGram / 1000 / beratMinKg) * ratePerKg
+  }
+  if (ratePerKm > 0 && jarakKm && jarakKm > 0) {
+    return jarakKm * ratePerKm
+  }
+  if (ongkirTetap > 0) {
+    return ongkirTetap
+  }
+  // Last-resort default supaya toko tetap bisa terima order
+  return 15000
 }
 
 // POST: Create order + generate Midtrans snap token
@@ -64,6 +90,15 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Format alamat tidak valid' }, { status: 400 })
   }
+
+  // Field RajaOngkir: prioritas dari payload shipping (nested format dari frontend),
+  // fallback ke flat format lama.
+  const roDistrictId: string =
+    (addressObj.districtId as string) || (body.shipping?.districtId as string) || ''
+  const roDistrictName: string =
+    (addressObj.district as string) || (addressObj.districtName as string) || ''
+  const roCityName: string =
+    (addressObj.city as string) || (addressObj.cityName as string) || ''
 
   // Check TokoSetting
   const setting = await db.tokoSetting.findFirst()
@@ -119,19 +154,34 @@ export async function POST(req: NextRequest) {
     }
   })
 
-  // Calculate ongkir
+  // Calculate ongkir via RajaOngkir (with safe fallback to TokoSetting formula).
+  // Sama persis dengan yang dipakai /api/shipping/cost → konsistensi estimasi
+  // frontend vs totalBayar backend terjamin.
   let ongkir = 0
-  const ratePerKg = toNumber(setting.ongkirRatePerKg)
-  const ratePerKm = toNumber(setting.ongkirRatePerKm)
-  const ongkirTetap = toNumber(setting.ongkirTetap)
-  const beratMinKg = toNumber(setting.beratMinimumKg) || 1
+  let ongkirSource: 'rajaongkir' | 'fallback' = 'fallback'
 
-  if (ratePerKg > 0) {
-    ongkir = Math.ceil(totalWeightGram / 1000 / beratMinKg) * ratePerKg
-  } else if (ratePerKm > 0 && jarakKm && jarakKm > 0) {
-    ongkir = jarakKm * ratePerKm
-  } else if (ongkirTetap > 0) {
-    ongkir = ongkirTetap
+  if (roDistrictId && roDistrictName && roCityName) {
+    try {
+      const roResult = await getRajaOngkirRates({
+        districtId: roDistrictId,
+        districtName: roDistrictName,
+        cityName: roCityName,
+        totalWeightGram,
+      })
+      ongkir = roResult.cheapestCost
+      ongkirSource = roResult.source
+    } catch (e: any) {
+      console.warn(
+        `[toko/checkout] getRajaOngkirRates failed, fallback to TokoSetting: ${e?.message || e}`
+      )
+      ongkir = fallbackOngkirBySetting(setting, totalWeightGram)
+      ongkirSource = 'fallback'
+    }
+  } else {
+    // Field RajaOngkir tidak lengkap di payload → pakai formula lama.
+    // Jangan tolak order cuma karena field baru belum ada — toko tetap jalan.
+    ongkir = fallbackOngkirBySetting(setting, totalWeightGram, jarakKm)
+    ongkirSource = 'fallback'
   }
 
   const totalBayar = subtotalProduk + ongkir
@@ -155,6 +205,8 @@ export async function POST(req: NextRequest) {
       paymentStatus: 'menunggu',
       orderStatus: 'menunggu_pembayaran',
       midtransOrderId,
+      // Catat sumber ongkir di notes untuk audit/debugging
+      notes: `ongkir_source=${ongkirSource}`,
       items: { create: orderItems },
     },
     include: { items: true },

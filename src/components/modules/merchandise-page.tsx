@@ -217,31 +217,13 @@ function getCartCount(cart: CartItem[]) {
 }
 
 // =====================================================================
-// Provinces list
+// Wilayah types & helpers (Provinsi / Kota / Kecamatan)
 // =====================================================================
-const PROVINSI = [
-  'Jawa Barat',
-  'Jawa Tengah',
-  'Jawa Timur',
-  'DKI Jakarta',
-  'Banten',
-  'DI Yogyakarta',
-  'Sumatera Utara',
-  'Sumatera Selatan',
-  'Sumatera Barat',
-  'Lampung',
-  'Bali',
-  'Nusa Tenggara Barat',
-  'Nusa Tenggara Timur',
-  'Kalimantan Barat',
-  'Kalimantan Selatan',
-  'Kalimantan Timur',
-  'Sulawesi Selatan',
-  'Sulawesi Utara',
-  'Sulawesi Tengah',
-  'Papua',
-  'Maluku',
-]
+// Sebelumnya pakai array hardcoded PROVINSI[]. Sekarang fetch dinamis
+// dari /api/province, /api/cities, /api/district (master data Kemendagri).
+interface Province { id: string; name: string }
+interface City { id: string; name: string; provinceId: string }
+interface District { id: string; name: string; cityId: string }
 
 // =====================================================================
 // Category types & helpers
@@ -1413,15 +1395,131 @@ function CheckoutView({
     nama: '',
     hp: '',
     email: '',
-    provinsi: '',
-    kota: '',
-    kecamatan: '',
+    // ID Kemendagri (string) untuk provinsi/kota/kecamatan
+    provinsiId: '',
+    kotaId: '',
+    kecamatanId: '',
+    // Nama (untuk display & payload shipping)
+    provinsiNama: '',
+    kotaNama: '',
+    kecamatanNama: '',
     kodePos: '',
     alamat: '',
   })
 
+  // Master wilayah (fetch dinamis dari /api/province, /api/cities, /api/district)
+  const [provinces, setProvinces] = React.useState<Province[]>([])
+  const [cities, setCities] = React.useState<City[]>([])
+  const [districts, setDistricts] = React.useState<District[]>([])
+  const [loadingProvinces, setLoadingProvinces] = React.useState(false)
+  const [loadingCities, setLoadingCities] = React.useState(false)
+  const [loadingDistricts, setLoadingDistricts] = React.useState(false)
+
+  // Ongkir live (RajaOngkir + fallback)
+  const [ongkir, setOngkir] = React.useState<number>(0)
+  const [ongkirSource, setOngkirSource] = React.useState<'rajaongkir' | 'fallback' | null>(null)
+  const [ongkirMessage, setOngkirMessage] = React.useState<string>('')
+  const [loadingOngkir, setLoadingOngkir] = React.useState(false)
+  const [courierOptions, setCourierOptions] = React.useState<
+    { serviceDisplay: string; cost: number; etd: string }[]
+  >([])
+
+  // Fetch provinces on mount
+  React.useEffect(() => {
+    setLoadingProvinces(true)
+    fetch('/api/province')
+      .then((r) => r.json())
+      .then((data: Province[]) => setProvinces(Array.isArray(data) ? data : []))
+      .catch(() => setProvinces([]))
+      .finally(() => setLoadingProvinces(false))
+  }, [])
+
+  // Fetch cities when province changes
+  React.useEffect(() => {
+    setCities([])
+    setDistricts([])
+    setForm((prev) => ({ ...prev, kotaId: '', kotaNama: '', kecamatanId: '', kecamatanNama: '' }))
+    if (!form.provinsiId) return
+    setLoadingCities(true)
+    fetch(`/api/cities?provinceId=${encodeURIComponent(form.provinsiId)}`)
+      .then((r) => r.json())
+      .then((data: City[]) => setCities(Array.isArray(data) ? data : []))
+      .catch(() => setCities([]))
+      .finally(() => setLoadingCities(false))
+  }, [form.provinsiId])
+
+  // Fetch districts when city changes
+  React.useEffect(() => {
+    setDistricts([])
+    setForm((prev) => ({ ...prev, kecamatanId: '', kecamatanNama: '' }))
+    if (!form.kotaId) return
+    setLoadingDistricts(true)
+    fetch(`/api/district?cityId=${encodeURIComponent(form.kotaId)}`)
+      .then((r) => r.json())
+      .then((data: District[]) => setDistricts(Array.isArray(data) ? data : []))
+      .catch(() => setDistricts([]))
+      .finally(() => setLoadingDistricts(false))
+  }, [form.kotaId])
+
   const subtotal = getCartTotal(cart)
-  const ongkir = subtotal > 0 ? 15000 : 0 // Fixed estimate for demo
+  const totalWeightGram = cart.reduce(
+    (sum, item) => sum + (item.weightGram || 0) * item.quantity,
+    0
+  )
+
+  // Fetch ongkir live when district selected & cart has weight
+  React.useEffect(() => {
+    if (!form.kecamatanId || !form.kecamatanNama || !form.kotaNama || totalWeightGram <= 0) {
+      setOngkir(0)
+      setOngkirSource(null)
+      setOngkirMessage('')
+      setCourierOptions([])
+      return
+    }
+    let cancelled = false
+    setLoadingOngkir(true)
+    fetch('/api/shipping/cost', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        districtId: form.kecamatanId,
+        districtName: form.kecamatanNama,
+        cityName: form.kotaNama,
+        weightGram: totalWeightGram,
+      }),
+    })
+      .then((r) => r.json())
+      .then((data: any) => {
+        if (cancelled) return
+        const cost = Number(data.cheapestCost) || 0
+        setOngkir(cost)
+        setOngkirSource(data.source || 'fallback')
+        setOngkirMessage(data.message || '')
+        const opts = Array.isArray(data.options) ? data.options : []
+        setCourierOptions(
+          opts.map((o: any) => ({
+            serviceDisplay: o.serviceDisplay,
+            cost: Number(o.cost) || 0,
+            etd: o.etd || '-',
+          }))
+        )
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Fallback lokal supaya UI tetap jalan walai shipping API error
+        setOngkir(15000)
+        setOngkirSource('fallback')
+        setOngkirMessage('Gagal menghitung ongkir, pakai tarif default.')
+        setCourierOptions([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingOngkir(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [form.kecamatanId, form.kecamatanNama, form.kotaNama, totalWeightGram])
+
   const total = subtotal + ongkir
 
   const updateField = (field: string, value: string) => {
@@ -1431,9 +1529,9 @@ function CheckoutView({
   const isValidForm =
     form.nama.trim() !== '' &&
     form.hp.trim() !== '' &&
-    form.provinsi !== '' &&
-    form.kota.trim() !== '' &&
-    form.kecamatan.trim() !== '' &&
+    form.provinsiId !== '' &&
+    form.kotaId !== '' &&
+    form.kecamatanId !== '' &&
     form.kodePos.trim() !== '' &&
     form.alamat.trim() !== ''
 
@@ -1452,6 +1550,9 @@ function CheckoutView({
         weightGram: item.weightGram,
       }))
 
+      // Payload shipping sekarang menyertakan districtId/districtName/cityName
+      // supaya backend bisa hitung ulang ongkir via RajaOngkir yang sama
+      // (frontend angka tidak dipercaya begitu saja).
       const res = await fetchApi<any>('/toko/checkout', {
         method: 'POST',
         body: JSON.stringify({
@@ -1462,9 +1563,12 @@ function CheckoutView({
             email: form.email || undefined,
           },
           shipping: {
-            province: form.provinsi,
-            city: form.kota,
-            district: form.kecamatan,
+            provinceId: form.provinsiId,
+            province: form.provinsiNama,
+            cityId: form.kotaId,
+            city: form.kotaNama,
+            districtId: form.kecamatanId,
+            district: form.kecamatanNama,
             postalCode: form.kodePos,
             address: form.alamat,
           },
@@ -1473,17 +1577,27 @@ function CheckoutView({
 
       setStep(2)
 
+      // Total dari backend (sudah include ongkir yang dihitung ulang).
+      // Kalau gagal parse, fallback ke angka frontend.
+      const backendTotal = res.order?.totalBayar
+      const finalTotal =
+        typeof backendTotal === 'number'
+          ? backendTotal
+          : typeof backendTotal === 'string'
+            ? Number(backendTotal)
+            : total
+
       const orderData: OrderData = {
         orderNumber: res.order?.orderNumber || '',
         items: cart,
-        total: res.order?.totalBayar || total,
+        total: finalTotal,
         buyerName: form.nama,
         buyerPhone: form.hp,
         buyerEmail: form.email,
         address: form.alamat,
-        province: form.provinsi,
-        city: form.kota,
-        district: form.kecamatan,
+        province: form.provinsiNama,
+        city: form.kotaNama,
+        district: form.kecamatanNama,
         postalCode: form.kodePos,
       }
 
@@ -1606,15 +1720,23 @@ function CheckoutView({
                     Provinsi <span className="text-rose-600">*</span>
                   </Label>
                   <Select
-                    value={form.provinsi}
-                    onValueChange={(v) => updateField('provinsi', v)}
+                    value={form.provinsiId}
+                    onValueChange={(v) => {
+                      const p = provinces.find((x) => x.id === v)
+                      setForm((prev) => ({
+                        ...prev,
+                        provinsiId: v,
+                        provinsiNama: p?.name || '',
+                      }))
+                    }}
+                    disabled={loadingProvinces}
                   >
                     <SelectTrigger className="border-emerald-900/15">
-                      <SelectValue placeholder="Pilih provinsi" />
+                      <SelectValue placeholder={loadingProvinces ? 'Memuat provinsi...' : 'Pilih provinsi'} />
                     </SelectTrigger>
                     <SelectContent>
-                      {PROVINSI.map((p) => (
-                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                      {provinces.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1625,23 +1747,69 @@ function CheckoutView({
                     <Label className="text-sm font-medium text-emerald-950">
                       Kota/Kabupaten <span className="text-rose-600">*</span>
                     </Label>
-                    <Input
-                      placeholder="Kota atau Kabupaten"
-                      value={form.kota}
-                      onChange={(e) => updateField('kota', e.target.value)}
-                      className="border-emerald-900/15"
-                    />
+                    <Select
+                      value={form.kotaId}
+                      onValueChange={(v) => {
+                        const c = cities.find((x) => x.id === v)
+                        setForm((prev) => ({
+                          ...prev,
+                          kotaId: v,
+                          kotaNama: c?.name || '',
+                        }))
+                      }}
+                      disabled={loadingCities || !form.provinsiId}
+                    >
+                      <SelectTrigger className="border-emerald-900/15">
+                        <SelectValue
+                          placeholder={
+                            !form.provinsiId
+                              ? 'Pilih provinsi dulu'
+                              : loadingCities
+                                ? 'Memuat kota...'
+                                : 'Pilih kota/kabupaten'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cities.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium text-emerald-950">
                       Kecamatan <span className="text-rose-600">*</span>
                     </Label>
-                    <Input
-                      placeholder="Kecamatan"
-                      value={form.kecamatan}
-                      onChange={(e) => updateField('kecamatan', e.target.value)}
-                      className="border-emerald-900/15"
-                    />
+                    <Select
+                      value={form.kecamatanId}
+                      onValueChange={(v) => {
+                        const d = districts.find((x) => x.id === v)
+                        setForm((prev) => ({
+                          ...prev,
+                          kecamatanId: v,
+                          kecamatanNama: d?.name || '',
+                        }))
+                      }}
+                      disabled={loadingDistricts || !form.kotaId}
+                    >
+                      <SelectTrigger className="border-emerald-900/15">
+                        <SelectValue
+                          placeholder={
+                            !form.kotaId
+                              ? 'Pilih kota dulu'
+                              : loadingDistricts
+                                ? 'Memuat kecamatan...'
+                                : 'Pilih kecamatan'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {districts.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -1716,11 +1884,54 @@ function CheckoutView({
                   <span>{formatRupiah(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-emerald-900/70">
-                  <span>Estimasi ongkir</span>
-                  <span className="text-xs italic text-emerald-900/50">
-                    {ongkir > 0 ? formatRupiah(ongkir) : 'Dihitung setelah checkout'}
+                  <span className="flex items-center gap-1.5">
+                    Ongkir
+                    {ongkirSource === 'rajaongkir' && (
+                      <Badge variant="outline" className="bg-emerald-50 px-1.5 py-0 text-[10px] font-medium text-emerald-700">
+                        RajaOngkir
+                      </Badge>
+                    )}
+                    {ongkirSource === 'fallback' && (
+                      <Badge variant="outline" className="bg-amber-50 px-1.5 py-0 text-[10px] font-medium text-amber-700">
+                        Estimasi
+                      </Badge>
+                    )}
                   </span>
+                  {loadingOngkir ? (
+                    <span className="flex items-center gap-1 text-xs italic text-emerald-900/50">
+                      <Loader2 className="size-3 animate-spin" />
+                      Menghitung...
+                    </span>
+                  ) : ongkir > 0 ? (
+                    <span className="font-medium text-emerald-900/80">
+                      {formatRupiah(ongkir)}
+                    </span>
+                  ) : (
+                    <span className="text-xs italic text-emerald-900/50">
+                      Pilih kecamatan dulu
+                    </span>
+                  )}
                 </div>
+                {courierOptions.length > 0 && (
+                  <div className="rounded-md border border-emerald-900/10 bg-emerald-50/30 p-2">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                      Opsi kurir (termurah dipakai)
+                    </p>
+                    <div className="max-h-28 space-y-0.5 overflow-y-auto text-[11px]">
+                      {courierOptions.slice(0, 6).map((o, idx) => (
+                        <div key={`${o.serviceDisplay}-${idx}`} className="flex justify-between text-emerald-900/70">
+                          <span className="truncate pr-2">{o.serviceDisplay} · {o.etd}</span>
+                          <span className="whitespace-nowrap font-medium">{formatRupiah(o.cost)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {ongkirMessage && ongkirSource === 'fallback' && (
+                  <p className="text-[10px] italic text-amber-600">
+                    {ongkirMessage}
+                  </p>
+                )}
                 <Separator className="bg-emerald-900/10" />
                 <div className="flex justify-between text-base font-extrabold text-[#2d5016]">
                   <span>Total Bayar</span>

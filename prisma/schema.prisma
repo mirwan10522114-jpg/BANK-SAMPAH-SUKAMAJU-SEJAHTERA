@@ -999,3 +999,53 @@ model Kegiatan {
 
   author User? @relation(fields: [authorId], references: [id])
 }
+
+// ==================== MASTER WILAYAH INDONESIA ====================
+// Field `id` adalah kode wilayah Kemendagri (String). Data di-seed dari
+// dataset emsifa/api-wilayah-indonesia. Field `rajaOngkirDestId` di
+// District dipakai untuk caching ID tujuan RajaOngkir (Komerce) supaya
+// tidak query berulang ke API luar untuk kecamatan yang sama.
+
+model Province {
+  id        String  @id // kode Kemendagri, e.g. "32"
+  name      String
+  altName   String?
+  latitude  String?
+  longitude String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cities City[]
+}
+
+model City {
+  id         String   @id // kode Kemendagri, e.g. "32.73"
+  provinceId String
+  name       String
+  altName    String?
+  latitude   String?
+  longitude  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  province  Province   @relation(fields: [provinceId], references: [id])
+  districts District[]
+}
+
+model District {
+  id                String   @id // kode Kemendagri, e.g. "32.73.01"
+  cityId            String
+  name              String
+  altName           String?
+  latitude          String?
+  longitude         String?
+  // Cache ID tujuan RajaOngkir (Komerce) supaya tidak query berulang
+  // untuk kecamatan yang sama. Diisi lazily saat pertama kali resolve.
+  rajaOngkirDestId  Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  city City @relation(fields: [cityId], references: [id])
+
+  @@index([cityId])
+}
