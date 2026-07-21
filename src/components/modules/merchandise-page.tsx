@@ -1440,9 +1440,11 @@ function CheckoutView({
     createdAt: number // timestamp ketika token dibuat
   } | null>(null)
 
-  // Token dianggap stale setelah 10 menit — setelah itu, bikin order baru
+  // Token dianggap stale setelah 4 menit — setelah itu, bikin order baru
   // supaya popup selalu fresh dan tidak menampilkan error "expired".
-  const TOKEN_STALE_MS = 10 * 60 * 1000
+  // 4 menit < 5 menit (Midtrans expiry) supaya token cache tidak pernah
+  // expired saat dipakai ulang.
+  const TOKEN_STALE_MS = 4 * 60 * 1000
 
   // Fetch provinces on mount
   React.useEffect(() => {
