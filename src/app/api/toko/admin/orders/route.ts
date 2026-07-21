@@ -75,6 +75,18 @@ export async function GET(req: NextRequest) {
     notes: o.notes,
     createdAt: o.createdAt,
     updatedAt: o.updatedAt,
+    // Midtrans integration fields — supaya admin bisa lihat detail pembayaran
+    midtransOrderId: o.midtransOrderId,
+    midtransTransactionId: o.midtransTransactionId,
+    midtransPaymentType: o.midtransPaymentType,
+    midtransVaNumber: o.midtransVaNumber,
+    midtransIssuer: o.midtransIssuer,
+    midtransPdfUrl: o.midtransPdfUrl,
+    midtransStatusCode: o.midtransStatusCode,
+    midtransGrossAmount: o.midtransGrossAmount ? toNumber(o.midtransGrossAmount) : null,
+    midtransTransactionTime: o.midtransTransactionTime,
+    midtransSettlementTime: o.midtransSettlementTime,
+    midtransLastWebhookAt: o.midtransLastWebhookAt,
     items: o.items.map((i) => ({
       id: i.id,
       productId: i.productId,

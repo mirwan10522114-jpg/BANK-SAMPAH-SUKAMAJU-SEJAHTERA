@@ -2212,38 +2212,199 @@ function PaymentView({
   onBack: () => void
   onSuccess: () => void
 }) {
-  const [loading, setLoading] = React.useState(false)
-  const [countdown, setCountdown] = React.useState(24 * 60 * 60) // 24 hours in seconds
+  // State untuk status pembayaran real-time dari backend
+  const [statusData, setStatusData] = React.useState<{
+    paymentStatus: string
+    dbPaymentStatus: string
+    orderStatus: string
+    secondsUntilExpiry: number
+    isExpired: boolean
+    hasSnapToken: boolean
+    midtransPaymentType: string | null
+    midtransVaNumber: string | null
+    midtransIssuer: string | null
+    midtransPdfUrl: string | null
+    midtransTransactionId: string | null
+    paidAt: string | null
+    total: number
+  } | null>(null)
+  const [loadingStatus, setLoadingStatus] = React.useState(true)
+  const [retrying, setRetrying] = React.useState(false)
+  const [openingSnap, setOpeningSnap] = React.useState(false)
+  const [localCountdown, setLocalCountdown] = React.useState(0)
 
-  // Countdown timer
+  // Poll status setiap 3 detik supaya update real-time saat webhook diterima
   React.useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((c) => Math.max(0, c - 1))
+    if (!orderData?.orderNumber) return
+    let cancelled = false
+
+    const pollStatus = async () => {
+      try {
+        const res = await fetch(
+          `/api/payment/status?orderId=${encodeURIComponent(orderData.orderNumber)}`
+        )
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled) {
+          setStatusData(data)
+          setLocalCountdown(data.secondsUntilExpiry || 0)
+          setLoadingStatus(false)
+
+          // Kalau sudah dibayar → langsung panggil onSuccess (auto-redirect ke success page)
+          if (data.paymentStatus === 'dibayar') {
+            setTimeout(() => onSuccess(), 1500)
+          }
+        }
+      } catch {
+        // silent fail
+      }
+    }
+
+    pollStatus()
+    const interval = setInterval(pollStatus, 3000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [orderData?.orderNumber, onSuccess])
+
+  // Local countdown tick (supaya timer update setiap detik, bukan tiap 3 detik)
+  React.useEffect(() => {
+    if (localCountdown <= 0) return
+    const t = setInterval(() => {
+      setLocalCountdown((c) => Math.max(0, c - 1))
     }, 1000)
-    return () => clearInterval(timer)
+    return () => clearInterval(t)
+  }, [localCountdown])
+
+  // Load Snap.js (cached)
+  const loadSnapJs = React.useCallback(async () => {
+    const snapJsUrl = await fetch('/api/payment/config')
+      .then((r) => r.json())
+      .then((cfg: { snapJsUrl: string }) => cfg.snapJsUrl)
+      .catch(() => 'https://app.sandbox.midtrans.com/snap/snap.js')
+
+    await new Promise<void>((resolve, reject) => {
+      const w = window as unknown as { snap?: unknown }
+      if (w.snap) {
+        resolve()
+        return
+      }
+      const existing = document.getElementById('midtrans-snap-script')
+      if (existing) {
+        existing.addEventListener('load', () => resolve())
+        existing.addEventListener('error', () => reject(new Error('Gagal memuat Snap.js')))
+        return
+      }
+      const script = document.createElement('script')
+      script.id = 'midtrans-snap-script'
+      script.src = snapJsUrl
+      script.async = true
+      script.setAttribute('data-client-key', '')
+      script.onload = () => resolve()
+      script.onerror = () => reject(new Error('Gagal memuat Midtrans Snap'))
+      document.head.appendChild(script)
+    })
   }, [])
 
-  const hours = Math.floor(countdown / 3600)
-  const minutes = Math.floor((countdown % 3600) / 60)
-  const seconds = countdown % 60
-
-  const handleSimulatePayment = async () => {
-    setLoading(true)
+  // Buka Snap popup — SELALU buat token BARU via /api/payment/retry
+  // ---------------------------------------------------------------
+  // JANGAN pernah reuse token lama yang ada di DB, karena token Midtrans
+  // Snap punya expiry 5 menit. Kalau user buka halaman >5 menit setelah
+  // order dibuat, token lama sudah expired → popup tampilkan "expired".
+  //
+  // Strategi: setiap kali user klik "Bayar", panggil /api/payment/retry
+  // untuk dapat token baru. Ini guarantees token selalu fresh (5 menit
+  // dimulai dari saat user benar-benar mau bayar).
+  const handleOpenSnap = async () => {
+    if (!orderData?.orderNumber) return
+    setOpeningSnap(true)
     try {
-      // Call confirm-payment API to update order status to 'dibayar' (payment confirmed)
-      await fetchApi<any>(`/toko/order/${orderData.orderNumber}/confirm-payment`, {
+      await loadSnapJs()
+
+      const w = window as unknown as {
+        snap: {
+          pay: (
+            token: string,
+            callbacks: {
+              onSuccess: (r: unknown) => void
+              onPending: (r: unknown) => void
+              onError: (r: unknown) => void
+              onClose: () => void
+            }
+          ) => void
+        }
+      }
+      if (!w.snap) throw new Error('Snap.js tidak terload')
+
+      // SELALU buat token baru — tidak reuse token lama
+      // (token lama mungkin sudah expired di Midtrans)
+      toast.info('Menyiapkan pembayaran...')
+      const retryRes = await fetch('/api/payment/retry', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderNumber: orderData.orderNumber }),
       })
-      toast.success('Pembayaran berhasil dikonfirmasi! Status: Dibayar.')
-      onSuccess()
-    } catch (err: any) {
-      toast.error(err?.message || 'Gagal mengonfirmasi pembayaran')
+      const retryData = await retryRes.json()
+      if (!retryRes.ok) {
+        throw new Error(retryData.error || 'Gagal membuat token pembayaran')
+      }
+      const snapToken = retryData.snapToken as string
+
+      // Update countdown reset ke 5 menit (karena token baru)
+      setStatusData((prev) => prev ? {
+        ...prev,
+        paymentStatus: 'menunggu',
+        dbPaymentStatus: 'menunggu',
+        secondsUntilExpiry: 5 * 60,
+        isExpired: false,
+        hasSnapToken: true,
+      } : prev)
+      setLocalCountdown(5 * 60)
+
+      w.snap.pay(snapToken, {
+        onSuccess: () => {
+          toast.success('Pembayaran berhasil! Menunggu konfirmasi server...')
+          // Webhook akan update DB, polling akan deteksi & auto-redirect
+        },
+        onPending: () => {
+          toast.info('Menunggu pembayaran. Selesaikan pembayaran sebelum waktu habis.')
+        },
+        onError: () => {
+          toast.error('Pembayaran gagal. Silakan coba lagi.')
+        },
+        onClose: () => {
+          toast.warning('Popup pembayaran ditutup. Klik "Bayar" lagi untuk mencoba kembali.')
+        },
+      })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Gagal membuka popup pembayaran'
+      toast.error(message)
     } finally {
-      setLoading(false)
+      setOpeningSnap(false)
     }
   }
 
+  // Bayar Ulang — sama dengan handleOpenSnap (selalu buat token baru)
+  // Tetap dipertahankan untuk tombol "Bayar Ulang" yang muncul saat expired.
+  const handleRetry = async () => {
+    await handleOpenSnap()
+  }
+
   if (!orderData) return null
+
+  // Format countdown MM:SS
+  const minutes = Math.floor(localCountdown / 60)
+  const seconds = localCountdown % 60
+  const countdownStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+
+  // Determine display state
+  const isLoading = loadingStatus && !statusData
+  const paymentStatus = statusData?.paymentStatus || 'menunggu'
+  const isPaid = paymentStatus === 'dibayar'
+  const isExpired = statusData?.isExpired || paymentStatus === 'expired'
+  const isPending = paymentStatus === 'menunggu' && !isExpired
+  const isFailed = ['gagal', 'dibatalkan'].includes(paymentStatus)
 
   return (
     <div className="mx-auto w-full max-w-lg px-4 py-6 sm:px-6">
@@ -2252,6 +2413,9 @@ function PaymentView({
           <CreditCard className="size-7 text-[#2d5016]" />
         </div>
         <h2 className="text-xl font-bold text-[#2d5016]">Pembayaran</h2>
+        <p className="mt-1 text-xs text-emerald-900/60">
+          Pembayaran wajib via Midtrans. Status diperbarui otomatis.
+        </p>
       </div>
 
       <Card className="rounded-xl border-emerald-900/10 shadow-sm">
@@ -2278,58 +2442,86 @@ function PaymentView({
             </div>
           </div>
 
-          {/* Payment Method - Manual (Simulated) */}
-          <div className="mb-4">
-            <h3 className="mb-3 text-sm font-bold text-[#2d5016]">
-              Pembayaran Manual
-            </h3>
-            <div className="space-y-3 rounded-lg border border-emerald-900/10 p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-lg bg-blue-50">
-                  <span className="text-xs font-bold text-blue-700">BCA</span>
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-emerald-950">Bank BCA</p>
-                  <p className="text-xs text-emerald-900/50">Transfer Manual</p>
-                </div>
-              </div>
-              <Separator className="bg-emerald-900/10" />
-              <div>
-                <p className="text-xs text-emerald-900/50">Nomor Rekening</p>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-bold text-[#2d5016]">8120-3456-78</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard?.writeText('8120345678')
-                      toast.success('Nomor rekening disalin')
-                    }}
-                    className="text-emerald-700/60 hover:text-emerald-800"
-                  >
-                    <Copy className="size-3.5" />
-                  </button>
-                </div>
-                <p className="text-xs text-emerald-900/50">a.n. Bank Sampah Sukamaju Sejahtera</p>
-              </div>
-              <div>
-                <p className="text-xs text-emerald-900/50">Total yang harus dibayar</p>
-                <p className="text-xl font-extrabold text-[#0d9488]">
-                  {formatRupiah(orderData.total)}
-                </p>
-              </div>
+          {/* Status Banner — real-time dari DB */}
+          {isLoading ? (
+            <div className="mb-4 flex items-center justify-center gap-2 rounded-lg bg-gray-50 px-4 py-3">
+              <Loader2 className="size-4 animate-spin text-emerald-600" />
+              <span className="text-xs text-emerald-900/60">Memuat status pembayaran...</span>
             </div>
-          </div>
+          ) : isPaid ? (
+            <div className="mb-4 flex items-center justify-center gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-3">
+              <CheckCircle2 className="size-5 text-green-600" />
+              <span className="text-sm font-bold text-green-800">
+                ✓ Pembayaran Berhasil (Lunas)
+              </span>
+            </div>
+          ) : isExpired ? (
+            <div className="mb-4 flex items-center justify-center gap-2 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+              <XCircle className="size-5 text-red-600" />
+              <span className="text-sm font-bold text-red-800">
+                ⌛ Waktu Pembayaran Habis (Expired)
+              </span>
+            </div>
+          ) : isFailed ? (
+            <div className="mb-4 flex items-center justify-center gap-2 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+              <XCircle className="size-5 text-red-600" />
+              <span className="text-sm font-bold text-red-800">
+                ✗ Pembayaran Gagal
+              </span>
+            </div>
+          ) : isPending ? (
+            <div className="mb-4 flex items-center justify-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
+              <Clock className="size-4 text-amber-600 animate-pulse" />
+              <span className="text-xs font-medium text-amber-700">
+                Selesaikan pembayaran dalam:
+              </span>
+              <span className="text-sm font-bold text-amber-800 font-mono">
+                {countdownStr}
+              </span>
+            </div>
+          ) : null}
 
-          {/* Countdown Timer */}
-          <div className="mb-4 flex items-center justify-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
-            <Clock className="size-4 text-amber-600" />
-            <span className="text-xs font-medium text-amber-700">
-              Batas waktu pembayaran:
-            </span>
-            <span className="text-sm font-bold text-amber-800 font-mono">
-              {String(hours).padStart(2, '0')}:{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
-            </span>
-          </div>
+          {/* Midtrans transaction details — tampil kalau sudah ada data webhook */}
+          {statusData?.midtransPaymentType && isPaid && (
+            <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 text-xs">
+              <p className="mb-2 font-semibold text-emerald-900">📋 Detail Pembayaran (dari Midtrans):</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-emerald-700/60">Metode:</span>
+                  <span className="ml-1 font-medium text-emerald-900">
+                    {statusData.midtransPaymentType}
+                    {statusData.midtransIssuer ? ` (${statusData.midtransIssuer})` : ''}
+                  </span>
+                </div>
+                {statusData.midtransVaNumber && (
+                  <div>
+                    <span className="text-emerald-700/60">VA/Code:</span>
+                    <span className="ml-1 font-mono font-medium text-emerald-900">
+                      {statusData.midtransVaNumber}
+                    </span>
+                  </div>
+                )}
+                {statusData.midtransTransactionId && (
+                  <div className="col-span-2">
+                    <span className="text-emerald-700/60">Transaction ID:</span>
+                    <span className="ml-1 font-mono text-[10px] text-emerald-900">
+                      {statusData.midtransTransactionId}
+                    </span>
+                  </div>
+                )}
+              </div>
+              {statusData.midtransPdfUrl && (
+                <a
+                  href={statusData.midtransPdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-block text-xs font-semibold text-emerald-600 hover:underline"
+                >
+                  📄 Lihat PDF Instruksi Pembayaran
+                </a>
+              )}
+            </div>
+          )}
 
           {/* Order Items Summary */}
           <div className="mb-4 max-h-40 overflow-y-auto space-y-2">
@@ -2348,34 +2540,85 @@ function PaymentView({
           <Separator className="mb-4 bg-emerald-900/10" />
 
           <div className="mb-4 flex justify-between text-base font-extrabold text-[#2d5016]">
-            <span>Total</span>
+            <span>Total Bayar</span>
             <span>{formatRupiah(orderData.total)}</span>
           </div>
 
-          {/* Confirm Payment Button */}
+          {/* === ACTION BUTTONS === */}
+          {isPaid ? (
+            <Button
+              type="button"
+              size="lg"
+              disabled
+              className="w-full bg-green-600 text-white"
+            >
+              <CheckCircle2 className="mr-2 size-5" />
+              Pembayaran Lunas — Lanjut...
+            </Button>
+          ) : isExpired || isFailed ? (
+            <Button
+              type="button"
+              size="lg"
+              disabled={retrying}
+              onClick={handleRetry}
+              className="w-full bg-[#4caf50] text-white hover:bg-[#43a047] shadow-lg"
+            >
+              {retrying ? (
+                <>
+                  <Loader2 className="mr-2 size-5 animate-spin" />
+                  Membuat token baru...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="mr-2 size-5" />
+                  Bayar Ulang via Midtrans
+                </>
+              )}
+            </Button>
+          ) : isPending ? (
+            <Button
+              type="button"
+              size="lg"
+              disabled={openingSnap}
+              onClick={handleOpenSnap}
+              className="w-full bg-[#4caf50] text-white hover:bg-[#43a047] shadow-lg"
+            >
+              {openingSnap ? (
+                <>
+                  <Loader2 className="mr-2 size-5 animate-spin" />
+                  Membuka popup...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="mr-2 size-5" />
+                  Bayar via Midtrans Sekarang
+                </>
+              )}
+            </Button>
+          ) : null}
+
+          {/* Info text */}
+          <p className="mt-3 text-center text-xs text-emerald-900/50">
+            {isPaid
+              ? '✓ Pembayaran terkonfirmasi via Midtrans. Status pesanan: Dibayar.'
+              : isExpired
+                ? '⌛ Waktu pembayaran habis. Klik "Bayar Ulang" untuk membuat transaksi baru.'
+                : isPending
+                  ? '⏳ Klik "Bayar via Midtrans" untuk membuka popup pembayaran. Status update otomatis setelah pembayaran sukses.'
+                  : 'Pembayaran wajib via Midtrans. Tidak ada konfirmasi manual.'}
+          </p>
+
+          {/* Back button */}
           <Button
             type="button"
-            size="lg"
-            disabled={loading}
-            onClick={handleSimulatePayment}
-            className="w-full bg-[#4caf50] text-white hover:bg-[#43a047] shadow-lg"
+            variant="outline"
+            size="sm"
+            onClick={onBack}
+            className="mt-3 w-full border-emerald-900/15 text-emerald-700 hover:bg-emerald-50"
           >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 size-5 animate-spin" />
-                Memproses pembayaran...
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="mr-2 size-5" />
-                Konfirmasi Sudah Dibayar
-              </>
-            )}
+            <ArrowLeft className="mr-2 size-4" />
+            Kembali ke Katalog
           </Button>
-
-          <p className="mt-3 text-center text-xs text-emerald-900/50">
-            *Ini adalah simulasi pembayaran untuk demo
-          </p>
         </CardContent>
       </Card>
     </div>
