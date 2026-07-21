@@ -877,6 +877,18 @@ model TokoOrder {
   midtransOrderId   String?  @unique
   midtransSnapToken String?
   paidAt            DateTime?
+  // Midtrans transaction detail (diisi oleh webhook)
+  midtransTransactionId   String?  // transaction_id dari Midtrans
+  midtransPaymentType     String?  // payment_type: credit_card, qris, bank_transfer, echannel, gopay, shopeepay, cstore, akulaku, etc.
+  midtransVaNumber        String?  // va_number (untuk bank_transfer / echannel)
+  midtransIssuer          String?  // bank issuer (bca, bni, bri, mandiri, ...)
+  midtransPdfUrl          String?  // pdf_url untuk instruksi pembayaran VA / CVS
+  midtransStatusCode      String?  // status_code terakhir dari Midtrans
+  midtransGrossAmount     Decimal? // gross_amount dari callback (verifikasi)
+  midtransTransactionTime DateTime? // transaction_time
+  midtransSettlementTime  DateTime? // settlement_time (saat benar-benar lunas)
+  midtransRawCallback     String?  // snapshot JSON callback terakhir (audit/debug)
+  midtransLastWebhookAt   DateTime? // terakhir kali webhook diterima untuk order ini
   // Order lifecycle
   orderStatus       String   @default("menunggu_pembayaran") // menunggu_pembayaran | dibayar | diproses | dikirim | diterima | dibatalkan | expired
   // Shipping

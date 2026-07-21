@@ -1424,6 +1424,19 @@ function CheckoutView({
     { serviceDisplay: string; cost: number; etd: string }[]
   >([])
 
+  // Tracking untuk mencegah duplicate order & double-click
+  // - submitting: true saat proses pembuatan order + buka Snap popup (disable tombol)
+  // - lastCreatedOrderId: ID order yang terakhir dibuat di sesi ini, supaya kalau
+  //   user klik "Bayar" lagi tanpa perubahan form, kita reuse Snap token yang sama
+  //   alih-alih buat order baru (yang akan bentrok di Midtrans).
+  const [submitting, setSubmitting] = React.useState(false)
+  const lastCreatedOrderRef = React.useRef<{
+    formHash: string
+    orderId: string
+    snapToken: string
+    grossAmount: number
+  } | null>(null)
+
   // Fetch provinces on mount
   React.useEffect(() => {
     setLoadingProvinces(true)
@@ -1536,59 +1549,189 @@ function CheckoutView({
     form.alamat.trim() !== ''
 
   const handleSubmit = async () => {
-    if (!isValidForm) {
-      toast.error('Lengkapi semua data yang wajib diisi')
+    // ====== Cegah double-click & duplicate order ======
+    // Tombol disable saat submitting=true. Kalau user klik berkali-kali
+    // cepat, hanya klik pertama yang akan diproses.
+    if (submitting) {
       return
     }
-    setLoading(true)
-    try {
-      const orderItems = cart.map((item) => ({
-        productId: item.productId,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        weightGram: item.weightGram,
-      }))
 
-      // Payload shipping sekarang menyertakan districtId/districtName/cityName
-      // supaya backend bisa hitung ulang ongkir via RajaOngkir yang sama
-      // (frontend angka tidak dipercaya begitu saja).
-      const res = await fetchApi<any>('/toko/checkout', {
-        method: 'POST',
-        body: JSON.stringify({
-          items: orderItems,
-          buyer: {
-            name: form.nama,
-            phone: form.hp,
-            email: form.email || undefined,
-          },
-          shipping: {
-            provinceId: form.provinsiId,
-            province: form.provinsiNama,
-            cityId: form.kotaId,
-            city: form.kotaNama,
-            districtId: form.kecamatanId,
-            district: form.kecamatanNama,
-            postalCode: form.kodePos,
-            address: form.alamat,
-          },
-        }),
-      })
+    // ====== Frontend validation (sebelum hit API) ======
+    // Validasi awal supaya user langsung tahu field mana yang bermasalah,
+    // bukan dapat response 400 generik dari backend.
+    if (!form.nama.trim()) {
+      toast.error('Nama lengkap wajib diisi')
+      return
+    }
+    if (!form.hp.trim()) {
+      toast.error('No. HP wajib diisi')
+      return
+    }
+    // Phone: minimal 6 digit (bisa dengan +62 atau 08)
+    const phoneDigits = form.hp.replace(/\D/g, '')
+    if (phoneDigits.length < 6) {
+      toast.error(`No. HP tidak valid (minimal 6 digit). Anda memasukkan: "${form.hp}"`)
+      return
+    }
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      toast.error('Format email tidak valid')
+      return
+    }
+    if (!form.provinsiId || !form.kotaId || !form.kecamatanId) {
+      toast.error('Provinsi, Kota, dan Kecamatan wajib dipilih')
+      return
+    }
+    if (!form.kodePos.trim()) {
+      toast.error('Kode pos wajib diisi')
+      return
+    }
+    if (!form.alamat.trim()) {
+      toast.error('Detail alamat wajib diisi')
+      return
+    }
+    if (cart.length === 0) {
+      toast.error('Keranjang belanja kosong')
+      return
+    }
+
+    // ====== Reuse order yang sama jika form & cart belum berubah ======
+    // Kalau user klik "Bayar" lagi tanpa perubahan, kita buka ulang Snap popup
+    // dengan token yang sama — TIDAK membuat order baru. Ini mencegah race
+    // condition di Midtrans (yang akan reject order_id duplikat) dan juga
+    // mencegah popup "tertutup sendiri" karena token lama di-replace.
+    const formHash = JSON.stringify({
+      n: form.nama, p: form.hp, e: form.email,
+      pv: form.provinsiId, c: form.kotaId, d: form.kecamatanId,
+      kp: form.kodePos, a: form.alamat,
+      cart: cart.map((i) => `${i.productId}:${i.quantity}`).sort(),
+    })
+
+    setSubmitting(true)
+    setLoading(true)
+
+    try {
+      let data: {
+        orderId: string
+        snapToken: string
+        redirectUrl?: string
+        grossAmount: number
+        breakdown?: {
+          subtotal: number
+          ongkir: number
+          ongkirSource: string
+          grandTotal: number
+        }
+      }
+
+      const cached = lastCreatedOrderRef.current
+      if (cached && cached.formHash === formHash) {
+        // Reuse Snap token yang masih valid — buka ulang popup tanpa buat order baru
+        toast.info('Membuka ulang popup pembayaran...')
+        data = {
+          orderId: cached.orderId,
+          snapToken: cached.snapToken,
+          grossAmount: cached.grossAmount,
+        }
+      } else {
+        // Buat order baru + Snap token
+        const orderItems = cart.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+        }))
+
+        const createRes = await fetch('/api/payment/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: orderItems,
+            buyer: {
+              name: form.nama,
+              phone: form.hp,
+              email: form.email || undefined,
+            },
+            shipping: {
+              provinceId: form.provinsiId,
+              province: form.provinsiNama,
+              cityId: form.kotaId,
+              city: form.kotaNama,
+              districtId: form.kecamatanId,
+              district: form.kecamatanNama,
+              postalCode: form.kodePos,
+              address: form.alamat,
+            },
+          }),
+        })
+
+        // Selalu parse response, bahkan saat error — backend mengirim detail errornya
+        const responseData: {
+          orderId?: string
+          snapToken?: string
+          redirectUrl?: string
+          grossAmount?: number
+          breakdown?: {
+            subtotal: number
+            ongkir: number
+            ongkirSource: string
+            grandTotal: number
+          }
+          error?: string
+          details?: Array<{
+            path: string
+            message: string
+          }>
+        } = await createRes.json().catch(() => ({}))
+
+        if (!createRes.ok || !responseData.snapToken) {
+          // ====== Tampilkan error SPESIFIK dari backend ======
+          if (responseData.details && responseData.details.length > 0) {
+            const firstError = responseData.details[0]
+            const fieldLabels: Record<string, string> = {
+              'buyer.name': 'Nama',
+              'buyer.phone': 'No. HP',
+              'buyer.email': 'Email',
+              'shipping.province': 'Provinsi',
+              'shipping.city': 'Kota',
+              'shipping.district': 'Kecamatan',
+              'shipping.postalCode': 'Kode Pos',
+              'shipping.address': 'Alamat',
+              'items': 'Item',
+            }
+            const fieldLabel = fieldLabels[firstError.path] || firstError.path
+            toast.error(`${fieldLabel}: ${firstError.message}`)
+          } else if (responseData.error) {
+            toast.error(responseData.error)
+          } else {
+            toast.error(`Gagal membuat Snap Token (HTTP ${createRes.status})`)
+          }
+          return
+        }
+
+        data = {
+          orderId: responseData.orderId!,
+          snapToken: responseData.snapToken!,
+          redirectUrl: responseData.redirectUrl,
+          grossAmount: responseData.grossAmount!,
+          breakdown: responseData.breakdown,
+        }
+
+        // Cache untuk reuse kalau user klik Bayar lagi tanpa perubahan
+        lastCreatedOrderRef.current = {
+          formHash,
+          orderId: data.orderId,
+          snapToken: data.snapToken,
+          grossAmount: data.grossAmount,
+        }
+      }
 
       setStep(2)
 
-      // Total dari backend (sudah include ongkir yang dihitung ulang).
-      // Kalau gagal parse, fallback ke angka frontend.
-      const backendTotal = res.order?.totalBayar
       const finalTotal =
-        typeof backendTotal === 'number'
-          ? backendTotal
-          : typeof backendTotal === 'string'
-            ? Number(backendTotal)
-            : total
+        data.grossAmount ||
+        data.breakdown?.grandTotal ||
+        total
 
       const orderData: OrderData = {
-        orderNumber: res.order?.orderNumber || '',
+        orderNumber: data.orderId,
         items: cart,
         total: finalTotal,
         buyerName: form.nama,
@@ -1601,11 +1744,83 @@ function CheckoutView({
         postalCode: form.kodePos,
       }
 
-      onGotoPayment(orderData)
-    } catch (err: any) {
-      toast.error(err?.message || 'Gagal memproses checkout. Silakan coba lagi.')
+      // 2) Load Snap.js (sandbox or production URL based on env)
+      const snapJsUrl = await fetch('/api/payment/config')
+        .then((r) => r.json())
+        .then((cfg: { snapJsUrl: string }) => cfg.snapJsUrl)
+        .catch(() => 'https://app.sandbox.midtrans.com/snap/snap.js')
+
+      // Load snap.js if not yet loaded
+      await new Promise<void>((resolve, reject) => {
+        const w = window as unknown as { snap?: { pay: (token: string, callbacks: unknown) => void } }
+        if (w.snap) {
+          resolve()
+          return
+        }
+        const existing = document.getElementById('midtrans-snap-script')
+        if (existing) {
+          existing.addEventListener('load', () => resolve())
+          existing.addEventListener('error', () => reject(new Error('Gagal memuat Snap.js')))
+          return
+        }
+        const script = document.createElement('script')
+        script.id = 'midtrans-snap-script'
+        script.src = snapJsUrl
+        script.async = true
+        script.setAttribute('data-client-key', '')
+        script.onload = () => resolve()
+        script.onerror = () => reject(new Error('Gagal memuat Midtrans Snap'))
+        document.head.appendChild(script)
+      })
+
+      // 3) Open Snap popup
+      const w = window as unknown as {
+        snap: {
+          pay: (
+            token: string,
+            callbacks: {
+              onSuccess: (result: unknown) => void
+              onPending: (result: unknown) => void
+              onError: (result: unknown) => void
+              onClose: () => void
+            }
+          ) => void
+        }
+      }
+
+      if (!w.snap) {
+        throw new Error('Snap.js tidak terload')
+      }
+
+      w.snap.pay(data.snapToken, {
+        onSuccess: (result: unknown) => {
+          toast.success('Pembayaran berhasil!')
+          // Backend webhook akan update status → 'dibayar'
+          onGotoPayment(orderData)
+        },
+        onPending: (result: unknown) => {
+          toast.info('Menunggu pembayaran. Selesaikan pembayaran sebelum expired.')
+          // Backend webhook akan update status → 'menunggu'
+          onGotoPayment(orderData)
+        },
+        onError: (result: unknown) => {
+          toast.error('Pembayaran gagal. Silakan coba lagi.')
+          // Backend webhook akan update status → 'gagal'
+          onGotoPayment(orderData)
+        },
+        onClose: () => {
+          // User closed Snap popup without completing
+          toast.warning('Popup pembayaran ditutup. Pesanan tetap menunggu pembayaran.')
+          onGotoPayment(orderData)
+        },
+      })
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Gagal memproses checkout. Silakan coba lagi.'
+      toast.error(message)
     } finally {
       setLoading(false)
+      setSubmitting(false)
     }
   }
 
@@ -1942,14 +2157,14 @@ function CheckoutView({
               <Button
                 type="button"
                 size="lg"
-                disabled={!isValidForm || loading}
+                disabled={!isValidForm || loading || submitting}
                 onClick={handleSubmit}
-                className="mt-4 w-full bg-[#4caf50] text-white hover:bg-[#43a047] disabled:bg-gray-200 disabled:text-gray-400 shadow-md"
+                className="mt-4 w-full bg-[#4caf50] text-white hover:bg-[#43a047] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed shadow-md"
               >
-                {loading ? (
+                {loading || submitting ? (
                   <>
                     <Loader2 className="mr-2 size-4 animate-spin" />
-                    Memproses...
+                    {submitting ? 'Memproses pembayaran...' : 'Memproses...'}
                   </>
                 ) : (
                   <>
