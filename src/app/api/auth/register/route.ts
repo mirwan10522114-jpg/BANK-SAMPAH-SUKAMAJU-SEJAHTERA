@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { nextMemberCode } from '@/lib/business'
-import { sendOtpEmail, generateOtp } from '@/lib/resend'
+import { sendOtpEmail, generateOtp } from '@/lib/email'
 
 // POST /api/auth/register
 // Step 1: Create user (unverified), generate OTP, kirim OTP via email Resend

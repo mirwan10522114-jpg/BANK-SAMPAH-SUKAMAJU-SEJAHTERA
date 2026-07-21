@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { sendOtpEmail, generateOtp } from '@/lib/resend'
+import { sendOtpEmail, generateOtp } from '@/lib/email'
 
 // POST /api/auth/resend-otp
 // Kirim ulang OTP ke email user (kalau OTP expired atau tidak terima email)
