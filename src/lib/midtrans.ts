@@ -154,16 +154,25 @@ export async function createSnapToken(
     credit_card: {
       secure: cfg.is3ds,
     },
-    // Expiry: TIDAK dikirim — pakai default Midtrans (24 jam di production,
-    // biasanya 15-24 jam di sandbox). Ini menghindari konflik dengan Custom
-    // Expiry di Midtrans Dashboard yang bisa override pengaturan API.
+    // ============================================================
+    // EXPIRY: 24 JAM EKSPLISIT (WAJIB!)
+    // ------------------------------------------------------------
+    // Midtrans Snap sandbox default expiry sangat pendek (seringkali
+    // hanya 2-5 menit). Kalau kita TIDAK set expiry eksplisit, user
+    // akan lihat "Transaction expired" saat klik payment method.
     //
-    // Kalau user ingin custom expiry (mis. 5 menit), bisa enable di:
-    //   Midtrans Dashboard → Settings → Snap → Preference → Custom Expiry
+    // Dengan set eksplisit 24 jam di sini, user punya waktu seharian
+    // untuk bayar — bahkan kalau tutup browser & buka lagi besok.
     //
-    // Tapi kami sarankan DISABLE Custom Expiry di dashboard supaya pakai
-    // default 24 jam — user punya waktu cukup untuk bayar tanpa expired.
-    //
+    // ⚠️ Jika ada Custom Expiry aktif di Midtrans Dashboard
+    //    (Settings → Snap → Preference → Custom Expiry), itu akan
+    //    OVERRIDE pengaturan ini. Pastikan Custom Expiry DISABLED
+    //    di dashboard, atau set ke 24 jam juga.
+    // ============================================================
+    expiry: {
+      unit: 'hour',
+      duration: 24,
+    },
     // Intentionally omit `enabled_payments` so ALL dashboard-enabled
     // methods are surfaced. Do NOT hardcode QRIS or any specific method.
   }
