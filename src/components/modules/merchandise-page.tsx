@@ -2758,6 +2758,7 @@ function TrackingView({
   const [loading, setLoading] = React.useState(false)
   const [orderInfo, setOrderInfo] = React.useState<any>(null)
   const [notFound, setNotFound] = React.useState(false)
+  const [retrying, setRetrying] = React.useState(false)
 
   const handleTrack = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -2777,6 +2778,40 @@ function TrackingView({
       setOrderInfo(null)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Lakukan Pembayaran — muncul saat status masih menunggu_pembayaran
+  // User bisa klik ini untuk buka Midtrans lagi & bayar pesanannya
+  const handlePayment = async () => {
+    if (!orderInfo?.orderNumber) return
+    setRetrying(true)
+    try {
+      const res = await fetch('/api/payment/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderNumber: orderInfo.orderNumber }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Gagal membuat token pembayaran')
+        return
+      }
+      // Simpan orderNumber ke sessionStorage supaya halaman return bisa akses
+      try {
+        sessionStorage.setItem('pendingOrderData', JSON.stringify({ orderNumber: orderInfo.orderNumber }))
+      } catch {}
+      // Redirect ke Midtrans
+      if (data.redirectUrl) {
+        window.location.href = data.redirectUrl
+      } else {
+        toast.error('URL pembayaran tidak ditemukan')
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Gagal membuka pembayaran'
+      toast.error(message)
+    } finally {
+      setRetrying(false)
     }
   }
 
@@ -3002,6 +3037,45 @@ function TrackingView({
               </div>
             </CardContent>
           </Card>
+
+          {/* Tombol "Lakukan Pembayaran" — muncul hanya saat status menunggu_pembayaran */}
+          {/* User bisa bayar pesananannya nanti lewat halaman lacak pesanan ini */}
+          {orderInfo.paymentStatus === 'menunggu' &&
+           (orderInfo.orderStatus === 'menunggu_pembayaran' || !orderInfo.orderStatus) && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl border border-amber-300 bg-amber-50 p-4"
+            >
+              <div className="mb-3 text-center">
+                <Clock className="mx-auto mb-1 size-8 text-amber-500" />
+                <p className="text-sm font-bold text-amber-800">
+                  Pesanan Belum Dibayar
+                </p>
+                <p className="mt-0.5 text-xs text-amber-700">
+                  Selesaikan pembayaran sekarang agar pesanan dapat diproses
+                </p>
+              </div>
+              <Button
+                type="button"
+                disabled={retrying}
+                onClick={handlePayment}
+                className="w-full bg-[#4caf50] text-white hover:bg-[#43a047] shadow-md disabled:opacity-50"
+              >
+                {retrying ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Menyiapkan pembayaran...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="mr-2 size-4" />
+                    Lakukan Pembayaran
+                  </>
+                )}
+              </Button>
+            </motion.div>
+          )}
 
           <Button
             type="button"
