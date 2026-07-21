@@ -416,31 +416,93 @@ async function sleep(ms: number): Promise<void> {
 }
 
 // =====================================================================
-// In-memory cache untuk hasil RajaOngkir
+// Persistent disk cache untuk hasil RajaOngkir
 // ---------------------------------------------------------------------
-// RajaOngkir Komerce punya rate limit harian yang ketat (free tier).
+// RajaOngkir Komerce free tier punya rate limit 100 hits/hari yang ketat.
 // Karena tarif kurir relatif stabil per rute & berat, kita cache hasil
-// per (origin, destination, weight) selama 30 menit. Ini dramatis
-// mengurangi jumlah hit ke API tanpa kehilangan akurasi.
+// per (origin, destination, weight) selama 24 JAM ke file di disk.
+//
+// Cache di disk (bukan in-memory) supaya BERTAHAN WALAU SERVER RESTART.
+// Ini dramatis mengurangi hit API — sekali kita dapat tarif untuk rute
+// tertentu, hasilnya akan dipakai seharian penuh.
+//
+// Lokasi file: storage/rajaongkir-cache.json
+// Format: { "<origin>:<destination>:<weight>": { result, expiresAt } }
 // =====================================================================
+
+import { readFile, writeFile, mkdir } from 'fs/promises'
+import path from 'path'
 
 interface CacheEntry {
   result: ShippingCalcResult
   expiresAt: number
 }
 
+const CACHE_FILE = path.join(process.cwd(), 'storage', 'rajaongkir-cache.json')
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 jam (sehari penuh)
+
+// In-memory mirror untuk read cepat tanpa baca file tiap request
 const rateCache = new Map<string, CacheEntry>()
-const CACHE_TTL_MS = 30 * 60 * 1000 // 30 menit
+let cacheLoaded = false
+let cacheWritePending = false
+let cacheDirty = false
+
+async function loadCacheFromDisk(): Promise<void> {
+  if (cacheLoaded) return
+  cacheLoaded = true
+  try {
+    const raw = await readFile(CACHE_FILE, 'utf8')
+    const parsed = JSON.parse(raw) as Record<string, CacheEntry>
+    const now = Date.now()
+    // Buang entry yang sudah expired saat load
+    for (const [k, v] of Object.entries(parsed)) {
+      if (v && typeof v.expiresAt === 'number' && v.expiresAt > now) {
+        rateCache.set(k, v)
+      }
+    }
+    logRajaongkir.info(`Cache loaded from disk: ${rateCache.size} entries`)
+  } catch {
+    // File belum ada atau rusak — biarkan cache kosong
+    logRajaongkir.debug('Cache file tidak ada/rusak, mulai dengan cache kosong')
+  }
+}
+
+// Write cache ke disk secara async (debounced — tidak blocking request)
+async function flushCacheToDisk(): Promise<void> {
+  if (cacheWritePending || !cacheDirty) return
+  cacheWritePending = true
+  cacheDirty = false
+  try {
+    // Pastikan folder storage ada
+    await mkdir(path.dirname(CACHE_FILE), { recursive: true })
+    // Convert Map → Object untuk JSON serialization
+    const obj: Record<string, CacheEntry> = {}
+    for (const [k, v] of rateCache.entries()) {
+      obj[k] = v
+    }
+    await writeFile(CACHE_FILE, JSON.stringify(obj, null, 2), 'utf8')
+    logRajaongkir.debug(`Cache flushed to disk: ${rateCache.size} entries`)
+  } catch (e) {
+    logRajaongkir.warn('Failed to flush cache to disk', {
+      error: e instanceof Error ? e.message : String(e),
+    })
+  } finally {
+    cacheWritePending = false
+  }
+}
 
 function cacheKey(origin: string, destination: number, weightGram: number): string {
   return `${origin}:${destination}:${weightGram}`
 }
 
-function getCachedRate(key: string): ShippingCalcResult | null {
+async function getCachedRate(key: string): Promise<ShippingCalcResult | null> {
+  await loadCacheFromDisk()
   const entry = rateCache.get(key)
   if (!entry) return null
   if (Date.now() > entry.expiresAt) {
     rateCache.delete(key)
+    cacheDirty = true
+    flushCacheToDisk() // async, tidak nunggu
     return null
   }
   return entry.result
@@ -451,6 +513,71 @@ function setCachedRate(key: string, result: ShippingCalcResult): void {
     result,
     expiresAt: Date.now() + CACHE_TTL_MS,
   })
+  cacheDirty = true
+  flushCacheToDisk() // async, tidak nunggu
+}
+
+// =====================================================================
+// Hit counter harian — untuk monitor penggunaan API
+// ---------------------------------------------------------------------
+// Disimpan ke disk supaya bisa survive server restart dan user bisa
+// cek sisa quota lewat /api/shipping/usage
+// =====================================================================
+
+interface DailyUsage {
+  date: string // YYYY-MM-DD (WIB)
+  hits: number
+  successes: number
+  failures: number
+}
+
+const USAGE_FILE = path.join(process.cwd(), 'storage', 'rajaongkir-usage.json')
+
+async function getTodayWIB(): Promise<string> {
+  // WIB = UTC+7
+  const now = new Date()
+  const wib = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+  return wib.toISOString().slice(0, 10) // YYYY-MM-DD
+}
+
+async function recordApiCall(success: boolean): Promise<void> {
+  try {
+    let usage: DailyUsage = { date: '', hits: 0, successes: 0, failures: 0 }
+    try {
+      const raw = await readFile(USAGE_FILE, 'utf8')
+      usage = JSON.parse(raw) as DailyUsage
+    } catch {
+      // File belum ada
+    }
+    const today = await getTodayWIB()
+    if (usage.date !== today) {
+      // Reset counter untuk hari baru
+      usage = { date: today, hits: 0, successes: 0, failures: 0 }
+    }
+    usage.hits += 1
+    if (success) usage.successes += 1
+    else usage.failures += 1
+    await mkdir(path.dirname(USAGE_FILE), { recursive: true })
+    await writeFile(USAGE_FILE, JSON.stringify(usage, null, 2), 'utf8')
+  } catch (e) {
+    logRajaongkir.warn('Failed to record usage', {
+      error: e instanceof Error ? e.message : String(e),
+    })
+  }
+}
+
+export async function getDailyUsage(): Promise<DailyUsage> {
+  try {
+    const raw = await readFile(USAGE_FILE, 'utf8')
+    const usage = JSON.parse(raw) as DailyUsage
+    const today = await getTodayWIB()
+    if (usage.date !== today) {
+      return { date: today, hits: 0, successes: 0, failures: 0 }
+    }
+    return usage
+  } catch {
+    return { date: await getTodayWIB(), hits: 0, successes: 0, failures: 0 }
+  }
 }
 
 // =====================================================================
@@ -630,10 +757,11 @@ export async function getRajaOngkirRates(
   })
 
   // Cek cache dulu — dramatis mengurangi hit ke RajaOngkir (rate limit 429)
+  // Cache sekarang persistent di disk (24 jam), survive server restart.
   const cKey = cacheKey(cfg.originId, destId, weightGram)
-  const cached = getCachedRate(cKey)
+  const cached = await getCachedRate(cKey)
   if (cached) {
-    logRajaongkir.info('Cache hit', {
+    logRajaongkir.info('Cache hit (disk-persistent)', {
       origin: cfg.originId,
       destination: destId,
       weight: weightGram,
@@ -662,6 +790,8 @@ export async function getRajaOngkirRates(
       )
 
       const data = response.data
+      // Catat hit sukses untuk daily usage counter
+      await recordApiCall(true)
       logRajaongkir.info('Calculate success', {
         status: data.meta?.status,
         options_count: Array.isArray(data.data) ? data.data.length : 0,
@@ -719,6 +849,8 @@ export async function getRajaOngkirRates(
       const axiosErr = error as AxiosError
       const status = axiosErr.response?.status
       const responseData = axiosErr.response?.data
+      // Catat hit gagal untuk daily usage counter
+      await recordApiCall(false)
       logRajaongkir.warn(`Attempt ${attempt} failed`, {
         status,
         message: axiosErr.message,

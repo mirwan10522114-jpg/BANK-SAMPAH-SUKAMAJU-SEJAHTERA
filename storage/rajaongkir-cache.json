@@ -1,0 +1,33 @@
+{
+  "575:574:1000": {
+    "result": {
+      "source": "rajaongkir",
+      "cheapestCost": 9000,
+      "options": [
+        {
+          "kurir": "pos",
+          "service": "Pos Reguler",
+          "serviceDisplay": "POS INDONESIA (POS) Pos Reguler",
+          "courierName": "POS Indonesia (POS)",
+          "description": "240",
+          "etd": "6 day hari",
+          "cost": 9000
+        },
+        {
+          "kurir": "jnt",
+          "service": "EZ",
+          "serviceDisplay": "J&T EXPRESS EZ",
+          "courierName": "J&T Express",
+          "description": "Reguler",
+          "etd": "-",
+          "cost": 12000
+        }
+      ],
+      "message": "Ongkir real-time dari 3 layanan kurir. (pre-seeded)",
+      "destinationId": 574,
+      "originId": "575",
+      "retries": 0
+    },
+    "expiresAt": 1784720000000
+  }
+}
