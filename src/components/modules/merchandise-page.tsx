@@ -1763,76 +1763,101 @@ function CheckoutView({
         postalCode: form.kodePos,
       }
 
-      // 2) Load Snap.js (sandbox or production URL based on env)
-      const snapJsUrl = await fetch('/api/payment/config')
-        .then((r) => r.json())
-        .then((cfg: { snapJsUrl: string }) => cfg.snapJsUrl)
-        .catch(() => 'https://app.sandbox.midtrans.com/snap/snap.js')
+      // =====================================================================
+      // REDIRECT MODE (bukan popup) — lebih reliable, no caching issue
+      // ---------------------------------------------------------------------
+      // Sebelumnya pakai window.snap.pay(token) yang buka popup di halaman
+      // yang sama. Masalahnya: popup lama yang expired bisa tertinggal di DOM,
+      // dan saat user klik Bayar lagi, popup LAMA yang tampil (yang sudah
+      // expired), bukan popup baru.
+      //
+      // Solusi: REDIRECT user ke URL Midtrans. User bayar di halaman Midtrans,
+      // setelah selesai di-redirect balik ke halaman kita dengan parameter
+      // order_id & status. Halaman return akan poll status & tampilkan hasil.
+      //
+      // Token selalu fresh karena redirect URL di-generate saat user klik Bayar.
+      // =====================================================================
+      const returnUrl = `${window.location.origin}/payment/return?orderNumber=${encodeURIComponent(orderData.orderNumber)}`
+      void returnUrl // akan dipakai saat callback Midtrans redirect balik
 
-      // Load snap.js if not yet loaded
-      await new Promise<void>((resolve, reject) => {
-        const w = window as unknown as { snap?: { pay: (token: string, callbacks: unknown) => void } }
-        if (w.snap) {
-          resolve()
-          return
-        }
-        const existing = document.getElementById('midtrans-snap-script')
-        if (existing) {
-          existing.addEventListener('load', () => resolve())
-          existing.addEventListener('error', () => reject(new Error('Gagal memuat Snap.js')))
-          return
-        }
-        const script = document.createElement('script')
-        script.id = 'midtrans-snap-script'
-        script.src = snapJsUrl
-        script.async = true
-        script.setAttribute('data-client-key', '')
-        script.onload = () => resolve()
-        script.onerror = () => reject(new Error('Gagal memuat Midtrans Snap'))
-        document.head.appendChild(script)
-      })
+      if (data.redirectUrl) {
+        // Redirect user ke halaman Midtrans Snap
+        // Setelah bayar, Midtrans akan redirect balik ke finish_url (kalau ada)
+        // atau user bisa klik "Return to merchant" di Midtrans
+        toast.info('Mengarahkan ke halaman pembayaran Midtrans...')
+        // Simpan orderData ke sessionStorage supaya halaman return bisa akses
+        try {
+          sessionStorage.setItem('pendingOrderData', JSON.stringify(orderData))
+        } catch {}
+        // Redirect ke Midtrans
+        window.location.href = data.redirectUrl
+      } else {
+        // Fallback: kalau redirectUrl tidak ada, tetap pakai popup mode
+        toast.info('Membuka popup pembayaran...')
+        const snapJsUrl = await fetch('/api/payment/config')
+          .then((r) => r.json())
+          .then((cfg: { snapJsUrl: string }) => cfg.snapJsUrl)
+          .catch(() => 'https://app.sandbox.midtrans.com/snap/snap.js')
 
-      // 3) Open Snap popup
-      const w = window as unknown as {
-        snap: {
-          pay: (
-            token: string,
-            callbacks: {
-              onSuccess: (result: unknown) => void
-              onPending: (result: unknown) => void
-              onError: (result: unknown) => void
-              onClose: () => void
-            }
-          ) => void
+        await new Promise<void>((resolve, reject) => {
+          const w = window as unknown as { snap?: { pay: (token: string, callbacks: unknown) => void } }
+          if (w.snap) {
+            resolve()
+            return
+          }
+          const existing = document.getElementById('midtrans-snap-script')
+          if (existing) {
+            existing.addEventListener('load', () => resolve())
+            existing.addEventListener('error', () => reject(new Error('Gagal memuat Snap.js')))
+            return
+          }
+          const script = document.createElement('script')
+          script.id = 'midtrans-snap-script'
+          script.src = snapJsUrl
+          script.async = true
+          script.setAttribute('data-client-key', '')
+          script.onload = () => resolve()
+          script.onerror = () => reject(new Error('Gagal memuat Midtrans Snap'))
+          document.head.appendChild(script)
+        })
+
+        const w = window as unknown as {
+          snap: {
+            pay: (
+              token: string,
+              callbacks: {
+                onSuccess: (result: unknown) => void
+                onPending: (result: unknown) => void
+                onError: (result: unknown) => void
+                onClose: () => void
+              }
+            ) => void
+          }
         }
+
+        if (!w.snap) {
+          throw new Error('Snap.js tidak terload')
+        }
+
+        w.snap.pay(data.snapToken, {
+          onSuccess: () => {
+            toast.success('Pembayaran berhasil!')
+            onGotoPayment(orderData)
+          },
+          onPending: () => {
+            toast.info('Menunggu pembayaran.')
+            onGotoPayment(orderData)
+          },
+          onError: () => {
+            toast.error('Pembayaran gagal. Silakan coba lagi.')
+            onGotoPayment(orderData)
+          },
+          onClose: () => {
+            toast.warning('Popup pembayaran ditutup.')
+            onGotoPayment(orderData)
+          },
+        })
       }
-
-      if (!w.snap) {
-        throw new Error('Snap.js tidak terload')
-      }
-
-      w.snap.pay(data.snapToken, {
-        onSuccess: (result: unknown) => {
-          toast.success('Pembayaran berhasil!')
-          // Backend webhook akan update status → 'dibayar'
-          onGotoPayment(orderData)
-        },
-        onPending: (result: unknown) => {
-          toast.info('Menunggu pembayaran. Selesaikan pembayaran sebelum expired.')
-          // Backend webhook akan update status → 'menunggu'
-          onGotoPayment(orderData)
-        },
-        onError: (result: unknown) => {
-          toast.error('Pembayaran gagal. Silakan coba lagi.')
-          // Backend webhook akan update status → 'gagal'
-          onGotoPayment(orderData)
-        },
-        onClose: () => {
-          // User closed Snap popup without completing
-          toast.warning('Popup pembayaran ditutup. Pesanan tetap menunggu pembayaran.')
-          onGotoPayment(orderData)
-        },
-      })
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Gagal memproses checkout. Silakan coba lagi.'
@@ -2307,38 +2332,21 @@ function PaymentView({
     })
   }, [])
 
-  // Buka Snap popup — SELALU buat token BARU via /api/payment/retry
+  // Buka Snap — SELALU buat token BARU via /api/payment/retry + REDIRECT ke Midtrans
   // ---------------------------------------------------------------
   // JANGAN pernah reuse token lama yang ada di DB, karena token Midtrans
-  // Snap punya expiry 5 menit. Kalau user buka halaman >5 menit setelah
-  // order dibuat, token lama sudah expired → popup tampilkan "expired".
+  // Snap punya expiry. Kalau user buka halaman lama, token sudah expired.
   //
   // Strategi: setiap kali user klik "Bayar", panggil /api/payment/retry
-  // untuk dapat token baru. Ini guarantees token selalu fresh (5 menit
-  // dimulai dari saat user benar-benar mau bayar).
+  // untuk dapat token baru + redirect URL baru. Lalu REDIRECT user ke
+  // halaman Midtrans (bukan popup). Ini lebih reliable karena:
+  //   - Tidak ada popup caching issue
+  //   - User bayar di halaman Midtrans yang fresh
+  //   - Setelah bayar, redirect balik ke /payment/return
   const handleOpenSnap = async () => {
     if (!orderData?.orderNumber) return
     setOpeningSnap(true)
     try {
-      await loadSnapJs()
-
-      const w = window as unknown as {
-        snap: {
-          pay: (
-            token: string,
-            callbacks: {
-              onSuccess: (r: unknown) => void
-              onPending: (r: unknown) => void
-              onError: (r: unknown) => void
-              onClose: () => void
-            }
-          ) => void
-        }
-      }
-      if (!w.snap) throw new Error('Snap.js tidak terload')
-
-      // SELALU buat token baru — tidak reuse token lama
-      // (token lama mungkin sudah expired di Midtrans)
       toast.info('Menyiapkan pembayaran...')
       const retryRes = await fetch('/api/payment/retry', {
         method: 'POST',
@@ -2349,9 +2357,8 @@ function PaymentView({
       if (!retryRes.ok) {
         throw new Error(retryData.error || 'Gagal membuat token pembayaran')
       }
-      const snapToken = retryData.snapToken as string
 
-      // Update countdown reset ke 5 menit (karena token baru)
+      // Update countdown reset
       setStatusData((prev) => prev ? {
         ...prev,
         paymentStatus: 'menunggu',
@@ -2362,31 +2369,26 @@ function PaymentView({
       } : prev)
       setLocalCountdown(5 * 60)
 
-      w.snap.pay(snapToken, {
-        onSuccess: () => {
-          toast.success('Pembayaran berhasil! Menunggu konfirmasi server...')
-          // Webhook akan update DB, polling akan deteksi & auto-redirect
-        },
-        onPending: () => {
-          toast.info('Menunggu pembayaran. Selesaikan pembayaran sebelum waktu habis.')
-        },
-        onError: () => {
-          toast.error('Pembayaran gagal. Silakan coba lagi.')
-        },
-        onClose: () => {
-          toast.warning('Popup pembayaran ditutup. Klik "Bayar" lagi untuk mencoba kembali.')
-        },
-      })
+      // Simpan orderData ke sessionStorage supaya halaman return bisa akses
+      try {
+        sessionStorage.setItem('pendingOrderData', JSON.stringify(orderData))
+      } catch {}
+
+      // REDIRECT ke Midtrans (bukan popup)
+      if (retryData.redirectUrl) {
+        window.location.href = retryData.redirectUrl
+      } else {
+        throw new Error('Redirect URL tidak ditemukan')
+      }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Gagal membuka popup pembayaran'
+      const message = err instanceof Error ? err.message : 'Gagal membuka halaman pembayaran'
       toast.error(message)
     } finally {
       setOpeningSnap(false)
     }
   }
 
-  // Bayar Ulang — sama dengan handleOpenSnap (selalu buat token baru)
-  // Tetap dipertahankan untuk tombol "Bayar Ulang" yang muncul saat expired.
+  // Bayar Ulang — sama dengan handleOpenSnap
   const handleRetry = async () => {
     await handleOpenSnap()
   }

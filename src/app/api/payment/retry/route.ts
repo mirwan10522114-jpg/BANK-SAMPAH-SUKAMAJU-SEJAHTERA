@@ -127,6 +127,10 @@ export async function POST(req: NextRequest) {
       grossAmount,
       customerDetails,
       itemDetails,
+      // Callback URLs — redirect balik ke /payment/return setelah bayar
+      finishUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/return?orderNumber=${order.orderNumber}`,
+      pendingUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/return?orderNumber=${order.orderNumber}`,
+      errorUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/return?orderNumber=${order.orderNumber}`,
     })
 
     // Update order: new midtransOrderId + snapToken + reset status

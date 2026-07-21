@@ -312,6 +312,12 @@ export async function POST(req: NextRequest) {
       orderId: midtransOrderId,
       grossAmount: grandTotal,
       customerDetails,
+      // Callback URLs — Midtrans akan redirect user ke URL ini setelah
+      // pembayaran selesai / pending / error. Halaman return akan poll
+      // status dari DB (yang diupdate via webhook) dan tampilkan hasil.
+      finishUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/return?orderNumber=${orderNumber}`,
+      pendingUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/return?orderNumber=${orderNumber}`,
+      errorUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/return?orderNumber=${orderNumber}`,
       itemDetails,
     })
 

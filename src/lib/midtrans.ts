@@ -154,23 +154,16 @@ export async function createSnapToken(
     credit_card: {
       secure: cfg.is3ds,
     },
-    // Set expiry explicitly. Default Midtrans Snap expiry bervariasi tergantung
-    // environment & dashboard settings. Setting ini memastikan user punya waktu
-    // yang konsisten untuk menyelesaikan pembayaran.
+    // Expiry: TIDAK dikirim — pakai default Midtrans (24 jam di production,
+    // biasanya 15-24 jam di sandbox). Ini menghindari konflik dengan Custom
+    // Expiry di Midtrans Dashboard yang bisa override pengaturan API.
     //
-    // ⚠️ PENTING: Midtrans Dashboard (Settings → Snap → Preference → Custom Expiry)
-    //    bisa override pengaturan ini kalau di-enable. Pastikan Custom Expiry
-    //    di-DISABLE di dashboard supaya pengaturan dari API (5 menit di bawah)
-    //    yang dipakai.
+    // Kalau user ingin custom expiry (mis. 5 menit), bisa enable di:
+    //   Midtrans Dashboard → Settings → Snap → Preference → Custom Expiry
     //
-    // Saat ini: 5 menit (sesuai permintaan user) — cukup untuk:
-    //   - QRIS / GoPay / ShopeePay / OVO (e-wallet, < 1 menit)
-    //   - Alfamart / Indomaret (cstore, 2-3 menit)
-    //   - Bank Transfer via VA (3-5 menit kalau user sudah punya mobile banking)
-    expiry: {
-      unit: 'minute',
-      duration: 5,
-    },
+    // Tapi kami sarankan DISABLE Custom Expiry di dashboard supaya pakai
+    // default 24 jam — user punya waktu cukup untuk bayar tanpa expired.
+    //
     // Intentionally omit `enabled_payments` so ALL dashboard-enabled
     // methods are surfaced. Do NOT hardcode QRIS or any specific method.
   }
