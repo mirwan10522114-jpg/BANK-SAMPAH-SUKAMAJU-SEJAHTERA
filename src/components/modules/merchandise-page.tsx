@@ -1426,16 +1426,23 @@ function CheckoutView({
 
   // Tracking untuk mencegah duplicate order & double-click
   // - submitting: true saat proses pembuatan order + buka Snap popup (disable tombol)
-  // - lastCreatedOrderId: ID order yang terakhir dibuat di sesi ini, supaya kalau
-  //   user klik "Bayar" lagi tanpa perubahan form, kita reuse Snap token yang sama
-  //   alih-alih buat order baru (yang akan bentrok di Midtrans).
+  // - lastCreatedOrderRef: cache order terakhir di sesi ini, supaya kalau user klik
+  //   "Bayar" lagi dalam waktu singkat tanpa perubahan form, kita reuse Snap token
+  //   yang sama alih-alih buat order baru (yang akan bentrok di Midtrans).
+  //   Tapi token TIDAK boleh di-reuse kalau sudah lebih dari 10 menit — karena
+  //   walau kita set expiry 24 jam, mending bikin order baru supaya jelas.
   const [submitting, setSubmitting] = React.useState(false)
   const lastCreatedOrderRef = React.useRef<{
     formHash: string
     orderId: string
     snapToken: string
     grossAmount: number
+    createdAt: number // timestamp ketika token dibuat
   } | null>(null)
+
+  // Token dianggap stale setelah 10 menit — setelah itu, bikin order baru
+  // supaya popup selalu fresh dan tidak menampilkan error "expired".
+  const TOKEN_STALE_MS = 10 * 60 * 1000
 
   // Fetch provinces on mount
   React.useEffect(() => {
@@ -1624,8 +1631,15 @@ function CheckoutView({
       }
 
       const cached = lastCreatedOrderRef.current
-      if (cached && cached.formHash === formHash) {
-        // Reuse Snap token yang masih valid — buka ulang popup tanpa buat order baru
+      const isCacheFresh =
+        cached &&
+        cached.formHash === formHash &&
+        Date.now() - cached.createdAt < TOKEN_STALE_MS
+
+      if (isCacheFresh && cached) {
+        // Reuse Snap token yang masih valid (< 10 menit) — buka ulang popup
+        // tanpa buat order baru. Kalau sudah > 10 menit, bikin order baru
+        // supaya popup selalu fresh & tidak menampilkan error "expired".
         toast.info('Membuka ulang popup pembayaran...')
         data = {
           orderId: cached.orderId,
@@ -1714,12 +1728,15 @@ function CheckoutView({
           breakdown: responseData.breakdown,
         }
 
-        // Cache untuk reuse kalau user klik Bayar lagi tanpa perubahan
+        // Cache untuk reuse kalau user klik Bayar lagi dalam < 10 menit
+        // tanpa perubahan form. Setelah 10 menit, token dianggap stale
+        // dan order baru akan dibuat supaya popup selalu fresh.
         lastCreatedOrderRef.current = {
           formHash,
           orderId: data.orderId,
           snapToken: data.snapToken,
           grossAmount: data.grossAmount,
+          createdAt: Date.now(),
         }
       }
 

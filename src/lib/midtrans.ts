@@ -154,6 +154,14 @@ export async function createSnapToken(
     credit_card: {
       secure: cfg.is3ds,
     },
+    // Set expiry explicitly. Default Midtrans Snap expiry is 24 hours in
+    // production, but in SANDBOX the default can be as short as 15 minutes.
+    // Setting it explicitly here guarantees the user has plenty of time to
+    // complete the payment — even if they close & reopen the popup later.
+    expiry: {
+      unit: 'hour',
+      duration: 24,
+    },
     // Intentionally omit `enabled_payments` so ALL dashboard-enabled
     // methods are surfaced. Do NOT hardcode QRIS or any specific method.
   }

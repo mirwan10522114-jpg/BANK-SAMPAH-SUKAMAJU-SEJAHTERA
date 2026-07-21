@@ -493,11 +493,14 @@ async function fallbackCalcBySetting(
     cost = ongkirTetap
     message = `Menggunakan tarif tetap TokoSetting: ${ongkirTetap}.`
   } else {
-    // Zona-based estimation — origin kita di Bandung (Jawa Barat)
-    // Cek zona tujuan dari districtId (prefix kode provinsi)
-    const destProvinceId = districtId?.split('.')[0] || ''
+    // Zona-based estimation — origin kita di Padalarang, Bandung Barat (Jawa Barat)
+    // Cek zona tujuan dari districtId.
+    // Format districtId bisa "32.73.01" (dotted) atau "3217090" (concatenated, dari emsifa).
+    // Kita extract 2 digit pertama sebagai kode provinsi.
+    const rawId = (districtId || '').replace(/\D/g, '') // buang semua non-digit
+    const destProvinceId = rawId.slice(0, 2) // 2 digit pertama = kode provinsi
     const isJawaDest = JAWA_PROVINCES.has(destProvinceId)
-    const isSameProvince = destProvinceId === '32' // Jawa Barat (origin)
+    const isSameProvince = destProvinceId === '32' // Jawa Barat (origin: Padalarang)
 
     let baseCost = 35000 // default: beda pulau
     if (isSameProvince) {
@@ -511,10 +514,10 @@ async function fallbackCalcBySetting(
     cost = baseCost + extraKg * 5000
 
     message = isSameProvince
-      ? `Estimasi ongkir zona same-province (Jawa Barat). RajaOngkir sedang tidak tersedia.`
+      ? `Estimasi ongkir dari Padalarang, Bandung Barat (zona same-province). RajaOngkir sedang tidak tersedia.`
       : isJawaDest
-        ? `Estimasi ongkir zona Jawa. RajaOngkir sedang tidak tersedia.`
-        : `Estimasi ongkir zona antar-pulau. RajaOngkir sedang tidak tersedia.`
+        ? `Estimasi ongkir dari Padalarang, Bandung Barat (zona Jawa). RajaOngkir sedang tidak tersedia.`
+        : `Estimasi ongkir dari Padalarang, Bandung Barat (zona antar-pulau). RajaOngkir sedang tidak tersedia.`
   }
 
   return {
