@@ -1440,11 +1440,11 @@ function CheckoutView({
     createdAt: number // timestamp ketika token dibuat
   } | null>(null)
 
-  // Token dianggap stale setelah 4 menit — setelah itu, bikin order baru
-  // supaya popup selalu fresh dan tidak menampilkan error "expired".
-  // 4 menit < 5 menit (Midtrans expiry) supaya token cache tidak pernah
-  // expired saat dipakai ulang.
-  const TOKEN_STALE_MS = 4 * 60 * 1000
+  // Token dianggap stale setelah 23 jam — setelah itu, bikin order baru
+  // supaya popup selalu fresh. 23 jam < 24 jam (Midtrans expiry) supaya
+  // token cache tidak pernah expired saat dipakai ulang.
+  // User boleh bayar kapan saja dalam 24 jam, tidak terburu-buru.
+  const TOKEN_STALE_MS = 23 * 60 * 60 * 1000 // 23 jam
 
   // Fetch provinces on mount
   React.useEffect(() => {
@@ -2358,16 +2358,16 @@ function PaymentView({
         throw new Error(retryData.error || 'Gagal membuat token pembayaran')
       }
 
-      // Update countdown reset
+      // Update countdown reset ke 24 jam (sesuai expiry Midtrans)
       setStatusData((prev) => prev ? {
         ...prev,
         paymentStatus: 'menunggu',
         dbPaymentStatus: 'menunggu',
-        secondsUntilExpiry: 5 * 60,
+        secondsUntilExpiry: 24 * 60 * 60, // 24 jam dalam detik
         isExpired: false,
         hasSnapToken: true,
       } : prev)
-      setLocalCountdown(5 * 60)
+      setLocalCountdown(24 * 60 * 60) // 24 jam
 
       // Simpan orderData ke sessionStorage supaya halaman return bisa akses
       try {
@@ -2472,14 +2472,16 @@ function PaymentView({
               </span>
             </div>
           ) : isPending ? (
-            <div className="mb-4 flex items-center justify-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
-              <Clock className="size-4 text-amber-600 animate-pulse" />
-              <span className="text-xs font-medium text-amber-700">
-                Selesaikan pembayaran dalam:
-              </span>
-              <span className="text-sm font-bold text-amber-800 font-mono">
-                {countdownStr}
-              </span>
+            <div className="mb-4 flex flex-col items-center justify-center gap-1 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Clock className="size-4 text-amber-600" />
+                <span className="text-sm font-medium text-amber-700">
+                  Menunggu Pembayaran
+                </span>
+              </div>
+              <p className="text-xs text-amber-600/80">
+                Bayar kapan saja dalam 24 jam — tidak terburu-buru
+              </p>
             </div>
           ) : null}
 
@@ -2606,7 +2608,7 @@ function PaymentView({
               : isExpired
                 ? '⌛ Waktu pembayaran habis. Klik "Bayar Ulang" untuk membuat transaksi baru.'
                 : isPending
-                  ? '⏳ Klik "Bayar via Midtrans" untuk membuka popup pembayaran. Status update otomatis setelah pembayaran sukses.'
+                  ? '💡 Bayar kapan saja dalam 24 jam — tidak terburu-buru. Klik tombol di atas untuk membuka pembayaran.'
                   : 'Pembayaran wajib via Midtrans. Tidak ada konfirmasi manual.'}
           </p>
 

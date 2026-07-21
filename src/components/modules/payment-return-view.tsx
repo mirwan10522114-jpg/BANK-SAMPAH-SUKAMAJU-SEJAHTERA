@@ -199,10 +199,10 @@ export function PaymentReturnView({ orderNumber, onBackToHome }: PaymentReturnVi
                   ⏳ Menunggu Pembayaran
                 </h2>
                 <p className="mt-1 text-sm text-amber-700">
-                  Selesaikan pembayaran Anda. Status update otomatis setelah pembayaran sukses.
+                  Bayar kapan saja dalam 24 jam — tidak terburu-buru.
                 </p>
                 <p className="mt-2 text-xs text-amber-600">
-                  Halaman ini akan auto-refresh setiap 3 detik
+                  Status update otomatis setelah pembayaran sukses
                 </p>
               </>
             )}
