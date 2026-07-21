@@ -160,12 +160,15 @@ export async function sendOtpEmail(params: SendOtpEmailParams): Promise<SendOtpE
 
   try {
     const transport = getTransporter()
+    // Log recipient untuk debugging
+    console.log('[email] Sending OTP to:', to, '| from:', fromEmail)
     const info = await transport.sendMail({
       from: `"${fromName}" <${fromEmail}>`,
       to,
       subject: 'Kode Verifikasi OTP - Bank Sampah Sukamaju',
       html: buildOtpEmailHtml({ userName, otp }),
     })
+    console.log('[email] OTP sent successfully to:', to, '| messageId:', info.messageId)
 
     return {
       success: true,
