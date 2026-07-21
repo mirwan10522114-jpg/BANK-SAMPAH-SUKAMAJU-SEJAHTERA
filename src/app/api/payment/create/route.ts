@@ -104,6 +104,42 @@ function generateMidtransOrderId(orderNumber: string): string {
   return `MID-${orderNumber}-${ts}${rand}`.toUpperCase()
 }
 
+// Extract origin URL dari request headers.
+// Cek urutan: Origin header → Referer header → x-forwarded-host → host.
+// Ini supaya callback URL Midtrans selalu benar tergantung dari mana user
+// akses website (preview URL berbeda-beda, jadi jangan hardcode domain).
+function getOriginFromRequest(req: NextRequest): string {
+  // 1. Origin header (paling reliable — dikirim browser untuk CORS requests)
+  const origin = req.headers.get('origin')
+  if (origin) return origin
+
+  // 2. Referer header (biasanya ada untuk navigation requests)
+  const referer = req.headers.get('referer')
+  if (referer) {
+    try {
+      const url = new URL(referer)
+      return url.origin
+    } catch {}
+  }
+
+  // 3. x-forwarded-host (kalau di balik proxy/gateway)
+  const forwardedHost = req.headers.get('x-forwarded-host')
+  const forwardedProto = req.headers.get('x-forwarded-proto') || 'https'
+  if (forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`
+  }
+
+  // 4. Fallback ke host dari request URL
+  const host = req.headers.get('host')
+  if (host) {
+    const proto = host.includes('localhost') ? 'http' : 'https'
+    return `${proto}://${host}`
+  }
+
+  // 5. Last resort: pakai NEXT_PUBLIC_BASE_URL dari env
+  return process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+}
+
 export async function POST(req: NextRequest) {
   try {
     // 1) Parse & validate body
@@ -308,6 +344,14 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // Generate callback URLs DINAMIS dari request Origin/Referer header.
+    // Pakai route "/" dengan query parameter ?payment_return=ORDER_NUMBER
+    // (bukan /payment/return terpisah) karena preview environment hanya
+    // support route "/". Halaman utama akan detect parameter ini dan
+    // tampilkan PaymentReturnView.
+    const origin = getOriginFromRequest(req)
+    const returnUrl = `${origin}/?payment_return=${orderNumber}`
+
     const snap = await createSnapToken({
       orderId: midtransOrderId,
       grossAmount: grandTotal,
@@ -315,9 +359,9 @@ export async function POST(req: NextRequest) {
       // Callback URLs — Midtrans akan redirect user ke URL ini setelah
       // pembayaran selesai / pending / error. Halaman return akan poll
       // status dari DB (yang diupdate via webhook) dan tampilkan hasil.
-      finishUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/return?orderNumber=${orderNumber}`,
-      pendingUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/return?orderNumber=${orderNumber}`,
-      errorUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/return?orderNumber=${orderNumber}`,
+      finishUrl: returnUrl,
+      pendingUrl: returnUrl,
+      errorUrl: returnUrl,
       itemDetails,
     })
 

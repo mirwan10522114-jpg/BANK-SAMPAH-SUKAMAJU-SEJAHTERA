@@ -8,14 +8,36 @@ import { EdukasiPage } from '@/components/modules/edukasi-page'
 import { KegiatanPage } from '@/components/modules/kegiatan-page'
 import { UserDashboard } from '@/components/modules/user-dashboard'
 import { AdminPanel } from '@/components/modules/admin-panel'
+import { PaymentReturnView } from '@/components/modules/payment-return-view'
 
-type View = 'landing' | 'login' | 'register' | 'user' | 'admin' | 'merchandise' | 'merchandise-tracking' | 'edukasi' | 'kegiatan' | 'loading'
+type View = 'landing' | 'login' | 'register' | 'user' | 'admin' | 'merchandise' | 'merchandise-tracking' | 'edukasi' | 'kegiatan' | 'loading' | 'payment-return'
 
 export default function Home() {
   const [view, setView] = useState<View>('loading')
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  const [paymentReturnOrderNumber, setPaymentReturnOrderNumber] = useState<string>('')
 
   useEffect(() => {
+    // ============================================================
+    // Detect payment_return parameter dari URL
+    // ------------------------------------------------------------
+    // Midtrans redirect user kembali ke URL ini setelah pembayaran.
+    // Kita pakai query parameter ?payment_return=ORDER_NUMBER
+    // (bukan route /payment/return terpisah) karena preview
+    // environment hanya support route "/".
+    // ============================================================
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      const paymentReturn = url.searchParams.get('payment_return')
+      if (paymentReturn) {
+        setPaymentReturnOrderNumber(paymentReturn)
+        setView('payment-return')
+        // Bersihkan URL supaya refresh tidak trigger lagi
+        window.history.replaceState({}, document.title, '/')
+        return
+      }
+    }
+
     // Check existing auth on mount
     const token = getAuthToken()
     const user = getAuthUser()
@@ -53,6 +75,16 @@ export default function Home() {
       <div className="flex min-h-screen items-center justify-center bg-[#f5f5dc]/40">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
       </div>
+    )
+  }
+
+  // Payment return — halaman status pembayaran setelah redirect dari Midtrans
+  if (view === 'payment-return') {
+    return (
+      <PaymentReturnView
+        orderNumber={paymentReturnOrderNumber}
+        onBackToHome={() => setView('landing')}
+      />
     )
   }
 

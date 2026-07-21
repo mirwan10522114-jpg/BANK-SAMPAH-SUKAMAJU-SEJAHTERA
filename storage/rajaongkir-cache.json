@@ -29,5 +29,72 @@
       "retries": 0
     },
     "expiresAt": 1784720000000
+  },
+  "575:331:1340": {
+    "result": {
+      "source": "rajaongkir",
+      "cheapestCost": 28000,
+      "options": [
+        {
+          "kurir": "jne",
+          "service": "REG",
+          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) REG",
+          "courierName": "Jalur Nugraha Ekakurir (JNE)",
+          "description": "Layanan Reguler",
+          "etd": "2 day hari",
+          "cost": 28000
+        },
+        {
+          "kurir": "pos",
+          "service": "Pos Reguler",
+          "serviceDisplay": "POS INDONESIA (POS) Pos Reguler",
+          "courierName": "POS Indonesia (POS)",
+          "description": "240",
+          "etd": "6 day hari",
+          "cost": 28000
+        },
+        {
+          "kurir": "jnt",
+          "service": "EZ",
+          "serviceDisplay": "J&T EXPRESS EZ",
+          "courierName": "J&T Express",
+          "description": "Reguler",
+          "etd": "-",
+          "cost": 30000
+        },
+        {
+          "kurir": "pos",
+          "service": "Pos Nextday",
+          "serviceDisplay": "POS INDONESIA (POS) Pos Nextday",
+          "courierName": "POS Indonesia (POS)",
+          "description": "447",
+          "etd": "1 day hari",
+          "cost": 34000
+        },
+        {
+          "kurir": "lion",
+          "service": "REGPACK",
+          "serviceDisplay": "LION PARCEL REGPACK",
+          "courierName": "Lion Parcel",
+          "description": "Regular Service",
+          "etd": "4-5 day hari",
+          "cost": 46524
+        },
+        {
+          "kurir": "jne",
+          "service": "JTR",
+          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR",
+          "courierName": "Jalur Nugraha Ekakurir (JNE)",
+          "description": "JNE Trucking",
+          "etd": "6 day hari",
+          "cost": 105000
+        }
+      ],
+      "message": "Ongkir real-time dari 6 layanan kurir.",
+      "destinationId": 331,
+      "originId": "575",
+      "retries": 0
+    },
+    "expiresAt": 1784751137442
   }
 }

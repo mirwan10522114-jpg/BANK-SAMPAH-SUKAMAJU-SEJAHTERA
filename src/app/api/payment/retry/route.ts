@@ -34,6 +34,34 @@ function generateMidtransOrderId(orderNumber: string): string {
   return `MID-${orderNumber}-${ts}${rand}`.toUpperCase()
 }
 
+// Extract origin URL dari request headers (sama seperti di /api/payment/create)
+function getOriginFromRequest(req: NextRequest): string {
+  const origin = req.headers.get('origin')
+  if (origin) return origin
+
+  const referer = req.headers.get('referer')
+  if (referer) {
+    try {
+      const url = new URL(referer)
+      return url.origin
+    } catch {}
+  }
+
+  const forwardedHost = req.headers.get('x-forwarded-host')
+  const forwardedProto = req.headers.get('x-forwarded-proto') || 'https'
+  if (forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`
+  }
+
+  const host = req.headers.get('host')
+  if (host) {
+    const proto = host.includes('localhost') ? 'http' : 'https'
+    return `${proto}://${host}`
+  }
+
+  return process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+}
+
 export async function POST(req: NextRequest) {
   try {
     const raw = await req.json()
@@ -120,6 +148,11 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // Generate callback URLs DINAMIS dari request Origin/Referer header
+    // Pakai route "/" dengan query parameter ?payment_return=ORDER_NUMBER
+    const origin = getOriginFromRequest(req)
+    const returnUrl = `${origin}/?payment_return=${order.orderNumber}`
+
     // Create new Snap token with same gross_amount
     const grossAmount = toNumber(order.totalBayar)
     const snap = await createSnapToken({
@@ -128,9 +161,9 @@ export async function POST(req: NextRequest) {
       customerDetails,
       itemDetails,
       // Callback URLs — redirect balik ke /payment/return setelah bayar
-      finishUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/return?orderNumber=${order.orderNumber}`,
-      pendingUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/return?orderNumber=${order.orderNumber}`,
-      errorUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/return?orderNumber=${order.orderNumber}`,
+      finishUrl: returnUrl,
+      pendingUrl: returnUrl,
+      errorUrl: returnUrl,
     })
 
     // Update order: new midtransOrderId + snapToken + reset status
