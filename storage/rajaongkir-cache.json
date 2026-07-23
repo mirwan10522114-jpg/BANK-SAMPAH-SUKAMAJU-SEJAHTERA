@@ -1,173 +1,8 @@
 {
-  "575:574:1000": {
+  "575:375:1000": {
     "result": {
       "source": "rajaongkir",
-      "cheapestCost": 9000,
-      "options": [
-        {
-          "kurir": "pos",
-          "service": "Pos Reguler",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Reguler",
-          "courierName": "POS Indonesia (POS)",
-          "description": "240",
-          "etd": "6 day hari",
-          "cost": 9000
-        },
-        {
-          "kurir": "jnt",
-          "service": "EZ",
-          "serviceDisplay": "J&T EXPRESS EZ",
-          "courierName": "J&T Express",
-          "description": "Reguler",
-          "etd": "-",
-          "cost": 12000
-        }
-      ],
-      "message": "Ongkir real-time dari 3 layanan kurir. (pre-seeded)",
-      "destinationId": 574,
-      "originId": "575",
-      "retries": 0
-    },
-    "expiresAt": 1784720000000
-  },
-  "575:331:1340": {
-    "result": {
-      "source": "rajaongkir",
-      "cheapestCost": 28000,
-      "options": [
-        {
-          "kurir": "jne",
-          "service": "REG",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) REG",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "Layanan Reguler",
-          "etd": "2 day hari",
-          "cost": 28000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Reguler",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Reguler",
-          "courierName": "POS Indonesia (POS)",
-          "description": "240",
-          "etd": "6 day hari",
-          "cost": 28000
-        },
-        {
-          "kurir": "jnt",
-          "service": "EZ",
-          "serviceDisplay": "J&T EXPRESS EZ",
-          "courierName": "J&T Express",
-          "description": "Reguler",
-          "etd": "-",
-          "cost": 30000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Nextday",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Nextday",
-          "courierName": "POS Indonesia (POS)",
-          "description": "447",
-          "etd": "1 day hari",
-          "cost": 34000
-        },
-        {
-          "kurir": "lion",
-          "service": "REGPACK",
-          "serviceDisplay": "LION PARCEL REGPACK",
-          "courierName": "Lion Parcel",
-          "description": "Regular Service",
-          "etd": "4-5 day hari",
-          "cost": 46524
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
-          "etd": "6 day hari",
-          "cost": 105000
-        }
-      ],
-      "message": "Ongkir real-time dari 6 layanan kurir.",
-      "destinationId": 331,
-      "originId": "575",
-      "retries": 0
-    },
-    "expiresAt": 1784751137442
-  },
-  "575:329:1690": {
-    "result": {
-      "source": "rajaongkir",
-      "cheapestCost": 28000,
-      "options": [
-        {
-          "kurir": "jne",
-          "service": "REG",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) REG",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "Layanan Reguler",
-          "etd": "2 day hari",
-          "cost": 28000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Reguler",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Reguler",
-          "courierName": "POS Indonesia (POS)",
-          "description": "240",
-          "etd": "6 day hari",
-          "cost": 28000
-        },
-        {
-          "kurir": "jnt",
-          "service": "EZ",
-          "serviceDisplay": "J&T EXPRESS EZ",
-          "courierName": "J&T Express",
-          "description": "Reguler",
-          "etd": "-",
-          "cost": 30000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Nextday",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Nextday",
-          "courierName": "POS Indonesia (POS)",
-          "description": "447",
-          "etd": "1 day hari",
-          "cost": 34000
-        },
-        {
-          "kurir": "lion",
-          "service": "REGPACK",
-          "serviceDisplay": "LION PARCEL REGPACK",
-          "courierName": "Lion Parcel",
-          "description": "Regular Service",
-          "etd": "4-5 day hari",
-          "cost": 46524
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
-          "etd": "6 day hari",
-          "cost": 105000
-        }
-      ],
-      "message": "Ongkir real-time dari 6 layanan kurir.",
-      "destinationId": 329,
-      "originId": "575",
-      "retries": 0
-    },
-    "expiresAt": 1784752660992
-  },
-  "575:378:1750": {
-    "result": {
-      "source": "rajaongkir",
-      "cheapestCost": 28000,
+      "cheapestCost": 14000,
       "options": [
         {
           "kurir": "jne",
@@ -176,7 +11,7 @@
           "courierName": "Jalur Nugraha Ekakurir (JNE)",
           "description": "Layanan Reguler",
           "etd": "8 day hari",
-          "cost": 28000
+          "cost": 14000
         },
         {
           "kurir": "pos",
@@ -185,7 +20,7 @@
           "courierName": "POS Indonesia (POS)",
           "description": "240",
           "etd": "6 day hari",
-          "cost": 28000
+          "cost": 14000
         },
         {
           "kurir": "jnt",
@@ -194,7 +29,7 @@
           "courierName": "J&T Express",
           "description": "Reguler",
           "etd": "-",
-          "cost": 30000
+          "cost": 15000
         },
         {
           "kurir": "lion",
@@ -203,7 +38,7 @@
           "courierName": "Lion Parcel",
           "description": "Regular Service",
           "etd": "4-5 day hari",
-          "cost": 46524
+          "cost": 23262
         },
         {
           "kurir": "jne",
@@ -216,375 +51,13 @@
         }
       ],
       "message": "Ongkir real-time dari 5 layanan kurir.",
-      "destinationId": 378,
+      "destinationId": 375,
       "originId": "575",
       "retries": 0
     },
-    "expiresAt": 1784752947302
+    "expiresAt": 1784902540029
   },
-  "575:478:1400": {
-    "result": {
-      "source": "rajaongkir",
-      "cheapestCost": 28000,
-      "options": [
-        {
-          "kurir": "jne",
-          "service": "REG",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) REG",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "Layanan Reguler",
-          "etd": "2 day hari",
-          "cost": 28000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Reguler",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Reguler",
-          "courierName": "POS Indonesia (POS)",
-          "description": "240",
-          "etd": "6 day hari",
-          "cost": 28000
-        },
-        {
-          "kurir": "jnt",
-          "service": "EZ",
-          "serviceDisplay": "J&T EXPRESS EZ",
-          "courierName": "J&T Express",
-          "description": "Reguler",
-          "etd": "-",
-          "cost": 30000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Nextday",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Nextday",
-          "courierName": "POS Indonesia (POS)",
-          "description": "447",
-          "etd": "1 day hari",
-          "cost": 34000
-        },
-        {
-          "kurir": "lion",
-          "service": "REGPACK",
-          "serviceDisplay": "LION PARCEL REGPACK",
-          "courierName": "Lion Parcel",
-          "description": "Regular Service",
-          "etd": "4-5 day hari",
-          "cost": 46524
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
-          "etd": "6 day hari",
-          "cost": 105000
-        }
-      ],
-      "message": "Ongkir real-time dari 6 layanan kurir.",
-      "destinationId": 478,
-      "originId": "575",
-      "retries": 0
-    },
-    "expiresAt": 1784753012035
-  },
-  "575:365:1400": {
-    "result": {
-      "source": "rajaongkir",
-      "cheapestCost": 28000,
-      "options": [
-        {
-          "kurir": "jne",
-          "service": "REG",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) REG",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "Layanan Reguler",
-          "etd": "2 day hari",
-          "cost": 28000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Reguler",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Reguler",
-          "courierName": "POS Indonesia (POS)",
-          "description": "240",
-          "etd": "6 day hari",
-          "cost": 28000
-        },
-        {
-          "kurir": "jnt",
-          "service": "EZ",
-          "serviceDisplay": "J&T EXPRESS EZ",
-          "courierName": "J&T Express",
-          "description": "Reguler",
-          "etd": "-",
-          "cost": 30000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Nextday",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Nextday",
-          "courierName": "POS Indonesia (POS)",
-          "description": "447",
-          "etd": "1 day hari",
-          "cost": 34000
-        },
-        {
-          "kurir": "lion",
-          "service": "REGPACK",
-          "serviceDisplay": "LION PARCEL REGPACK",
-          "courierName": "Lion Parcel",
-          "description": "Regular Service",
-          "etd": "4-5 day hari",
-          "cost": 46524
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
-          "etd": "5 day hari",
-          "cost": 95000
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR<130",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR<130",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
-          "etd": "5 day hari",
-          "cost": 450000
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR>130",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR>130",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
-          "etd": "0 day hari",
-          "cost": 650000
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR>200",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR>200",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
-          "etd": "0 day hari",
-          "cost": 800000
-        }
-      ],
-      "message": "Ongkir real-time dari 9 layanan kurir.",
-      "destinationId": 365,
-      "originId": "575",
-      "retries": 0
-    },
-    "expiresAt": 1784753153667
-  },
-  "575:378:1400": {
-    "result": {
-      "source": "rajaongkir",
-      "cheapestCost": 28000,
-      "options": [
-        {
-          "kurir": "jne",
-          "service": "REG",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) REG",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "Layanan Reguler",
-          "etd": "8 day hari",
-          "cost": 28000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Reguler",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Reguler",
-          "courierName": "POS Indonesia (POS)",
-          "description": "240",
-          "etd": "6 day hari",
-          "cost": 28000
-        },
-        {
-          "kurir": "jnt",
-          "service": "EZ",
-          "serviceDisplay": "J&T EXPRESS EZ",
-          "courierName": "J&T Express",
-          "description": "Reguler",
-          "etd": "-",
-          "cost": 30000
-        },
-        {
-          "kurir": "lion",
-          "service": "REGPACK",
-          "serviceDisplay": "LION PARCEL REGPACK",
-          "courierName": "Lion Parcel",
-          "description": "Regular Service",
-          "etd": "4-5 day hari",
-          "cost": 46524
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
-          "etd": "30 day hari",
-          "cost": 145000
-        }
-      ],
-      "message": "Ongkir real-time dari 5 layanan kurir.",
-      "destinationId": 378,
-      "originId": "575",
-      "retries": 0
-    },
-    "expiresAt": 1784753342528
-  },
-  "575:153:1400": {
-    "result": {
-      "source": "rajaongkir",
-      "cheapestCost": 26000,
-      "options": [
-        {
-          "kurir": "jnt",
-          "service": "EZ",
-          "serviceDisplay": "J&T EXPRESS EZ",
-          "courierName": "J&T Express",
-          "description": "Reguler",
-          "etd": "-",
-          "cost": 26000
-        },
-        {
-          "kurir": "tiki",
-          "service": "REG",
-          "serviceDisplay": "CITRA VAN TITIPAN KILAT (TIKI) REG",
-          "courierName": "Citra Van Titipan Kilat (TIKI)",
-          "description": "Reguler Service",
-          "etd": "4 day hari",
-          "cost": 30000
-        },
-        {
-          "kurir": "jne",
-          "service": "REG",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) REG",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "Layanan Reguler",
-          "etd": "2 day hari",
-          "cost": 34000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Reguler",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Reguler",
-          "courierName": "POS Indonesia (POS)",
-          "description": "240",
-          "etd": "6 day hari",
-          "cost": 40000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Nextday",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Nextday",
-          "courierName": "POS Indonesia (POS)",
-          "description": "447",
-          "etd": "1 day hari",
-          "cost": 51000
-        },
-        {
-          "kurir": "lion",
-          "service": "REGPACK",
-          "serviceDisplay": "LION PARCEL REGPACK",
-          "courierName": "Lion Parcel",
-          "description": "Regular Service",
-          "etd": "8-9 day hari",
-          "cost": 66564
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
-          "etd": "6 day hari",
-          "cost": 115000
-        }
-      ],
-      "message": "Ongkir real-time dari 7 layanan kurir.",
-      "destinationId": 153,
-      "originId": "575",
-      "retries": 0
-    },
-    "expiresAt": 1784753624071
-  },
-  "575:455:1400": {
-    "result": {
-      "source": "rajaongkir",
-      "cheapestCost": 28000,
-      "options": [
-        {
-          "kurir": "jne",
-          "service": "REG",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) REG",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "Layanan Reguler",
-          "etd": "8 day hari",
-          "cost": 28000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Reguler",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Reguler",
-          "courierName": "POS Indonesia (POS)",
-          "description": "240",
-          "etd": "6 day hari",
-          "cost": 28000
-        },
-        {
-          "kurir": "jnt",
-          "service": "EZ",
-          "serviceDisplay": "J&T EXPRESS EZ",
-          "courierName": "J&T Express",
-          "description": "Reguler",
-          "etd": "-",
-          "cost": 30000
-        },
-        {
-          "kurir": "pos",
-          "service": "Pos Nextday",
-          "serviceDisplay": "POS INDONESIA (POS) Pos Nextday",
-          "courierName": "POS Indonesia (POS)",
-          "description": "447",
-          "etd": "1 day hari",
-          "cost": 34000
-        },
-        {
-          "kurir": "lion",
-          "service": "REGPACK",
-          "serviceDisplay": "LION PARCEL REGPACK",
-          "courierName": "Lion Parcel",
-          "description": "Regular Service",
-          "etd": "7-9 day hari",
-          "cost": 43852
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
-          "etd": "6 day hari",
-          "cost": 105000
-        }
-      ],
-      "message": "Ongkir real-time dari 6 layanan kurir.",
-      "destinationId": 455,
-      "originId": "575",
-      "retries": 0
-    },
-    "expiresAt": 1784754264545
-  },
-  "575:313:1000": {
+  "575:327:1000": {
     "result": {
       "source": "rajaongkir",
       "cheapestCost": 14000,
@@ -604,7 +77,7 @@
           "serviceDisplay": "POS INDONESIA (POS) Pos Reguler",
           "courierName": "POS Indonesia (POS)",
           "description": "240",
-          "etd": "4 day hari",
+          "etd": "6 day hari",
           "cost": 14000
         },
         {
@@ -640,42 +113,15 @@
           "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR",
           "courierName": "Jalur Nugraha Ekakurir (JNE)",
           "description": "JNE Trucking",
-          "etd": "5 day hari",
-          "cost": 65000
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR<130",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR<130",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
-          "etd": "5 day hari",
-          "cost": 450000
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR>130",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR>130",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
           "etd": "6 day hari",
-          "cost": 650000
-        },
-        {
-          "kurir": "jne",
-          "service": "JTR>200",
-          "serviceDisplay": "JALUR NUGRAHA EKAKURIR (JNE) JTR>200",
-          "courierName": "Jalur Nugraha Ekakurir (JNE)",
-          "description": "JNE Trucking",
-          "etd": "6 day hari",
-          "cost": 800000
+          "cost": 105000
         }
       ],
-      "message": "Ongkir real-time dari 9 layanan kurir.",
-      "destinationId": 313,
+      "message": "Ongkir real-time dari 6 layanan kurir.",
+      "destinationId": 327,
       "originId": "575",
       "retries": 0
     },
-    "expiresAt": 1784755175176
+    "expiresAt": 1784902708273
   }
 }
