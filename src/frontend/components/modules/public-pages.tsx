@@ -102,7 +102,7 @@ function BrandLogo({
         alt="Logo Bank Sampah Sukamaju Sejahtera"
         className={cn('rounded-full object-cover', logoSize)}
       />
-      <div className="leading-tight">
+            <div className="hidden leading-tight sm:block">
         <div className={cn('font-extrabold tracking-wide', titleSize, titleColor)}>
           BANK SAMPAH
         </div>
@@ -212,50 +212,52 @@ export function LandingPage({
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:gap-4 sm:px-6">
           <BrandLogo variant="light" size="md" />
 
-          <nav className="flex items-center gap-1 sm:gap-1.5 md:gap-5 lg:gap-6">
-            <button
+          <nav className="flex items-center gap-0.5 sm:gap-1.5 md:gap-5 lg:gap-6">            
+                       <button
               type="button"
               onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
               aria-label="Beranda"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 hover:text-white"
+              className="flex flex-col items-center gap-0.5 rounded-md px-1 py-1 text-[9px] font-medium leading-tight text-white/90 transition-colors hover:bg-white/10 hover:text-white sm:flex-row sm:gap-1.5 sm:px-2 sm:py-1.5 sm:text-sm"
             >
-              <Home className="size-4" />
-              <span className="hidden sm:inline">Beranda</span>
+              <Home className="size-4 shrink-0" />
+              <span>Beranda</span>
             </button>
-            <button
+                        <button
               type="button"
               onClick={() => onEdukasi?.()}
               aria-label="Edukasi"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 hover:text-white"
+              className="flex flex-col items-center gap-0.5 rounded-md px-1 py-1 text-[9px] font-medium leading-tight text-white/90 transition-colors hover:bg-white/10 hover:text-white sm:flex-row sm:gap-1.5 sm:px-2 sm:py-1.5 sm:text-sm"
             >
-              <BookOpen className="size-4" />
-              <span className="hidden sm:inline">Edukasi</span>
+              <BookOpen className="size-4 shrink-0" />
+              <span>Edukasi</span>
             </button>
-            <button
+                        <button
               type="button"
               onClick={() => onKegiatan?.()}
               aria-label="Dokumentasi Kegiatan"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 hover:text-white"
+              className="flex flex-col items-center gap-0.5 rounded-md px-1 py-1 text-[9px] font-medium leading-tight text-white/90 transition-colors hover:bg-white/10 hover:text-white sm:flex-row sm:gap-1.5 sm:px-2 sm:py-1.5 sm:text-sm"
             >
-              <Camera className="size-4" />
+              <Camera className="size-4 shrink-0" />
+              <span className="sm:hidden">Kegiatan</span>
               <span className="hidden sm:inline">Dokumentasi Kegiatan</span>
             </button>
-            <button
+                        <button
               type="button"
               onClick={onMerchandise}
               aria-label="Merchandise"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 hover:text-white"
+              className="flex flex-col items-center gap-0.5 rounded-md px-1 py-1 text-[9px] font-medium leading-tight text-white/90 transition-colors hover:bg-white/10 hover:text-white sm:flex-row sm:gap-1.5 sm:px-2 sm:py-1.5 sm:text-sm"
             >
-              <ShoppingBag className="size-4" />
-              <span className="hidden sm:inline">Merchandise</span>
+              <ShoppingBag className="size-4 shrink-0" />
+              <span>Merchandise</span>
             </button>
-            <button
+                        <button
               type="button"
               onClick={onLacakPesanan || onMerchandise}
               aria-label="Lacak Pesanan"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 hover:text-white"
+              className="flex flex-col items-center gap-0.5 rounded-md px-1 py-1 text-[9px] font-medium leading-tight text-white/90 transition-colors hover:bg-white/10 hover:text-white sm:flex-row sm:gap-1.5 sm:px-2 sm:py-1.5 sm:text-sm"
             >
-              <PackageSearch className="size-4" />
+              <PackageSearch className="size-4 shrink-0" />
+              <span className="sm:hidden">Lacak</span>
               <span className="hidden sm:inline">Lacak Pesanan</span>
             </button>
           </nav>
@@ -264,7 +266,7 @@ export function LandingPage({
             type="button"
             onClick={onLogin}
             variant="outline"
-            className="border-white/40 bg-transparent px-3 text-xs font-semibold tracking-wide text-white hover:bg-white/10 hover:text-white sm:px-4 sm:text-sm"
+                        className="border-white/40 bg-transparent px-2 text-[10px] font-semibold tracking-wide text-white hover:bg-white/10 hover:text-white sm:px-4 sm:text-sm"
           >
             MASUK
           </Button>
