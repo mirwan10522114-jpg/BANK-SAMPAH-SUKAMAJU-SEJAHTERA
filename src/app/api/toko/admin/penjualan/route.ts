@@ -129,24 +129,40 @@ export async function GET(req: NextRequest) {
     return dateB - dateA
   })
 
-  // Summary stats
+    // Summary stats — HANYA menghitung transaksi yang SUDAH DIBAYAR
+  // Penting: status pembayaran berbeda antara offline & online
+  //   - ProductSale (offline): paymentStatus = 'paid'
+  //   - TokoOrder (online):    paymentStatus = 'dibayar' (bahasa Indonesia)
+  // Total Penjualan = SUBTOTAL PRODUK saja (EXCLUDE ongkir)
+  // Total Ongkir = ongkir dari order online yang paid (dipisah terpisah)
+  const PAID_STATUSES = ['paid', 'dibayar']
   const offlineResults = results.filter((r) => r.channel === 'offline')
   const onlineResults = results.filter((r) => r.channel === 'online')
+  const onlinePaidResults = onlineResults.filter((r) => PAID_STATUSES.includes(r.paymentStatus))
+
+  // Offline: totalValue = subtotal (offline tidak punya ongkir)
   const totalOfflineValue = offlineResults.reduce((sum, r) => sum + r.totalValue, 0)
-  const totalOnlineValue = onlineResults.reduce((sum, r) => sum + r.totalValue, 0)
-  const totalPenjualan = totalOfflineValue + totalOnlineValue
+
+  // Online: subtotal (totalValue = subtotalProduk) dan ongkir DIPISAH
+  const totalOnlineSubtotal = onlinePaidResults.reduce((sum, r) => sum + r.totalValue, 0)
+  const totalOnlineOngkir = onlinePaidResults.reduce((sum, r) => sum + toNumber(r.ongkir), 0)
+
+  // Total Penjualan = subtotal produk saja (TIDAK termasuk ongkir)
+  const totalPenjualan = totalOfflineValue + totalOnlineSubtotal
+  const totalTransaksi = offlineResults.length + onlinePaidResults.length
 
   return NextResponse.json({
     // Frontend expects "orders", not "data"
     orders: results,
     // Frontend expects "stats" with these specific field names
     stats: {
-      totalPenjualan,
-      totalOnline: totalOnlineValue,
+      totalPenjualan,                      // subtotal produk saja (no ongkir)
+      totalOnline: totalOnlineSubtotal,    // subtotal online saja
       totalOffline: totalOfflineValue,
-      countOnline: onlineResults.length,
+      totalOngkir: totalOnlineOngkir,     // NEW: total ongkir dipisah
+      countOnline: onlinePaidResults.length,
       countOffline: offlineResults.length,
-      avgPerTransaction: results.length > 0 ? totalPenjualan / results.length : 0,
+      avgPerTransaction: totalTransaksi > 0 ? totalPenjualan / totalTransaksi : 0,
     },
   })
 }

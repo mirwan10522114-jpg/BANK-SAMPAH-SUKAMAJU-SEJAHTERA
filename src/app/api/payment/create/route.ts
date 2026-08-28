@@ -10,6 +10,7 @@ import {
   type MidtransItemDetail,
 } from '@/lib/midtrans'
 import { logCheckout } from '@/lib/logger'
+import { reduceProductStock } from '@/lib/business'
 
 // =====================================================================
 // POST /api/payment/create
@@ -113,7 +114,8 @@ async function generateOrderNumber(): Promise<string> {
 function generateMidtransOrderId(orderNumber: string): string {
   const ts = Date.now().toString(36) // short timestamp
   const rand = Math.random().toString(36).slice(2, 6) // 4 char random
-  return `MID-${orderNumber}-${ts}${rand}`.toUpperCase()
+  const cleanOrderNumber = orderNumber.replace(/[^a-zA-Z0-9._~-]/g, '')
+  return `MID-${cleanOrderNumber}-${ts}${rand}`.toUpperCase()
 }
 
 // Extract origin URL dari request headers.
@@ -300,6 +302,33 @@ export async function POST(req: NextRequest) {
       },
       include: { items: true },
     })
+    // 7.5) Reserve product stock (PENTING!)
+    // Stok di-reserve saat order dibuat, agar tidak bisa dibeli orang lain
+    // saat user masih dalam proses pembayaran.
+    // Jika pembayaran gagal/expire, webhook akan release reserve ini.
+    // Jika pembayaran sukses (settlement), webhook akan:
+    //   1) Release reserve ini
+    //   2) Reduce stock sebagai 'online_sale' final
+    for (const item of orderItems) {
+      try {
+        await reduceProductStock(
+          item.productId,
+          item.quantity,
+          'online_reserve',
+          'toko_order',
+          order.id,
+          undefined,
+          `Reservasi pesanan ${orderNumber}`
+        )
+      } catch (e: any) {
+        // Jika stok tidak mencukupi, hapus order yang baru dibuat
+        await db.tokoOrder.delete({ where: { id: order.id } })
+        return NextResponse.json(
+          { error: `Gagal reservasi stok: ${e.message}` },
+          { status: 400 }
+        )
+      }
+    }
 
     // 8) Check Midtrans config before creating Snap token
     if (!isMidtransConfigured()) {

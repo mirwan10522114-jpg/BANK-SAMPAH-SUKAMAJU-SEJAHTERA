@@ -1366,11 +1366,11 @@ function MiniPosTab() {
                         {inCart.qty}
                       </div>
                     )}
-                    <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-emerald-50 self-center mb-2">
+                                        <div className="mb-2 flex h-28 w-full items-center justify-center overflow-hidden rounded-lg bg-emerald-50">
                       {p.gambarUrl ? (
-                        <img src={p.gambarUrl} alt={p.nama} className="h-14 w-14 rounded-lg object-cover" />
+                        <img src={p.gambarUrl} alt={p.nama} className="h-full w-full object-cover" />
                       ) : (
-                        <Package className="h-6 w-6 text-emerald-400" />
+                        <Package className="h-8 w-8 text-emerald-400" />
                       )}
                     </div>
                     <p className="text-sm font-medium text-emerald-900 line-clamp-2 leading-tight">{p.nama}</p>
@@ -1767,10 +1767,11 @@ function DataPenjualanTab() {
       </CardHeader>
       <CardContent className="pt-6">
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard icon={Coins} label="Total Penjualan" value={formatRupiah(toNumber(stats.totalPenjualan))} accent="emerald" />
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                    <StatCard icon={Coins} label="Total Penjualan" value={formatRupiah(toNumber(stats.totalPenjualan))} accent="emerald" />
           <StatCard icon={Globe} label="Penjualan Online" value={formatRupiah(toNumber(stats.totalOnline))} sub={`${stats.countOnline || 0} transaksi`} accent="teal" />
           <StatCard icon={Store} label="Penjualan Offline" value={formatRupiah(toNumber(stats.totalOffline))} sub={`${stats.countOffline || 0} transaksi`} accent="amber" />
+          <StatCard icon={Truck} label="Total Ongkir" value={formatRupiah(toNumber(stats.totalOngkir))} sub="biaya kirim online" accent="teal" />
           <StatCard icon={ShoppingBag} label="Rata-rata / Transaksi" value={formatRupiah(toNumber(stats.avgPerTransaction))} accent="emerald" />
         </div>
 
@@ -1813,13 +1814,16 @@ function DataPenjualanTab() {
         ) : (
           <div className="mt-4 max-h-[480px] overflow-auto rounded-lg border border-emerald-100/70">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-emerald-50/95 backdrop-blur">
+                <TableHeader className="sticky top-0 z-10 bg-emerald-50/95 backdrop-blur">
                 <TableRow className="border-emerald-100 hover:bg-transparent">
-                  <TableHead className="text-emerald-800">No. Order</TableHead>
+                                    <TableHead className="text-emerald-800">No. Order</TableHead>
                   <TableHead className="text-emerald-800">Tanggal</TableHead>
                   <TableHead className="text-center text-emerald-800">Channel</TableHead>
                   <TableHead className="text-emerald-800">Pembeli</TableHead>
-                  <TableHead className="text-center text-emerald-800">Produk</TableHead>
+                  <TableHead className="text-emerald-800">Produk (Qty)</TableHead>
+                  <TableHead className="text-right text-emerald-800">Harga/1</TableHead>
+                  <TableHead className="text-right text-emerald-800">Total Harga Produk</TableHead>
+                  <TableHead className="text-right text-emerald-800">Ongkir</TableHead>
                   <TableHead className="text-right text-emerald-800">Total</TableHead>
                   <TableHead className="text-center text-emerald-800">Bayar</TableHead>
                   <TableHead className="text-center text-emerald-800">Pesanan</TableHead>
@@ -1827,7 +1831,20 @@ function DataPenjualanTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {orders.map((o) => (
+                                {orders.map((o) => {
+                  // Ambil item pertama untuk ditampilkan di kolom utama
+                  // (jika ada multiple items, tampilkan "X produk lainnya")
+                  const firstItem = o.items?.[0]
+                  const itemCount = o.items?.length || 0
+                  const totalQty = o.items?.reduce((s, i) => s + toNumber(i.qty), 0) || 0
+                  const hargaSatuan = firstItem ? toNumber(firstItem.hargaSatuan) : 0
+                  // Total harga produk = sum(subtotal) = qty × harga satuan
+                  const totalHargaProduk = o.items?.reduce((s, i) => s + toNumber(i.subtotal), 0) || 0
+                  const ongkir = toNumber(o.ongkir)
+                  // Total = total harga produk + ongkir
+                  const totalSemua = totalHargaProduk + ongkir
+
+                  return (
                   <TableRow key={o.id} className="border-emerald-50">
                     <TableCell className="font-mono text-xs font-semibold text-emerald-900">{o.orderNumber}</TableCell>
                     <TableCell className="text-sm text-emerald-700/80">{formatDateTime(o.createdAt)}</TableCell>
@@ -1838,12 +1855,33 @@ function DataPenjualanTab() {
                         {o.telpPembeli && <p className="text-[11px] text-emerald-700/60">{o.telpPembeli}</p>}
                       </div>
                     </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="outline" className="border-emerald-200 text-emerald-700">
-                        {o.items?.length || 0} item
-                      </Badge>
+                    <TableCell>
+                      {firstItem ? (
+                        <div className="flex flex-col gap-0.5">
+                          <p className="text-sm font-medium text-emerald-900">
+                            {firstItem.namaProduk}
+                          </p>
+                          <Badge variant="outline" className="w-fit border-emerald-200 text-emerald-700">
+                            {totalQty} {toNumber(firstItem.qty) > 1 ? 'pcs' : 'pcs'}
+                          </Badge>
+                          {itemCount > 1 && (
+                            <p className="text-[11px] text-emerald-700/60">+{itemCount - 1} produk lainnya</p>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-zinc-400">-</span>
+                      )}
                     </TableCell>
-                    <TableCell className="text-right font-semibold text-emerald-900">{formatRupiah(toNumber(o.total))}</TableCell>
+                    <TableCell className="text-right text-sm text-emerald-700/80">
+                      {hargaSatuan > 0 ? formatRupiah(hargaSatuan) : '-'}
+                    </TableCell>
+                    <TableCell className="text-right text-sm font-semibold text-emerald-900">
+                      {totalHargaProduk > 0 ? formatRupiah(totalHargaProduk) : '-'}
+                    </TableCell>
+                    <TableCell className="text-right text-sm text-emerald-700/80">
+                      {o.channel === 'online' && ongkir > 0 ? formatRupiah(ongkir) : '-'}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-emerald-900">{formatRupiah(totalSemua)}</TableCell>
                     <TableCell className="text-center">{statusPembayaranBadge(o.statusPembayaran)}</TableCell>
                     <TableCell className="text-center">{statusPesananBadge(o.statusPesanan)}</TableCell>
                     <TableCell className="text-right">
@@ -1859,7 +1897,8 @@ function DataPenjualanTab() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           </div>

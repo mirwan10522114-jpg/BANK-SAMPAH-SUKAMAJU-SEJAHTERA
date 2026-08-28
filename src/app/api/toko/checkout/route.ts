@@ -202,7 +202,7 @@ export async function POST(req: NextRequest) {
   const orderNumber = await generateOrderNumber()
 
   // Generate midtransOrderId
-  const midtransOrderId = `MIDTRANS-${orderNumber}`
+  const midtransOrderId = `MIDTRANS-${orderNumber.replace(/[^a-zA-Z0-9._~-]/g, '')}`
 
   // Create order
   const order = await db.tokoOrder.create({
@@ -265,7 +265,7 @@ export async function POST(req: NextRequest) {
           Accept: 'application/json',
           Authorization: `Basic ${authBuffer}`,
         },
-        body: JSON.stringify({
+                body: JSON.stringify({
           transaction_details: {
             order_id: midtransOrderId,
             gross_amount: totalBayar,
@@ -284,6 +284,18 @@ export async function POST(req: NextRequest) {
               city: addressObj.kota || '',
               postal_code: addressObj.kodePos || '',
             },
+          },
+          // ============================================================
+          // EXPIRY: 30 MENIT (Auto-Cancel jika tidak dibayar)
+          // ============================================================
+          // Setelah 30 menit, Midtrans akan kirim callback dengan
+          // transaction_status = 'expire'. Webhook /api/payment/callback
+          // akan handle: update orderStatus → 'dibatalkan', release stock.
+          // Pembeli harus order ulang jika masih ingin membeli.
+          // ============================================================
+          expiry: {
+            unit: 'minute',
+            duration: 30,
           },
           callbacks: {
             finish: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/toko/payment/finish`,

@@ -154,24 +154,23 @@ export async function createSnapToken(
     credit_card: {
       secure: cfg.is3ds,
     },
-    // ============================================================
-    // EXPIRY: 24 JAM EKSPLISIT (WAJIB!)
+     // ============================================================
+    // EXPIRY: 30 MENIT (Auto-Cancel)
     // ------------------------------------------------------------
-    // Midtrans Snap sandbox default expiry sangat pendek (seringkali
-    // hanya 2-5 menit). Kalau kita TIDAK set expiry eksplisit, user
-    // akan lihat "Transaction expired" saat klik payment method.
+    // Pembeli punya waktu 30 menit untuk menyelesaikan pembayaran.
+    // Jika 30 menit berlalu tanpa pembayaran, Midtrans akan:
+    //   1. Kirim callback dengan transaction_status = 'expire'
+    //   2. Webhook kita (/api/payment/callback) akan update
+    //      orderStatus jadi 'dibatalkan' dan release reserved stock
+    //   3. Pembeli harus order ulang jika masih ingin membeli
     //
-    // Dengan set eksplisit 24 jam di sini, user punya waktu seharian
-    // untuk bayar — bahkan kalau tutup browser & buka lagi besok.
-    //
-    // ⚠️ Jika ada Custom Expiry aktif di Midtrans Dashboard
-    //    (Settings → Snap → Preference → Custom Expiry), itu akan
-    //    OVERRIDE pengaturan ini. Pastikan Custom Expiry DISABLED
-    //    di dashboard, atau set ke 24 jam juga.
+    // ⚠️ Pastikan Custom Expiry di Midtrans Dashboard DISABLED
+    //    (Settings → Snap → Preference → Custom Expiry) agar
+    //    pengaturan ini tidak di-override.
     // ============================================================
     expiry: {
-      unit: 'hour',
-      duration: 24,
+      unit: 'minute',
+      duration: 30,
     },
     // Intentionally omit `enabled_payments` so ALL dashboard-enabled
     // methods are surfaced. Do NOT hardcode QRIS or any specific method.
