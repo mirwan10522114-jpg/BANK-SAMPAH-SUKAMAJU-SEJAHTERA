@@ -969,7 +969,9 @@ function DetailView({
   if (!product) return null
 
   const images = product.images?.length > 0
-    ? product.images
+  ? product.images
+  : product.image
+    ? [product.image]
     : [getProductPlaceholder(product.name, 0)]
   const isOutOfStock = product.stock <= 0
 
