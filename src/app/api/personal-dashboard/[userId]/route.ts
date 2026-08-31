@@ -173,17 +173,43 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
   const totalPoinPeriode = savingInRange.reduce((s, t) => s + toNumber(t.pointsAwarded), 0)
   const totalSedekahPeriode = sedekahInRange.reduce((s, t) => s + (t.totalWeightBersih != null ? toNumber(t.totalWeightBersih) : toNumber(t.totalWeight)), 0)
 
-  // Tren tabungan bucketed
+  // Tren tabungan bucketed: Berat (kg), Nilai (Rp), Sedekah (kg), Poin
   const { keys: tsKeys, labels: tsLabels, granularity } = buildBuckets(chartStart, chartEnd)
-  const buckets: Record<string, number> = {}
-  for (const k of tsKeys) buckets[k] = 0
+  const bucketsBerat: Record<string, number> = {}
+  const bucketsNilai: Record<string, number> = {}
+  const bucketsSedekah: Record<string, number> = {}
+  const bucketsPoin: Record<string, number> = {}
+
+  for (const k of tsKeys) {
+    bucketsBerat[k] = 0
+    bucketsNilai[k] = 0
+    bucketsSedekah[k] = 0
+    bucketsPoin[k] = 0
+  }
+
   for (const t of savingInRange) {
     const k = bucketKey(t.transactedAt, granularity)
-    if (buckets[k] !== undefined) buckets[k] += toNumber(t.totalWeight)
+    if (bucketsBerat[k] !== undefined) {
+      bucketsBerat[k] += toNumber(t.totalWeight)
+      bucketsNilai[k] += toNumber(t.totalValue)
+      bucketsPoin[k] += toNumber(t.pointsAwarded)
+    }
   }
+
+  for (const s of sedekahInRange) {
+    const k = bucketKey(s.transactedAt, granularity)
+    const beratSedekah = s.totalWeightBersih != null ? toNumber(s.totalWeightBersih) : toNumber(s.totalWeight)
+    if (bucketsSedekah[k] !== undefined) {
+      bucketsSedekah[k] += beratSedekah
+    }
+  }
+
   const trenTabungan = tsKeys.map((k, i) => ({
     month: tsLabels[i],
-    berat: Math.round(buckets[k] * 100) / 100,
+    berat: Math.round((bucketsBerat[k] || 0) * 100) / 100,
+    nilai: Math.round((bucketsNilai[k] || 0) * 100) / 100,
+    sedekah: Math.round((bucketsSedekah[k] || 0) * 100) / 100,
+    poin: Math.round((bucketsPoin[k] || 0) * 100) / 100,
   }))
 
   // Komposisi kategori (from saving items, filtered by chosen period)

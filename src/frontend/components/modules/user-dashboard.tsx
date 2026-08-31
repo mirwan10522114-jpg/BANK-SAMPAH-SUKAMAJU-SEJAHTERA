@@ -24,7 +24,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { api } from '@/lib/api'
 import { formatRupiah, formatNumber, formatDate, formatDateTime, toNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Cell } from 'recharts'
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar, Cell } from 'recharts'
 import type { AuthUser } from '@/lib/auth'
 import { NotificationBell } from '@/components/modules/notification-bell'
 
@@ -392,7 +392,15 @@ function DashboardView({
       icon: HeartHandshake,
     },
   ]
-  const trenFiltered = trenTabungan
+  const [showBerat, setShowBerat] = useState(true)
+  const [showNilai, setShowNilai] = useState(true)
+  const [showSedekah, setShowSedekah] = useState(true)
+
+  const trenFiltered = trenTabungan || []
+  const isTrenEmpty = trenFiltered.every(
+    (t: any) => (t.berat || 0) === 0 && (t.nilai || 0) === 0 && (t.sedekah || 0) === 0
+  )
+
   const trenRangeOptions = [
     { value: '1bul', label: '1 Bulan' },
     { value: '3bul', label: '3 Bulan' },
@@ -514,26 +522,139 @@ function DashboardView({
         <Card className="border-0 bg-white p-4 shadow-sm ring-1 ring-zinc-100 lg:col-span-2">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 className="text-sm font-semibold text-zinc-900">Tren Tabungan</h3>
+              <h3 className="text-sm font-semibold text-zinc-900">Tren Tabungan & Sedekah Sampah</h3>
               <p className="text-[11px] text-zinc-500">
-                Berat sampah (kg) · Periode {periodLabel}
+                Grafik pergerakan berat (kg), nilai rupiah (Rp), dan sedekah · Periode {periodLabel}
               </p>
             </div>
+
+            {/* Interactive Toggle Legend Chips */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setShowBerat(!showBerat)}
+                className={cn(
+                  'flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-semibold transition border',
+                  showBerat
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs'
+                    : 'bg-zinc-50 text-zinc-400 border-zinc-200 line-through opacity-60'
+                )}
+              >
+                <span className="size-2 rounded-full bg-emerald-500" />
+                Berat Nabung (kg)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowNilai(!showNilai)}
+                className={cn(
+                  'flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-semibold transition border',
+                  showNilai
+                    ? 'bg-blue-50 text-blue-800 border-blue-300 shadow-2xs'
+                    : 'bg-zinc-50 text-zinc-400 border-zinc-200 line-through opacity-60'
+                )}
+              >
+                <span className="size-2 rounded-full bg-blue-500" />
+                Nilai Rupiah (Rp)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowSedekah(!showSedekah)}
+                className={cn(
+                  'flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-semibold transition border',
+                  showSedekah
+                    ? 'bg-purple-50 text-purple-800 border-purple-300 shadow-2xs'
+                    : 'bg-zinc-50 text-zinc-400 border-zinc-200 line-through opacity-60'
+                )}
+              >
+                <span className="size-2 rounded-full bg-purple-500" />
+                Sedekah (kg)
+              </button>
+            </div>
           </div>
-          <div className="h-56 w-full">
-            {trenFiltered.every((t: any) => t.berat === 0) ? (
+
+          <div className="h-64 w-full">
+            {isTrenEmpty ? (
               <div className="flex h-full flex-col items-center justify-center text-center">
                 <Scale className="h-8 w-8 text-zinc-300" />
-                <p className="mt-2 text-xs text-zinc-400">Belum ada data tabungan pada periode {periodLabel}.</p>
+                <p className="mt-2 text-xs text-zinc-400">Belum ada data transaksi pada periode {periodLabel}.</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trenFiltered} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                <LineChart data={trenFiltered} margin={{ top: 10, right: showNilai ? 20 : 5, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                   <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 12 }} formatter={(v: any) => [`${formatNumber(v, 2)} kg`, 'Berat']} />
-                  <Line type="monotone" dataKey="berat" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4, fill: '#10b981' }} />
+                  
+                  {/* Left Y-Axis for Kilograms (Berat & Sedekah) */}
+                  <YAxis
+                    yAxisId="left"
+                    tick={{ fontSize: 10, fill: '#64748B' }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v) => `${v}kg`}
+                  />
+
+                  {/* Right Y-Axis for Rupiah */}
+                  {showNilai && (
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      tick={{ fontSize: 10, fill: '#3B82F6' }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v) => `Rp ${v >= 1000000 ? `${(v/1000000).toFixed(1)}jt` : v >= 1000 ? `${Math.round(v/1000)}rb` : v}`}
+                    />
+                  )}
+
+                  <Tooltip
+                    contentStyle={{ borderRadius: 10, border: '1px solid #E2E8F0', boxShadow: '0 4px 12px rgba(0,0,0,0.06)', fontSize: 12 }}
+                    formatter={(value: any, name: any) => {
+                      if (name === 'Nilai Rupiah') return [formatRupiah(value), name]
+                      if (name === 'Sedekah Sampah') return [`${formatNumber(value, 2)} kg`, name]
+                      return [`${formatNumber(value, 2)} kg`, 'Berat Tabungan']
+                    }}
+                  />
+
+                  {showBerat && (
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="berat"
+                      name="Berat Tabungan"
+                      stroke="#10b981"
+                      strokeWidth={2.5}
+                      dot={{ r: 3.5, fill: '#10b981' }}
+                      activeDot={{ r: 5 }}
+                    />
+                  )}
+
+                  {showNilai && (
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="nilai"
+                      name="Nilai Rupiah"
+                      stroke="#3b82f6"
+                      strokeWidth={2.5}
+                      dot={{ r: 3.5, fill: '#3b82f6' }}
+                      activeDot={{ r: 5 }}
+                    />
+                  )}
+
+                  {showSedekah && (
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="sedekah"
+                      name="Sedekah Sampah"
+                      stroke="#9333ea"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                      dot={{ r: 3.5, fill: '#9333ea' }}
+                      activeDot={{ r: 5 }}
+                    />
+                  )}
                 </LineChart>
               </ResponsiveContainer>
             )}
