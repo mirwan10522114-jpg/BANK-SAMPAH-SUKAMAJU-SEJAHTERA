@@ -1,7 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Recycle, LayoutDashboard, Database, Scale, HandCoins, Warehouse, Wand2, Menu, X, Banknote, ArrowRight, Settings, LogOut, ChevronDown, ShoppingBag, FileBarChart, BookOpen, Camera, Megaphone, Send, Mail, AlertTriangle, Loader2, Image as ImageIcon } from 'lucide-react'
+import {
+  Recycle, LayoutDashboard, Database, Scale, HandCoins, Warehouse, Wand2, Menu, X,
+  Banknote, ArrowRight, Settings, LogOut, ChevronDown, ShoppingBag, FileBarChart,
+  BookOpen, Camera, Megaphone, Send, Mail, AlertTriangle, Loader2, Image as ImageIcon,
+  Search, Layers, Sparkles, FolderGit2,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -25,26 +30,71 @@ import type { AuthUser } from '@/lib/auth'
 type Section = 'dashboard' | 'master' | 'operasional' | 'koperasi' | 'inventaris' | 'teller' | 'finansial' | 'penjualan' | 'laporan' | 'edukasi' | 'kegiatan' | 'pengumuman'
 type DashboardType = 'bank-sampah' | 'koperasi' | 'penjualan-produk' | null
 
-const NAV: { id: Section; label: string; icon: any; desc: string }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, desc: 'Ringkasan & metrik' },
-  { id: 'teller', label: 'Teller Wizard', icon: Wand2, desc: 'Layanan satu pintu' },
-  { id: 'operasional', label: 'Operasional Bank Sampah', icon: Scale, desc: 'Nabung & Sedekah Sampah' },
-  { id: 'finansial', label: 'Finansial Bank Sampah', icon: Banknote, desc: 'Penarikan & Buku Kas' },
-  { id: 'koperasi', label: 'Koperasi Simpan Pinjam', icon: HandCoins, desc: 'Simpanan, Pinjaman, Angsuran' },
-  { id: 'inventaris', label: 'Inventaris & Penjualan', icon: Warehouse, desc: 'Gudang, Pengolahan, Penjualan' },
-  { id: 'penjualan', label: 'Penjualan Produk', icon: ShoppingBag, desc: 'Toko online & kasir offline' },
-  { id: 'laporan', label: 'Laporan Laba Rugi', icon: FileBarChart, desc: 'Laporan Bank Sampah, Koperasi, Penjualan' },
-  { id: 'edukasi', label: 'Edukasi & Konten', icon: BookOpen, desc: 'Artikel edukasi lingkungan' },
-  { id: 'kegiatan', label: 'Dokumentasi Kegiatan', icon: Camera, desc: 'Foto & dokumentasi kegiatan' },
-  { id: 'master', label: 'Master Data', icon: Database, desc: 'Nasabah, Barang, Koperasi' },
-  { id: 'pengumuman', label: 'Pengumuman & Tagihan', icon: Megaphone, desc: 'Blast email & tagihan pinjaman' },
+export type NavItem = {
+  id: Section
+  label: string
+  icon: any
+  desc: string
+}
+
+export type NavGroup = {
+  title: string
+  items: NavItem[]
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    title: 'Layanan & Ikhtisar',
+    items: [
+      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, desc: 'Ringkasan & metrik' },
+      { id: 'teller', label: 'Teller Wizard', icon: Wand2, desc: 'Layanan terpadu satu pintu' },
+    ],
+  },
+  {
+    title: 'Bank Sampah',
+    items: [
+      { id: 'operasional', label: 'Operasional Sampah', icon: Scale, desc: 'Nabung & sedekah sampah' },
+      { id: 'finansial', label: 'Finansial Sampah', icon: Banknote, desc: 'Penarikan saldo & kas' },
+      { id: 'inventaris', label: 'Inventaris & Mitra', icon: Warehouse, desc: 'Gudang & jual ke mitra' },
+    ],
+  },
+  {
+    title: 'Unit Bisnis & Usaha',
+    items: [
+      { id: 'koperasi', label: 'Koperasi Simpan Pinjam', icon: HandCoins, desc: 'Simpanan & pinjaman' },
+      { id: 'penjualan', label: 'Penjualan Produk', icon: ShoppingBag, desc: 'Kasir POS & toko online' },
+    ],
+  },
+  {
+    title: 'Laporan & Keuangan',
+    items: [
+      { id: 'laporan', label: 'Laporan Laba Rugi', icon: FileBarChart, desc: 'Laporan keuangan terpadu' },
+    ],
+  },
+  {
+    title: 'Informasi & Publikasi',
+    items: [
+      { id: 'pengumuman', label: 'Pengumuman & Tagihan', icon: Megaphone, desc: 'Blast email & tagihan' },
+      { id: 'edukasi', label: 'Edukasi Lingkungan', icon: BookOpen, desc: 'Artikel & konten edukasi' },
+      { id: 'kegiatan', label: 'Dokumentasi Kegiatan', icon: Camera, desc: 'Foto & dokumentasi warga' },
+    ],
+  },
+  {
+    title: 'Sistem & Pengaturan',
+    items: [
+      { id: 'master', label: 'Master Data & Sistem', icon: Database, desc: 'Nasabah, barang & mitra' },
+    ],
+  },
 ]
+
+const NAV = NAV_GROUPS.flatMap((g) => g.items)
 
 export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const [section, setSection] = useState<Section>('dashboard')
   const [dashboardType, setDashboardType] = useState<DashboardType>('bank-sampah')
   const [showDashboardChooser, setShowDashboardChooser] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [searchMenu, setSearchMenu] = useState('')
   const [users, setUsers] = useState<any[]>([])
   const [actingUserId, setActingUserId] = useState<string>('')
   const [showProfileMenu, setShowProfileMenu] = useState(false)
@@ -159,41 +209,111 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
           'fixed inset-y-0 left-0 top-16 z-30 w-72 transform border-r border-emerald-200/60 bg-white transition-transform duration-200 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}>
-          <nav className="flex h-full flex-col gap-1 overflow-y-auto p-3">
-            <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-emerald-600/70">Menu Utama</p>
-            {NAV.map((item) => {
-              const Icon = item.icon
-              const active = section === item.id
-              return (
+          <nav className="flex h-full flex-col overflow-y-auto p-3">
+            {/* Search Menu Input */}
+            <div className="relative mb-2 px-1">
+              <Search className="absolute left-3.5 top-2.5 size-3.5 text-zinc-400" />
+              <input
+                type="text"
+                value={searchMenu}
+                onChange={(e) => setSearchMenu(e.target.value)}
+                placeholder="Cari menu admin..."
+                className="h-8 w-full rounded-lg border border-zinc-200 bg-zinc-50/80 pl-8 pr-7 text-xs text-zinc-800 placeholder-zinc-400 focus:border-emerald-500 focus:bg-white focus:outline-none transition-colors"
+              />
+              {searchMenu && (
                 <button
-                  key={item.id}
-                  onClick={() => handleNavClick(item.id)}
-                  className={cn(
-                    'group flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-all',
-                    active
-                      ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm'
-                      : 'text-emerald-900 hover:bg-emerald-50'
-                  )}
+                  type="button"
+                  onClick={() => setSearchMenu('')}
+                  className="absolute right-3 top-2 text-zinc-400 hover:text-zinc-600"
                 >
-                  <Icon className={cn('mt-0.5 h-5 w-5 shrink-0', active ? 'text-white' : 'text-emerald-600')} />
-                  <div className="flex-1 leading-tight">
-                    <p className={cn('text-sm font-semibold', active ? 'text-white' : 'text-emerald-900')}>{item.label}</p>
-                    <p className={cn('text-[11px]', active ? 'text-emerald-50/90' : 'text-emerald-700/60')}>
-                      {item.id === 'dashboard' && dashboardType ? dashboardDesc : item.desc}
-                    </p>
-                  </div>
-                  {item.id === 'dashboard' && dashboardType && (
-                    <span className={cn('mt-0.5 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase', active ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700')}>
-                      {dashboardType === 'bank-sampah' ? 'BS' : dashboardType === 'koperasi' ? 'KOP' : 'PROD'}
-                    </span>
-                  )}
+                  <X className="size-3.5" />
                 </button>
-              )
-            })}
-            <div className="mt-auto rounded-xl border border-emerald-200/60 bg-emerald-50/60 p-3">
-              <p className="text-[11px] font-medium text-emerald-800">💡 Tips</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-emerald-700/80">
-                Klik <b>Dashboard</b> untuk beralih antara <b>Bank Sampah</b>, <b>Koperasi</b>, dan <b>Penjualan Produk</b>. Gunakan <b>Teller Wizard</b> untuk layanan satu pintu.
+              )}
+            </div>
+
+            {/* Grouped Navigation */}
+            <div className="space-y-3 pb-4">
+              {(() => {
+                let totalShown = 0
+                const groups = NAV_GROUPS.map((group, gIdx) => {
+                  const matchingItems = group.items.filter((item) => {
+                    if (!searchMenu.trim()) return true
+                    const q = searchMenu.toLowerCase()
+                    return item.label.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q)
+                  })
+
+                  if (matchingItems.length === 0) return null
+                  totalShown += matchingItems.length
+
+                  return (
+                    <div key={group.title || gIdx} className="space-y-1">
+                      <div className="flex items-center gap-2 px-2.5 pt-1.5 pb-1">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800/80">
+                          {group.title}
+                        </p>
+                        <div className="h-[1px] flex-1 bg-emerald-100/70" />
+                      </div>
+
+                      <div className="space-y-0.5">
+                        {matchingItems.map((item) => {
+                          const Icon = item.icon
+                          const active = section === item.id
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => handleNavClick(item.id)}
+                              className={cn(
+                                'group flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-left transition-all',
+                                active
+                                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm'
+                                  : 'text-zinc-700 hover:bg-emerald-50/80 hover:text-emerald-950'
+                              )}
+                            >
+                              <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', active ? 'text-white' : 'text-emerald-600')} />
+                              <div className="flex-1 min-w-0 leading-tight">
+                                <p className={cn('text-xs font-semibold truncate', active ? 'text-white' : 'text-zinc-800')}>
+                                  {item.label}
+                                </p>
+                                <p className={cn('text-[10px] truncate mt-0.5', active ? 'text-emerald-50/90' : 'text-zinc-400')}>
+                                  {item.id === 'dashboard' && dashboardType ? dashboardDesc : item.desc}
+                                </p>
+                              </div>
+                              {item.id === 'dashboard' && dashboardType && (
+                                <span className={cn('mt-0.5 rounded px-1.5 py-0.5 text-[8px] font-bold uppercase', active ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800')}>
+                                  {dashboardType === 'bank-sampah' ? 'BS' : dashboardType === 'koperasi' ? 'KOP' : 'PROD'}
+                                </span>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })
+
+                if (totalShown === 0) {
+                  return (
+                    <div className="py-8 text-center text-xs text-zinc-400">
+                      <p>Menu &quot;{searchMenu}&quot; tidak ditemukan</p>
+                      <button
+                        onClick={() => setSearchMenu('')}
+                        className="mt-2 text-xs text-emerald-600 hover:underline"
+                      >
+                        Reset pencarian
+                      </button>
+                    </div>
+                  )
+                }
+
+                return groups
+              })()}
+            </div>
+
+            {/* Quick Tips */}
+            <div className="mt-auto rounded-xl border border-emerald-200/60 bg-emerald-50/60 p-2.5">
+              <p className="text-[11px] font-bold text-emerald-900">💡 Tips Singkat</p>
+              <p className="mt-0.5 text-[10px] leading-relaxed text-emerald-700/80">
+                Gunakan <b>Teller Wizard</b> untuk transaksi nasabah satu pintu. Klik <b>Dashboard</b> untuk berganti view.
               </p>
             </div>
           </nav>
