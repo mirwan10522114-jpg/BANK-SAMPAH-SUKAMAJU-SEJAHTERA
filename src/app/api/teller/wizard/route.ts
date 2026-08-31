@@ -148,6 +148,11 @@ export async function POST(req: NextRequest) {
 
       } else if (op.type === 'sedekah_sampah' && op.sedekahItems?.length) {
         // Sedekah Sampah - pure donation, no balance/points, but inventory goes to bank
+        const isSkipQc = op.qcMode === 'bersih' || op.skipQc === true
+        const isApplyQc = op.qcMode === 'langsung' || (op.applyQc === true && !isSkipQc)
+        const isPendingQc = op.qcMode === 'nanti' || (!isApplyQc && !isSkipQc && op.qcMode !== undefined)
+        const shouldFinalize = !isPendingQc
+
         const wasteItems = await db.wasteItem.findMany({
           where: { id: { in: op.sedekahItems.map((i) => i.wasteItemId) } },
           include: { category: true },
@@ -156,7 +161,7 @@ export async function POST(req: NextRequest) {
         const itemRows = op.sedekahItems.map((it) => {
           const wi = wasteItems.find((w) => w.id === it.wasteItemId)!
           const before = toNumber(it.quantityBeforeQc)
-          const after = op.applyQc && it.quantityAfterQc != null ? toNumber(it.quantityAfterQc) : before
+          const after = isApplyQc && it.quantityAfterQc != null ? toNumber(it.quantityAfterQc) : before
           totalKotor += before; totalBersih += after
           return {
             wasteItemId: wi.id,
@@ -164,30 +169,33 @@ export async function POST(req: NextRequest) {
             itemNameSnapshot: wi.name,
             categoryNameSnapshot: wi.category.name,
             unitSnapshot: wi.unit,
-            quantity: after,
+            quantity: isPendingQc ? before : after,
             quantityBeforeQc: before,
-            quantityAfterQc: op.applyQc ? after : null,
-            susutQc: Math.max(0, before - after),
+            quantityAfterQc: isPendingQc ? null : (isApplyQc ? after : before),
+            susutQc: isPendingQc ? 0 : Math.max(0, before - after),
             qcReason: it.qcReason || null,
           }
         })
-        const qcStatus = op.applyQc ? (itemRows.some((r) => r.susutQc > 0) ? 'adjusted' : 'passed') : 'passed'
-        const persentaseSusut = totalKotor > 0 ? (Math.round(((totalKotor - totalBersih) / totalKotor) * 10000) / 100) : 0
+        const qcStatus = isSkipQc ? 'tidak_perlu' : (isApplyQc ? (itemRows.some((r) => r.susutQc > 0) ? 'adjusted' : 'passed') : 'pending')
+        const persentaseSusut = shouldFinalize && totalKotor > 0 ? (Math.round(((totalKotor - totalBersih) / totalKotor) * 10000) / 100) : 0
+        const txStatus = shouldFinalize ? 'selesai' : 'menunggu_qc'
 
         // Generate kode SD SEBELUM create transaction agar sequence benar (00001 untuk transaksi pertama)
         const kodeSedekah = await generateTxNo('SD')
         const tx = await db.sedekahTransaction.create({
           data: {
             userId,
-            totalWeight: totalBersih,
+            totalWeight: shouldFinalize ? totalBersih : totalKotor,
             totalWeightKotor: totalKotor,
-            totalWeightBersih: totalBersih,
-            persentaseSusut,
+            totalWeightBersih: shouldFinalize ? totalBersih : null,
+            persentaseSusut: shouldFinalize ? persentaseSusut : null,
             notes: `Sedekah via Teller Wizard ${receiptNo}`,
             createdById: actor?.id,
+            status: txStatus,
             qcStatus,
-            qcAt: new Date(),
-            qcById: actor?.id,
+            qcAt: shouldFinalize ? new Date() : null,
+            qcById: shouldFinalize ? actor?.id : null,
+            finalizedAt: shouldFinalize ? new Date() : null,
             filterAt: new Date(),
             filterById: actor?.id,
             items: { create: itemRows },
@@ -195,22 +203,24 @@ export async function POST(req: NextRequest) {
         })
 
         // Add to inventory as bank asset (source: sedekah)
-        for (const row of itemRows) {
-          await addInventory(row.wasteItemId, 'sedekah', toNumber(row.quantity), 'sedekah', 'sedekah_transaction', tx.id, actor?.id, `Sedekah sampah (Wizard ${receiptNo})`)
+        if (shouldFinalize) {
+          for (const row of itemRows) {
+            await addInventory(row.wasteItemId, 'sedekah', toNumber(row.quantity), 'sedekah', 'sedekah_transaction', tx.id, actor?.id, `Sedekah sampah (Wizard ${receiptNo})`)
+          }
         }
 
-        totalSedekahBerat += totalBersih
+        totalSedekahBerat += shouldFinalize ? totalBersih : totalKotor
         // Simpan detail item + QC untuk struk
         const sedekahItemDetail = itemRows.map((r) => ({
           kategori: r.categoryNameSnapshot,
           nama: r.itemNameSnapshot,
           kotor: r.quantityBeforeQc,
-          bersih: r.quantityAfterQc != null ? r.quantityAfterQc : r.quantityBeforeQc,
-          susut: r.susutQc,
+          bersih: isPendingQc ? r.quantityBeforeQc : (r.quantityAfterQc != null ? r.quantityAfterQc : r.quantityBeforeQc),
+          susut: isPendingQc ? 0 : r.susutQc,
           unit: r.unitSnapshot,
           qcReason: r.qcReason,
         }))
-        result.steps.push({ type: 'sedekah_sampah', status: 'ok', txId: tx.id, kodeTransaksi: kodeSedekah, totalWeight: totalBersih, totalWeightKotor: totalKotor, itemCount: itemRows.length, items: sedekahItemDetail, qcStatus: qcStatus === 'adjusted' ? 'Disesuaikan' : 'Lulus' })
+        result.steps.push({ type: 'sedekah_sampah', status: 'ok', txId: tx.id, kodeTransaksi: kodeSedekah, totalWeight: shouldFinalize ? totalBersih : totalKotor, totalWeightKotor: totalKotor, itemCount: itemRows.length, items: sedekahItemDetail, qcStatus: shouldFinalize ? (qcStatus === 'adjusted' ? 'Disesuaikan' : (qcStatus === 'tidak_perlu' ? 'Sampah Bersih' : 'Lulus')) : 'Menunggu QC', txStatus })
 
       } else if (op.type === 'setor_simpanan' && anggotaId && op.jenisSimpanan && op.jumlah) {
         const tx = await setorSimpanan(anggotaId, op.jenisSimpanan, op.jumlah, actor?.id, `Setor ${op.jenisSimpanan} (Wizard ${receiptNo})`)
@@ -324,17 +334,19 @@ export async function POST(req: NextRequest) {
   }
 
   // Send combined struk via email to nasabah HANYA jika TIDAK ADA operasi nabung yang pending QC
-  const hasPendingQcNabung = result.steps.some(
-    (s: any) => s.type === 'nabung' && (s.txStatus === 'menunggu_qc' || s.qcStatus === 'pending' || s.qcStatus === 'Menunggu QC')
+  const hasPendingQc = result.steps.some(
+    (s: any) =>
+      (s.type === 'nabung' || s.type === 'sedekah_sampah') &&
+      (s.txStatus === 'menunggu_qc' || s.qcStatus === 'pending' || s.qcStatus === 'Menunggu QC')
   )
 
-  if (hasPendingQcNabung) {
-    console.log(`[Teller Wizard] Transaksi ${receiptNo} memiliki setoran nabung yang berstatus Menunggu QC. Email struk ditangguhkan hingga verifikasi QC selesai di antrian QC.`)
+  if (hasPendingQc) {
+    console.log(`[Teller Wizard] Transaksi ${receiptNo} memiliki setoran sampah yang berstatus Menunggu QC. Email struk ditangguhkan hingga verifikasi QC selesai di antrian QC.`)
     ;(result as any)._meta = {
       ...(result as any)._meta,
       emailSent: false,
       emailDeferredForQc: true,
-      qcMessage: 'Email struk tabungan akan otomatis dikirimkan ke nasabah setelah verifikasi QC disetujui di Antrian QC.',
+      qcMessage: 'Email struk transaksi akan otomatis dikirimkan ke nasabah setelah verifikasi QC disetujui di Antrian QC.',
     }
   } else {
     try {

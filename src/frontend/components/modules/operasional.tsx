@@ -1041,7 +1041,9 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
   const [rows, setRows] = useState<ItemRow[]>([
     { key: uid(), wasteItemId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' },
   ])
-  const [applyQc, setApplyQc] = useState(false)
+  const [qcMode, setQcMode] = useState<'langsung' | 'nanti' | 'bersih'>('nanti')
+  const applyQc = qcMode === 'langsung'
+  const skipQc = qcMode === 'bersih'
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
@@ -1084,7 +1086,7 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
     setNasabah(null)
     setDonorName('')
     setRows([{ key: uid(), wasteItemId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' }])
-    setApplyQc(false)
+    setQcMode('nanti')
     setNotes('')
   }
 
@@ -1124,9 +1126,15 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
         })),
         notes: notes || undefined,
         applyQc,
+        skipQc,
+        qcMode,
       }
       const tx: any = await api.operasional.sedekahCreate(payload)
-      toast.success('Sedekah sampah berhasil disimpan.')
+      if (tx?._meta?.emailDeferredForQc) {
+        toast.success('Sedekah sampah dicatat! Masuk ke Antrian QC untuk disortir/ditimbang.')
+      } else {
+        toast.success('Sedekah sampah berhasil disimpan dan dicatat ke inventaris!')
+      }
 
       const itemRows = (tx.items || []).map((it: any) => ({
         kode: it.itemCodeSnapshot || it.wasteItem?.code || '-',
@@ -1139,7 +1147,7 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
         subtotal: 0,
       }))
       setReceipt({
-        nomor: `SD-${(tx.id || '').slice(-6).toUpperCase()}`,
+        nomor: tx.kodeTransaksi || `SD-${(tx.id || '').slice(-6).toUpperCase()}`,
         jenis: 'sedekah',
         nasabahNama: nasabah?.name || donorName || 'Donatur Anonim',
         nasabahKode: nasabah?.memberCode || '',
@@ -1150,7 +1158,7 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
         totalNilai: 0,
         poin: 0,
         persentaseSusut: toNumber(tx.persentaseSusut ?? persentaseSusut),
-        qcStatus: tx.qcStatus || 'passed',
+        qcStatus: tx.qcStatus || (qcMode === 'nanti' ? 'pending' : 'passed'),
         items: itemRows,
       })
       reset()
@@ -1162,9 +1170,9 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
   }
 
   const extraInfo = (
-    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+    <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
       <AlertCircle className="mr-1 inline size-3.5" />
-      Sedekah tidak menghasilkan saldo nasabah — material menjadi aset Bank Sampah.
+      Sedekah tidak menghasilkan saldo nasabah — material menjadi aset Bank Sampah untuk bahan baku daur ulang/produk olahan.
     </div>
   )
 
@@ -1178,7 +1186,7 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
           <div>
             <CardTitle className="text-emerald-900">Sedekah Sampah</CardTitle>
             <CardDescription>
-              Donasi sampah ke Bank Sampah. Tidak ada saldo atau poin untuk donatur.
+              Donasi sampah ke Bank Sampah. Tidak ada saldo atau poin untuk donatur — inventaris masuk ke bank.
             </CardDescription>
           </div>
         </div>
@@ -1208,29 +1216,78 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
 
         <Separator className="bg-emerald-100" />
 
-        {/* QC Toggle */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <Switch
-              checked={applyQc}
-              onCheckedChange={setApplyQc}
-              className="data-[state=checked]:bg-emerald-600"
-            />
-            <div>
-              <div className="text-sm font-medium text-emerald-900">Terapkan QC (Quality Control)</div>
-              <div className="text-xs text-muted-foreground">
-                Aktifkan untuk input berat bersih setelah QC & alasan penyesuaian.
-              </div>
-            </div>
+        {/* QC Mode Selector */}
+        <div className="rounded-lg border border-rose-200 bg-rose-50/40 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-rose-900 flex items-center gap-1.5">
+              <ShieldCheck className="size-4 text-rose-600" /> Mode Quality Control (QC) Sedekah
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addRow}
+              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+            >
+              <Plus className="size-4" /> Tambah Item
+            </Button>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={addRow}
-            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-          >
-            <Plus className="size-4" /> Tambah Item
-          </Button>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => setQcMode('langsung')}
+              className={cn(
+                'rounded-lg border p-2 text-left transition-all',
+                qcMode === 'langsung'
+                  ? 'border-rose-500 bg-rose-100 ring-2 ring-rose-400'
+                  : 'border-zinc-200 bg-white hover:bg-rose-50'
+              )}
+            >
+              <div className="flex items-center gap-1.5">
+                <div className={cn('flex h-4 w-4 items-center justify-center rounded-full border-2', qcMode === 'langsung' ? 'border-rose-600 bg-rose-600' : 'border-zinc-300')}>
+                  {qcMode === 'langsung' && <CheckCircle2 className="size-2.5 text-white" />}
+                </div>
+                <span className="text-xs font-semibold text-rose-900">QC Langsung</span>
+              </div>
+              <p className="mt-1 text-[10px] text-zinc-500">Timbang bersih di tempat. Langsung masuk inventaris.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setQcMode('nanti')}
+              className={cn(
+                'rounded-lg border p-2 text-left transition-all',
+                qcMode === 'nanti'
+                  ? 'border-amber-500 bg-amber-100 ring-2 ring-amber-400'
+                  : 'border-zinc-200 bg-white hover:bg-amber-50'
+              )}
+            >
+              <div className="flex items-center gap-1.5">
+                <div className={cn('flex h-4 w-4 items-center justify-center rounded-full border-2', qcMode === 'nanti' ? 'border-amber-600 bg-amber-600' : 'border-zinc-300')}>
+                  {qcMode === 'nanti' && <CheckCircle2 className="size-2.5 text-white" />}
+                </div>
+                <span className="text-xs font-semibold text-amber-900">QC Nanti</span>
+              </div>
+              <p className="mt-1 text-[10px] text-zinc-500">Masuk Antrian QC untuk disortir & disusutkan nanti.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setQcMode('bersih')}
+              className={cn(
+                'rounded-lg border p-2 text-left transition-all',
+                qcMode === 'bersih'
+                  ? 'border-blue-500 bg-blue-100 ring-2 ring-blue-400'
+                  : 'border-zinc-200 bg-white hover:bg-blue-50'
+              )}
+            >
+              <div className="flex items-center gap-1.5">
+                <div className={cn('flex h-4 w-4 items-center justify-center rounded-full border-2', qcMode === 'bersih' ? 'border-blue-600 bg-blue-600' : 'border-zinc-300')}>
+                  {qcMode === 'bersih' && <CheckCircle2 className="size-2.5 text-white" />}
+                </div>
+                <span className="text-xs font-semibold text-blue-900">Sampah Bersih</span>
+              </div>
+              <p className="mt-1 text-[10px] text-zinc-500">Tanpa QC (berat kotor = bersih). Langsung masuk stok.</p>
+            </button>
+          </div>
         </div>
 
         {/* Item rows */}
@@ -2459,11 +2516,11 @@ export function Operasional() {
 }
 
 // ============================================================
-// QcQueueView — Halaman Antrian QC untuk Nabung
+// QcQueueView — Halaman Antrian QC untuk Nabung & Sedekah Sampah
 // ============================================================
-// Tampilkan semua transaksi nabung dengan status = "menunggu_qc"
+// Tampilkan semua transaksi nabung dan sedekah dengan status = "menunggu_qc"
 // Petugas QC pilih satu transaksi → input berat bersih per item →
-// confirm → saldo masuk ke nasabah
+// confirm → saldo masuk ke nasabah (nabung) atau stok masuk ke inventaris (sedekah)
 // ============================================================
 function QcQueueView() {
   const [queue, setQueue] = useState<any[]>([])
@@ -2515,7 +2572,11 @@ function QcQueueView() {
         qcReason: v.qcReason || null,
       }))
 
-      const res = await fetch(`/api/operasional/nabung/${selected.id}`, {
+      const endpoint = selected.tipe === 'sedekah'
+        ? `/api/operasional/sedekah/${selected.id}`
+        : `/api/operasional/nabung/${selected.id}`
+
+      const res = await fetch(endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2530,7 +2591,11 @@ function QcQueueView() {
         toast.error(data.error || 'Gagal menyimpan QC')
         return
       }
-      toast.success(rejectMode ? 'Transaksi ditolak. Saldo tidak masuk.' : 'QC berhasil dikonfirmasi. Saldo nasabah telah bertambah.')
+      if (rejectMode) {
+        toast.success(selected.tipe === 'sedekah' ? 'Sedekah sampah ditolak. Stok tidak masuk.' : 'Transaksi ditolak. Saldo tidak masuk.')
+      } else {
+        toast.success(selected.tipe === 'sedekah' ? 'QC Sedekah berhasil dikonfirmasi! Stok bersih sampah telah dicatat ke inventaris & struk dikirim ke donatur.' : 'QC Tabungan berhasil dikonfirmasi! Saldo nasabah telah bertambah & struk telah dikirim.')
+      }
       setSelected(null)
       setEditItems({})
       load()
@@ -2555,18 +2620,20 @@ function QcQueueView() {
     )
   }
 
+  const isSedekah = selected?.tipe === 'sedekah'
+
   return (
     <div className="space-y-4">
       <Card className="border-amber-200 bg-amber-50/30">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base text-amber-900">
             <ClipboardList className="size-5" />
-            Antrian Quality Control — Nabung Sampah
+            Antrian Quality Control — Setoran & Sedekah Sampah
           </CardTitle>
           <CardDescription className="text-xs">
             {queue.length === 0
               ? 'Tidak ada transaksi menunggu QC. Semua sudah diproses.'
-              : `${queue.length} transaksi menunggu QC (urut terlama dulu / FIFO)`}
+              : `${queue.length} transaksi menunggu QC (Nabung & Sedekah · urut terlama dulu / FIFO)`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -2586,15 +2653,26 @@ function QcQueueView() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <Clock className="size-4 text-amber-600" />
-                      <span className="font-semibold text-emerald-900">{tx.user?.name || '-'}</span>
-                      <span className="text-xs text-emerald-600">({tx.user?.memberCode || '-'})</span>
+                      <span className="font-semibold text-zinc-900">{tx.user?.name || tx.donorName || 'Donatur'}</span>
+                      {tx.user?.memberCode && (
+                        <span className="text-xs text-zinc-500">({tx.user?.memberCode})</span>
+                      )}
+                      {tx.tipe === 'sedekah' ? (
+                        <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                          🤲 Sedekah Sampah
+                        </span>
+                      ) : (
+                        <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                          ♻️ Nabung Sampah
+                        </span>
+                      )}
                     </div>
-                    <div className="text-xs text-emerald-700 mt-1">
+                    <div className="text-xs text-zinc-600 mt-1">
                       {tx.items?.length} item · {tx.items?.reduce((s: number, i: any) => s + toNumber(i.quantityBeforeQc), 0)} kg kotor · {formatDateTime(tx.transactedAt)}
                     </div>
                   </div>
                   <div className="text-xs text-amber-700 font-medium">
-                    Menunggu QC →
+                    Proses QC →
                   </div>
                 </div>
               ))}
@@ -2605,40 +2683,59 @@ function QcQueueView() {
 
       {/* Modal QC Detail */}
       {selected && (
-        <Card className="border-emerald-200">
+        <Card className={cn('border-2', isSedekah ? 'border-rose-200' : 'border-emerald-200')}>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base text-emerald-900">
-                QC — {selected.user?.name} ({selected.user?.memberCode})
-              </CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base text-zinc-900">
+                  QC — {selected.user?.name || selected.donorName || 'Donatur'} {selected.user?.memberCode ? `(${selected.user?.memberCode})` : ''}
+                </CardTitle>
+                {isSedekah ? (
+                  <span className="rounded-md bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
+                    🤲 Sedekah Sampah
+                  </span>
+                ) : (
+                  <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                    ♻️ Nabung Sampah
+                  </span>
+                )}
+              </div>
               <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>
                 <X className="size-4" /> Tutup
               </Button>
             </div>
             <CardDescription className="text-xs">
-              Transaksi: {selected.id.slice(-8)} · {formatDateTime(selected.transactedAt)}
+              Transaksi: {selected.kodeTransaksi || selected.id.slice(-8)} · {formatDateTime(selected.transactedAt)}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="rounded-md border border-amber-200 bg-amber-50/50 p-3 text-xs text-amber-900">
-              <strong>Petunjuk:</strong> Input berat bersih per item setelah dipilah/diperiksa. Kalau sampah kotor/basah/tercampur, berat bersih akan lebih kecil dari berat kotor. Sistem otomatis hitung susut & nilai final.
+            <div className="rounded-md border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900">
+              <strong>Petunjuk:</strong> Input berat bersih per item setelah disortir/dibersihkan.
+              {isSedekah
+                ? ' Karena ini sampah sedekah, berat bersih akan langsung menjadi stok bahan baku inventaris bank sampah untuk proses daur ulang/pengolahan produk.'
+                : ' Sistem otomatis menghitung susut dan nilai rupiah saldo yang masuk ke rekening nasabah.'}
             </div>
 
             {selected.items?.map((item: any) => (
-              <div key={item.id} className="rounded-md border border-emerald-100 p-3 space-y-2">
+              <div key={item.id} className="rounded-md border border-zinc-200 bg-zinc-50/50 p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium text-emerald-900">{item.itemNameSnapshot}</div>
-                    <div className="text-xs text-emerald-600">{item.categoryNameSnapshot} · {item.itemCodeSnapshot}</div>
+                    <div className="font-medium text-zinc-900">{item.itemNameSnapshot}</div>
+                    <div className="text-xs text-zinc-500">{item.categoryNameSnapshot} · {item.itemCodeSnapshot}</div>
                   </div>
                   <div className="text-right text-xs">
                     <div>Berat kotor: <strong>{toNumber(item.quantityBeforeQc)} {item.unitSnapshot}</strong></div>
-                    <div>Harga: <strong>{formatRupiah(toNumber(item.pricePerUnitSnapshot))}</strong>/{item.unitSnapshot}</div>
+                    {!isSedekah && (
+                      <div>Harga: <strong>{formatRupiah(toNumber(item.pricePerUnitSnapshot))}</strong>/{item.unitSnapshot}</div>
+                    )}
+                    {isSedekah && (
+                      <div className="text-rose-600 font-semibold">Sedekah / Donasi</div>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Label className="text-xs text-emerald-800">Berat Bersih (kg)</Label>
+                    <Label className="text-xs text-zinc-700">Berat Bersih ({item.unitSnapshot || 'kg'})</Label>
                     <Input
                       type="number"
                       step="0.001"
@@ -2652,14 +2749,14 @@ function QcQueueView() {
                         },
                       }))}
                       disabled={rejectMode}
-                      className="border-emerald-200"
+                      className="border-zinc-300 bg-white"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-emerald-800">Alasan QC (opsional)</Label>
+                    <Label className="text-xs text-zinc-700">Alasan QC / Catatan Sortir (opsional)</Label>
                     <Input
                       type="text"
-                      placeholder="cth: basah, ada tanah"
+                      placeholder="cth: kotoran disortir, basah"
                       value={editItems[item.id]?.qcReason || ''}
                       onChange={(e) => setEditItems((prev) => ({
                         ...prev,
@@ -2669,33 +2766,43 @@ function QcQueueView() {
                         },
                       }))}
                       disabled={rejectMode}
-                      className="border-emerald-200"
+                      className="border-zinc-300 bg-white"
                     />
                   </div>
                 </div>
                 {editItems[item.id] && (
-                  <div className="text-xs text-emerald-700">
-                    Susut: <strong>{Math.max(0, toNumber(item.quantityBeforeQc) - (editItems[item.id].quantityAfterQc || 0))} {item.unitSnapshot}</strong>
-                    {' · '}
-                    Subtotal final: <strong>{formatRupiah((editItems[item.id].quantityAfterQc || 0) * toNumber(item.pricePerUnitSnapshot))}</strong>
+                  <div className="text-xs text-zinc-700">
+                    Susut: <strong>{Math.max(0, toNumber(item.quantityBeforeQc) - (editItems[item.id].quantityAfterQc || 0)).toFixed(2)} {item.unitSnapshot}</strong>
+                    {!isSedekah && (
+                      <>
+                        {' · '}
+                        Subtotal final: <strong>{formatRupiah((editItems[item.id].quantityAfterQc || 0) * toNumber(item.pricePerUnitSnapshot))}</strong>
+                      </>
+                    )}
+                    {isSedekah && (
+                      <>
+                        {' · '}
+                        Stok Masuk: <strong className="text-emerald-700">{(editItems[item.id].quantityAfterQc || 0).toFixed(2)} {item.unitSnapshot}</strong>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
             ))}
 
             <div>
-              <Label className="text-xs text-emerald-800">Catatan QC (opsional)</Label>
+              <Label className="text-xs text-zinc-700">Catatan QC (opsional)</Label>
               <Input
                 type="text"
-                placeholder="Catatan tambahan untuk transaksi ini"
+                placeholder="Catatan tambahan hasil pemeriksaan QC"
                 value={qcNotes}
                 onChange={(e) => setQcNotes(e.target.value)}
-                className="border-emerald-200"
+                className="border-zinc-300 bg-white"
               />
             </div>
 
             {/* Reject mode */}
-            <div className="rounded-md border border-rose-200 bg-rose-50/30 p-3 space-y-2">
+            <div className="rounded-md border border-rose-200 bg-rose-50/40 p-3 space-y-2">
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -2705,48 +2812,65 @@ function QcQueueView() {
                   className="h-4 w-4 accent-rose-600"
                 />
                 <Label htmlFor="rejectAll" className="text-sm font-semibold text-rose-800">
-                  Tolak Total (semua sampah ditolak, saldo tidak masuk)
+                  {isSedekah ? 'Tolak Sedekah Sampah (sampah tidak layak, tidak masuk stok)' : 'Tolak Total (semua sampah ditolak, saldo tidak masuk)'}
                 </Label>
               </div>
               {rejectMode && (
                 <Input
                   type="text"
-                  placeholder="Alasan penolakan (wajib)"
+                  placeholder="Alasan penolakan (wajib diisi)"
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
-                  className="border-rose-300"
+                  className="border-rose-300 bg-white"
                 />
               )}
             </div>
 
             {/* Summary preview */}
             {!rejectMode && (
-              <div className="rounded-md bg-emerald-50 p-3 text-sm">
-                <div className="font-semibold text-emerald-900 mb-1">Preview Final:</div>
+              <div className={cn('rounded-md p-3 text-sm', isSedekah ? 'bg-rose-50/70 border border-rose-200' : 'bg-emerald-50 border border-emerald-200')}>
+                <div className="font-semibold text-zinc-900 mb-1">Preview Hasil QC:</div>
                 {(() => {
                   const totalBersih = selected.items?.reduce((s: number, i: any) => s + (editItems[i.id]?.quantityAfterQc || 0), 0) || 0
                   const totalKotor = selected.items?.reduce((s: number, i: any) => s + toNumber(i.quantityBeforeQc), 0) || 0
-                  const totalNilai = selected.items?.reduce((s: number, i: any) => s + (editItems[i.id]?.quantityAfterQc || 0) * toNumber(i.pricePerUnitSnapshot), 0) || 0
+                  const totalNilai = selected.items?.reduce((s: number, i: any) => s + (editItems[i.id]?.quantityAfterQc || 0) * toNumber(i.pricePerUnitSnapshot || 0), 0) || 0
                   const totalSusut = Math.max(0, totalKotor - totalBersih)
                   return (
                     <div className="space-y-1 text-xs">
-                      <div className="flex justify-between"><span>Total Berat Kotor:</span><strong>{totalKotor} kg</strong></div>
-                      <div className="flex justify-between"><span>Total Berat Bersih:</span><strong className="text-emerald-700">{totalBersih} kg</strong></div>
-                      <div className="flex justify-between"><span>Total Susut:</span><strong className="text-amber-700">{totalSusut} kg</strong></div>
-                      <div className="flex justify-between text-base"><span>Total Nilai Final:</span><strong className="text-emerald-800">{formatRupiah(totalNilai)}</strong></div>
+                      <div className="flex justify-between"><span>Total Berat Kotor:</span><strong>{totalKotor.toFixed(2)} kg</strong></div>
+                      <div className="flex justify-between"><span>Total Berat Bersih:</span><strong className="text-emerald-700">{totalBersih.toFixed(2)} kg</strong></div>
+                      <div className="flex justify-between"><span>Total Susut (Kotoran/Residu):</span><strong className="text-amber-700">{totalSusut.toFixed(2)} kg</strong></div>
+                      {!isSedekah ? (
+                        <div className="flex justify-between text-base pt-1 border-t border-emerald-200"><span>Total Saldo Masuk:</span><strong className="text-emerald-800">{formatRupiah(totalNilai)}</strong></div>
+                      ) : (
+                        <div className="flex justify-between text-sm pt-1 border-t border-rose-200 text-rose-900 font-semibold"><span>Stok Masuk Gudang:</span><span>{totalBersih.toFixed(2)} kg (Bahan Baku Olahan)</span></div>
+                      )}
                     </div>
                   )
                 })()}
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 pt-1">
               <Button
                 onClick={handleSubmit}
                 disabled={submitting || (rejectMode && !rejectReason.trim())}
-                className={rejectMode ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}
+                className={cn(
+                  'text-white',
+                  rejectMode
+                    ? 'bg-rose-600 hover:bg-rose-700'
+                    : isSedekah
+                    ? 'bg-rose-600 hover:bg-rose-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                )}
               >
-                {submitting ? 'Memproses...' : rejectMode ? '🚫 Tolak Total (Tanpa Saldo)' : '✓ Konfirmasi QC & Kredit Saldo'}
+                {submitting
+                  ? 'Memproses...'
+                  : rejectMode
+                  ? '🚫 Tolak Transaksi'
+                  : isSedekah
+                  ? '✓ Konfirmasi QC & Masukkan Stok Gudang'
+                  : '✓ Konfirmasi QC & Kredit Saldo'}
               </Button>
               <Button variant="outline" onClick={() => setSelected(null)}>
                 Batal

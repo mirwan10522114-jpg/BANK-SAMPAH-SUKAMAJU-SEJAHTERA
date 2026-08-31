@@ -45,15 +45,23 @@ export function TellerWizard() {
   const [produkList] = useState<any[]>([])
   const [items, setItems] = useState<Item[]>([])
   const [sedekahItems, setSedekahItems] = useState<SedekahItem[]>([])
-  // qcMode: 3 mode Quality Control untuk penimbangan sampah
+  // qcMode: 3 mode Quality Control untuk penimbangan sampah tabungan
   // - 'langsung'  → QC di tempat: teller input berat bersih saat itu juga → langsung finalize, saldo masuk
   // - 'nanti'     → Sampah dikumpulkan dulu, QC dilakukan kemudian → status pending QC, saldo belum masuk
   // - 'bersih'    → Sampah dianggap bersih, tidak perlu QC → langsung finalize, saldo masuk (berat kotor = berat bersih)
   // Default: 'nanti' (paling aman — saldo hanya masuk setelah QC benar-benar dilakukan)
   const [qcMode, setQcMode] = useState<'langsung' | 'nanti' | 'bersih'>('nanti')
-  // Computed flags untuk backward compatibility dengan code existing
   const applyQc = qcMode === 'langsung'
   const skipQc = qcMode === 'bersih'
+
+  // sedekahQcMode: 3 mode QC untuk Sedekah Sampah
+  // - 'langsung'  → QC di tempat: input berat bersih saat itu juga → langsung finalize, stok inventaris masuk
+  // - 'nanti'     → Sampah sedekah kotor/belum disortir → masuk antrian QC untuk ditimbang bersih nanti
+  // - 'bersih'    → Sampah sedekah sudah bersih → tanpa QC, langsung finalize ke stok inventaris
+  const [sedekahQcMode, setSedekahQcMode] = useState<'langsung' | 'nanti' | 'bersih'>('nanti')
+  const applySedekahQc = sedekahQcMode === 'langsung'
+  const skipSedekahQc = sedekahQcMode === 'bersih'
+
   const [notes, setNotes] = useState('')
   const [operations, setOperations] = useState<any[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -124,7 +132,7 @@ export function TellerWizard() {
   }, 0)
 
   const sedekahWeight = sedekahItems.reduce((s, it) => {
-    const qty = applyQc && it.quantityAfterQc != null ? it.quantityAfterQc : it.quantityBeforeQc
+    const qty = applySedekahQc && it.quantityAfterQc != null ? it.quantityAfterQc : it.quantityBeforeQc
     return s + (toNumber(qty))
   }, 0)
 
@@ -140,7 +148,13 @@ export function TellerWizard() {
     }
     // sedekah sampah operation
     if (sedekahItems.length > 0 && sedekahItems.some((i) => i.wasteItemId && i.quantityBeforeQc > 0)) {
-      ops.push({ type: 'sedekah_sampah', sedekahItems: sedekahItems.filter((i) => i.wasteItemId && i.quantityBeforeQc > 0), applyQc })
+      ops.push({
+        type: 'sedekah_sampah',
+        sedekahItems: sedekahItems.filter((i) => i.wasteItemId && i.quantityBeforeQc > 0),
+        applyQc: applySedekahQc,
+        skipQc: skipSedekahQc,
+        qcMode: sedekahQcMode,
+      })
     }
     // other operations
     for (const op of operations) {
@@ -160,7 +174,7 @@ export function TellerWizard() {
         toast.success('Transaksi berhasil diproses & struk telah dikirim ke email nasabah!')
       }
       // reset
-      setItems([]); setSedekahItems([]); setOperations([]); setQcMode('nanti'); setNotes('')
+      setItems([]); setSedekahItems([]); setOperations([]); setQcMode('nanti'); setSedekahQcMode('nanti'); setNotes('')
       // refresh balance
       const b = await api.operasional.nasabahBalance(nasabah.id)
       setBalance(b.balance)
@@ -179,7 +193,7 @@ export function TellerWizard() {
   }
 
   const reset = () => {
-    setNasabah(null); setAnggota(null); setBalance(null); setItems([]); setSedekahItems([]); setOperations([]); setStep(1); setReceipt(null); setPinjamanList([]); setQcMode('nanti'); setNotes('')
+    setNasabah(null); setAnggota(null); setBalance(null); setItems([]); setSedekahItems([]); setOperations([]); setStep(1); setReceipt(null); setPinjamanList([]); setQcMode('nanti'); setSedekahQcMode('nanti'); setNotes('')
   }
 
   return (
@@ -418,21 +432,98 @@ export function TellerWizard() {
           </Card>
 
           {/* Service 1b: Sedekah Sampah */}
-          <Card className="border-rose-100">
+          <Card className="border-rose-200">
             <CardHeader className="flex flex-row items-center justify-between">
               <div className="flex items-center gap-2">
                 <Heart className="h-5 w-5 text-rose-500" />
                 <div>
                   <CardTitle className="text-base text-rose-900">Sedekah Sampah</CardTitle>
-                  <CardDescription className="text-xs">Donasi sampah untuk kegiatan sosial — tanpa saldo/poin, inventaris masuk ke bank</CardDescription>
+                  <CardDescription className="text-xs">Donasi sampah warga untuk kegiatan sosial — inventaris masuk ke bank untuk bahan baku daur ulang/produk</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {sedekahItems.length === 0 && <p className="rounded-lg border border-dashed border-rose-200 p-4 text-center text-xs text-rose-600/60">Belum ada item sedekah. Klik &quot;Tambah Item&quot; untuk menambahkan.</p>}
+              {/* Sedekah QC Mode Selector - 3 pilihan */}
+              <div className="rounded-lg border border-rose-200 bg-rose-50/40 p-3">
+                <p className="mb-2 text-xs font-semibold text-rose-900 flex items-center gap-1">
+                  <ShieldCheck className="size-3 text-rose-600" /> Mode Quality Control (QC) Sedekah
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSedekahQcMode('langsung')}
+                    className={`rounded-lg border p-2 text-left transition-all ${
+                      sedekahQcMode === 'langsung'
+                        ? 'border-rose-500 bg-rose-100 ring-2 ring-rose-400'
+                        : 'border-zinc-200 bg-white hover:bg-rose-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <div className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${sedekahQcMode === 'langsung' ? 'border-rose-600 bg-rose-600' : 'border-zinc-300'}`}>
+                        {sedekahQcMode === 'langsung' && <CheckCircle2 className="size-2.5 text-white" />}
+                      </div>
+                      <span className="text-xs font-semibold text-rose-900">QC Langsung</span>
+                    </div>
+                    <p className="mt-1 text-[10px] text-zinc-500">Timbang bersih di tempat. Langsung masuk stok gudang.</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSedekahQcMode('nanti')}
+                    className={`rounded-lg border p-2 text-left transition-all ${
+                      sedekahQcMode === 'nanti'
+                        ? 'border-amber-500 bg-amber-100 ring-2 ring-amber-400'
+                        : 'border-zinc-200 bg-white hover:bg-amber-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <div className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${sedekahQcMode === 'nanti' ? 'border-amber-600 bg-amber-600' : 'border-zinc-300'}`}>
+                        {sedekahQcMode === 'nanti' && <CheckCircle2 className="size-2.5 text-white" />}
+                      </div>
+                      <span className="text-xs font-semibold text-amber-900">QC Nanti</span>
+                    </div>
+                    <p className="mt-1 text-[10px] text-zinc-500">Sampah sedekah disortir nanti di Antrian QC.</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSedekahQcMode('bersih')}
+                    className={`rounded-lg border p-2 text-left transition-all ${
+                      sedekahQcMode === 'bersih'
+                        ? 'border-blue-500 bg-blue-100 ring-2 ring-blue-400'
+                        : 'border-zinc-200 bg-white hover:bg-blue-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <div className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${sedekahQcMode === 'bersih' ? 'border-blue-600 bg-blue-600' : 'border-zinc-300'}`}>
+                        {sedekahQcMode === 'bersih' && <CheckCircle2 className="size-2.5 text-white" />}
+                      </div>
+                      <span className="text-xs font-semibold text-blue-900">Sampah Bersih</span>
+                    </div>
+                    <p className="mt-1 text-[10px] text-zinc-500">Tanpa QC (berat kotor = bersih). Langsung masuk stok.</p>
+                  </button>
+                </div>
+                {/* Info banner sesuai mode */}
+                {sedekahQcMode === 'nanti' && (
+                  <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200/80 p-2.5 text-[11px] text-amber-800">
+                    ⏳ <strong>Mode QC Nanti (Umum untuk Sedekah):</strong> Sampah donasi biasanya belum disortir. Masuk ke <strong>Antrian QC</strong> untuk dipilah & disusutkan. Berat bersih final akan otomatis menambah stok bahan baku olahan dan struk donasi dikirim ke email warga setelah diverifikasi di Antrian QC.
+                  </div>
+                )}
+                {sedekahQcMode === 'langsung' && (
+                  <div className="mt-2 rounded-lg bg-rose-50 border border-rose-200/80 p-2.5 text-[11px] text-rose-800">
+                    ⚖️ <strong>Mode QC Langsung:</strong> Masukkan berat bersih hasil timbang di tempat. Stok bahan baku <strong>langsung masuk ke inventaris bank</strong> dan email struk donasi langsung dikirim.
+                  </div>
+                )}
+                {sedekahQcMode === 'bersih' && (
+                  <div className="mt-2 rounded-lg bg-blue-50 border border-blue-200/80 p-2.5 text-[11px] text-blue-800">
+                    ✅ <strong>Mode Sampah Bersih:</strong> Tanpa QC (berat kotor = bersih). Stok bahan baku <strong>langsung masuk ke inventaris</strong> dan email struk dikirim saat ini juga.
+                  </div>
+                )}
+              </div>
+              {/* End Sedekah QC Mode Selector */}
+
+              {sedekahItems.length === 0 && <p className="rounded-lg border border-dashed border-rose-200 p-4 text-center text-xs text-rose-600/60">Belum ada item sedekah. Klik &quot;Tambah Item Sedekah&quot; untuk menambahkan.</p>}
               {sedekahItems.map((it, i) => {
                 const wi = barangList.find((b) => b.id === it.wasteItemId)
-                const qty = applyQc && it.quantityAfterQc != null ? it.quantityAfterQc : it.quantityBeforeQc
+                const qty = applySedekahQc && it.quantityAfterQc != null ? it.quantityAfterQc : it.quantityBeforeQc
                 return (
                   <div key={i} className="rounded-xl border border-rose-100 bg-rose-50/30 p-3">
                     <div className="grid gap-2 sm:grid-cols-12 sm:items-end">
@@ -447,7 +538,7 @@ export function TellerWizard() {
                         <Label className="text-[11px] text-rose-700">Berat Kotor (kg)</Label>
                         <Input type="number" step="0.001" value={it.quantityBeforeQc || ''} onChange={(e) => updateSedekahItem(i, { quantityBeforeQc: parseFloat(e.target.value) || 0 })} className="border-rose-200 bg-white" />
                       </div>
-                      {applyQc && (
+                      {applySedekahQc && (
                         <div className="sm:col-span-2">
                           <Label className="text-[11px] text-rose-700">Berat Bersih (kg)</Label>
                           <Input type="number" step="0.001" value={it.quantityAfterQc ?? ''} onChange={(e) => updateSedekahItem(i, { quantityAfterQc: parseFloat(e.target.value) || 0 })} className="border-rose-200 bg-white" />
@@ -456,7 +547,7 @@ export function TellerWizard() {
                       <div className="sm:col-span-3">
                         <Label className="text-[11px] text-rose-700">Berat Diterima</Label>
                         <p className="text-sm font-bold text-rose-900">{formatNumber(qty, 3)} kg</p>
-                        {applyQc && it.quantityAfterQc != null && it.quantityBeforeQc > it.quantityAfterQc && (
+                        {applySedekahQc && it.quantityAfterQc != null && it.quantityBeforeQc > it.quantityAfterQc && (
                           <p className="text-[10px] text-amber-600">Susut: {formatNumber(it.quantityBeforeQc - it.quantityAfterQc, 3)} kg</p>
                         )}
                       </div>
@@ -471,7 +562,7 @@ export function TellerWizard() {
                 <Button variant="outline" size="sm" onClick={addSedekahItem} className="border-rose-300 text-rose-700"><Plus className="h-4 w-4" /> Tambah Item Sedekah</Button>
                 {sedekahItems.length > 0 && (
                   <div className="text-right">
-                    <p className="text-xs text-rose-600">Total donasi</p>
+                    <p className="text-xs text-rose-600">Total donasi sampah</p>
                     <p className="text-lg font-bold text-rose-900">{formatNumber(sedekahWeight, 2)} kg</p>
                   </div>
                 )}
