@@ -6,6 +6,7 @@ import {
   Banknote, ArrowRight, Settings, LogOut, ChevronDown, ShoppingBag, FileBarChart,
   BookOpen, Camera, Megaphone, Send, Mail, AlertTriangle, Loader2, Image as ImageIcon,
   Search, Layers, Sparkles, FolderGit2, Wallet, Calendar, CheckCircle2, Users, BellRing, Filter,
+  ClipboardCheck, AlertCircle, ArrowUpRight, Trophy, RefreshCw, Zap, Package, Clock, ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -121,6 +122,27 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
   const [users, setUsers] = useState<any[]>([])
   const [actingUserId, setActingUserId] = useState<string>('')
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showDailyChecklist, setShowDailyChecklist] = useState(false)
+  const [dailyData, setDailyData] = useState<any>(null)
+  const [dailyLoading, setDailyLoading] = useState(false)
+
+  const loadDailyChecklist = async () => {
+    setDailyLoading(true)
+    try {
+      const res = await fetch('/api/admin/daily-checklist')
+      if (res.ok) {
+        const d = await res.json()
+        setDailyData(d)
+      }
+    } catch {}
+    finally { setDailyLoading(false) }
+  }
+
+  useEffect(() => {
+    loadDailyChecklist()
+    const interval = setInterval(loadDailyChecklist, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     api.nasabah.list('', '').then((u) => {
@@ -186,7 +208,45 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
               <p className="hidden text-xs text-emerald-700/70 sm:block">Panel Admin · Sistem Terpadu</p>
             </div>
           </div>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2.5">
+            {/* Daily Assistant / Checklist Button */}
+            <button
+              onClick={() => {
+                loadDailyChecklist()
+                setShowDailyChecklist(true)
+              }}
+              className={cn(
+                'flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-bold transition-all shadow-sm border',
+                dailyData?.summary?.isAllDone
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-400 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-200'
+                  : (dailyData?.summary?.pendingTasks ?? 0) > 0
+                  ? 'bg-gradient-to-r from-amber-500 via-rose-500 to-red-600 text-white border-amber-300 hover:brightness-110 shadow-rose-200 animate-pulse'
+                  : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
+              )}
+              title="Klik untuk membuka Asisten Tugas Harian Admin"
+            >
+              {dailyData?.summary?.isAllDone ? (
+                <>
+                  <Trophy className="size-4 text-amber-300 animate-bounce" />
+                  <span className="hidden sm:inline">Kerja Hari Ini:</span>
+                  <span>✓ 100% Selesai!</span>
+                </>
+              ) : (
+                <>
+                  <ClipboardCheck className="size-4" />
+                  <span className="hidden sm:inline">Tugas Harian:</span>
+                  <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[11px]">
+                    {dailyData?.summary?.completedTasks ?? 0}/{dailyData?.summary?.totalTasks ?? 4}
+                  </span>
+                  {(dailyData?.summary?.pendingTasks ?? 0) > 0 && (
+                    <span className="hidden md:inline text-[10px] opacity-95">
+                      ({dailyData.summary.pendingTasks} perlu tindakan)
+                    </span>
+                  )}
+                </>
+              )}
+            </button>
+
             {/* Profile dropdown */}
             <div className="relative">
               <button
@@ -564,6 +624,20 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Daily Checklist Modal */}
+      <DailyChecklistModal
+        open={showDailyChecklist}
+        onOpenChange={setShowDailyChecklist}
+        data={dailyData}
+        loading={dailyLoading}
+        onRefresh={loadDailyChecklist}
+        onNavigate={(sec: string) => {
+          setSection(sec as Section)
+          setShowDailyChecklist(false)
+          setSidebarOpen(false)
+        }}
+      />
 
       {/* Sticky footer */}
       <footer className="mt-auto border-t border-emerald-200/60 bg-white py-4">
@@ -1199,5 +1273,323 @@ function ReminderSimpananWajibView() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// ============================================================
+// Daily Checklist & Action Center Modal
+// ============================================================
+function DailyChecklistModal({
+  open,
+  onOpenChange,
+  data,
+  loading,
+  onRefresh,
+  onNavigate,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  data: any
+  loading: boolean
+  onRefresh: () => void
+  onNavigate: (section: string) => void
+}) {
+  const [runningAction, setRunningAction] = useState<string | null>(null)
+
+  const summary = data?.summary || { totalTasks: 4, completedTasks: 0, pendingTasks: 4, progressPercent: 0, isAllDone: false }
+  const tasks = data?.tasks || []
+
+  const handleBlastPinjaman = async () => {
+    if (!confirm('Kirim email tagihan angsuran pinjaman ke SEMUA anggota yang jatuh tempo / terlambat?')) return
+    setRunningAction('pinjaman')
+    try {
+      const res = await fetch('/api/koperasi/tagihan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tagihSemua: true }),
+      })
+      const d = await res.json()
+      if (d.success) {
+        alert(`✅ Tagihan Pinjaman Terkirim: ${d.sentCount} email (${d.failedCount} gagal)`)
+        onRefresh()
+      } else {
+        alert(d.error || 'Gagal mengirim tagihan')
+      }
+    } catch (e: any) {
+      alert('Gagal: ' + e.message)
+    } finally {
+      setRunningAction(null)
+    }
+  }
+
+  const handleBlastSimpanan = async () => {
+    if (!confirm(`Kirim blast reminder Simpanan Wajib (${data?.namaBulan}) ke SEMUA anggota yang belum setor?`)) return
+    setRunningAction('simpanan')
+    try {
+      const res = await fetch('/api/koperasi/reminder-simpanan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blastSemua: true }),
+      })
+      const d = await res.json()
+      if (d.success) {
+        alert(`✅ Reminder Simpanan Wajib Terkirim: ${d.sentCount} email (${d.failedCount} gagal)`)
+        onRefresh()
+      } else {
+        alert(d.error || 'Gagal mengirim pengingat')
+      }
+    } catch (e: any) {
+      alert('Gagal: ' + e.message)
+    } finally {
+      setRunningAction(null)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl lg:max-w-3xl p-6">
+        <DialogHeader className="pb-2 border-b">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
+                <Calendar className="size-3.5" /> {data?.dateFormatted || 'Hari Ini'}
+              </span>
+              <span className="text-xs text-zinc-500 font-medium">· Target Operasional Harian</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onRefresh}
+              disabled={loading}
+              className="h-7 text-xs border-zinc-200"
+            >
+              <RefreshCw className={cn('size-3.5 mr-1.5', loading && 'animate-spin')} />
+              Segarkan
+            </Button>
+          </div>
+          <DialogTitle className="text-xl font-extrabold text-zinc-900 flex items-center gap-2 mt-1">
+            <ClipboardCheck className="size-6 text-emerald-600" /> Asisten Checklist & Reminder Harian Admin
+          </DialogTitle>
+          <DialogDescription className="text-xs text-zinc-500">
+            Tuntaskan seluruh reminder penagihan, verifikasi QC, dan cek stok untuk menyelesaikan indikator kerja harian.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-2">
+          {/* Progress Header */}
+          <div className="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/90 via-teal-50/60 to-white p-4.5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-800">Status Penyelesaian Harian</p>
+                <p className="text-lg font-black text-zinc-900 mt-0.5">
+                  {summary.isAllDone ? '🎉 100% TUNTAS — KERJA SELESAI!' : `${summary.completedTasks} dari ${summary.totalTasks} Tugas Selesai (${summary.progressPercent}%)`}
+                </p>
+              </div>
+              <div className="text-right">
+                <span className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold shadow-xs',
+                  summary.isAllDone ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'
+                )}>
+                  {summary.isAllDone ? <ShieldCheck className="size-4" /> : <Clock className="size-4" />}
+                  {summary.isAllDone ? 'Tuntas Hari Ini' : `${summary.pendingTasks} Perlu Tindakan`}
+                </span>
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="mt-3.5 h-3 w-full overflow-hidden rounded-full bg-zinc-200/80 p-0.5">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 transition-all duration-500"
+                style={{ width: `${summary.progressPercent}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-zinc-600 mt-2 font-medium">
+              {summary.statusText}
+            </p>
+          </div>
+
+          {/* Celebration Card when All Done */}
+          {summary.isAllDone && (
+            <div className="rounded-2xl border-2 border-emerald-400 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 p-5 text-white shadow-md">
+              <div className="flex items-start gap-3.5">
+                <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur">
+                  <Trophy className="size-7 text-amber-300 animate-bounce" />
+                </div>
+                <div>
+                  <h4 className="text-base font-black flex items-center gap-2">
+                    SELURUH TUGAS HARI INI TELAH SELESAI! <Sparkles className="size-4 text-amber-300" />
+                  </h4>
+                  <p className="text-xs text-emerald-50 mt-1 leading-relaxed">
+                    Kerja bagus! Seluruh tagihan pinjaman angsuran, pengingat simpanan wajib, verifikasi QC sampah, dan ketersediaan stok telah tertangani dengan baik. Operasional Bank Sampah & Koperasi Sukamaju Sejahtera berjalan prima hari ini.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Task List Cards */}
+          <div className="space-y-3">
+            {tasks.map((task: any) => {
+              const isPinjaman = task.id === 'pinjaman_reminders'
+              const isSimpanan = task.id === 'simpanan_wajib_reminder'
+              const isQc = task.id === 'antrian_qc_verification'
+              const isStok = task.id === 'stok_produk_monitoring'
+
+              return (
+                <div
+                  key={task.id}
+                  className={cn(
+                    'rounded-xl border p-4 transition-all',
+                    task.isDone
+                      ? 'border-emerald-200/70 bg-emerald-50/25'
+                      : 'border-amber-200 bg-amber-50/20 shadow-xs ring-1 ring-amber-200/50'
+                  )}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className={cn(
+                        'flex size-9 shrink-0 items-center justify-center rounded-xl font-bold',
+                        task.isDone
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-amber-100 text-amber-800'
+                      )}>
+                        {task.isDone ? <CheckCircle2 className="size-5" /> : <AlertCircle className="size-5" />}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-sm font-bold text-zinc-900">{task.title}</h4>
+                          <span className={cn(
+                            'rounded-full px-2 py-0.5 text-[10px] font-bold uppercase',
+                            task.isDone
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-100 text-rose-700'
+                          )}>
+                            {task.isDone ? '✓ Selesai' : `⚠️ ${task.count} Tindakan`}
+                          </span>
+                        </div>
+                        <p className="text-xs text-zinc-600 mt-1">{task.description}</p>
+
+                        {/* Extra Context Badges */}
+                        {isPinjaman && !task.isDone && task.details && (
+                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                            {task.details.terlambatCount > 0 && (
+                              <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-800">
+                                Terlambat: {task.details.terlambatCount}
+                              </span>
+                            )}
+                            {task.details.h3Count > 0 && (
+                              <span className="rounded-md bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-800">
+                                Jatuh Tempo ≤3 Hari: {task.details.h3Count}
+                              </span>
+                            )}
+                            {task.details.h7Count > 0 && (
+                              <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+                                Jatuh Tempo ≤7 Hari: {task.details.h7Count}
+                              </span>
+                            )}
+                            {task.details.h14Count > 0 && (
+                              <span className="rounded-md bg-yellow-100 px-2 py-0.5 text-[11px] font-bold text-yellow-800">
+                                Jatuh Tempo ≤14 Hari: {task.details.h14Count}
+                              </span>
+                            )}
+                            {task.details.h30Count > 0 && (
+                              <span className="rounded-md bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-800">
+                                Jatuh Tempo ≤30 Hari: {task.details.h30Count}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {isSimpanan && !task.isDone && (
+                          <div className="mt-2 text-xs text-zinc-500">
+                            Iuran Simpanan Wajib: <strong className="text-teal-800">{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(task.details?.nominalWajib || 0)}/bln</strong>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap items-center gap-2 self-start sm:self-center ml-auto">
+                      {isPinjaman && (
+                        <>
+                          {!task.isDone && (
+                            <Button
+                              size="sm"
+                              onClick={handleBlastPinjaman}
+                              disabled={runningAction === 'pinjaman'}
+                              className="bg-rose-600 hover:bg-rose-700 text-white text-xs h-8 shadow-xs"
+                            >
+                              {runningAction === 'pinjaman' ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Zap className="size-3.5 mr-1.5" />}
+                              Tagih Semua (Email)
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onNavigate('pengumuman')}
+                            className="text-xs h-8 border-zinc-300"
+                          >
+                            Buka Tagihan <ArrowUpRight className="size-3.5 ml-1" />
+                          </Button>
+                        </>
+                      )}
+
+                      {isSimpanan && (
+                        <>
+                          {!task.isDone && (
+                            <Button
+                              size="sm"
+                              onClick={handleBlastSimpanan}
+                              disabled={runningAction === 'simpanan'}
+                              className="bg-teal-600 hover:bg-teal-700 text-white text-xs h-8 shadow-xs"
+                            >
+                              {runningAction === 'simpanan' ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Send className="size-3.5 mr-1.5" />}
+                              Blast Reminder Wajib
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onNavigate('pengumuman')}
+                            className="text-xs h-8 border-zinc-300"
+                          >
+                            Buka Simpanan <ArrowUpRight className="size-3.5 ml-1" />
+                          </Button>
+                        </>
+                      )}
+
+                      {isQc && (
+                        <Button
+                          size="sm"
+                          variant={task.isDone ? 'outline' : 'default'}
+                          onClick={() => onNavigate('operasional')}
+                          className={cn(
+                            'text-xs h-8',
+                            !task.isDone && 'bg-amber-600 hover:bg-amber-700 text-white'
+                          )}
+                        >
+                          Buka Antrian QC <ArrowUpRight className="size-3.5 ml-1" />
+                        </Button>
+                      )}
+
+                      {isStok && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onNavigate('inventaris')}
+                          className="text-xs h-8 border-zinc-300"
+                        >
+                          Buka Inventaris <ArrowUpRight className="size-3.5 ml-1" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
