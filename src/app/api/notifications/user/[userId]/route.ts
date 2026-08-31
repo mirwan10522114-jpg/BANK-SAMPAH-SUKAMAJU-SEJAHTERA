@@ -31,6 +31,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
         take: 50,
         include: { items: true },
       },
+      withdrawals: {
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      },
+      balanceReleasesAsUser: {
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      },
+      redemptions: {
+        orderBy: { redeemedAt: 'desc' },
+        take: 50,
+      },
       koperasiAnggota: {
         include: {
           simpananSaldos: true,
@@ -118,7 +130,49 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
     })
   }
 
-  // 3. Koperasi simpanan transactions
+  // 3. Penarikan Saldo transactions (Withdrawals)
+  for (const w of user.withdrawals || []) {
+    txNotifs.push({
+      id: `penarikan-${w.id}`,
+      category: 'bank_sampah',
+      type: 'penarikan_saldo',
+      title: 'Penarikan Saldo Berhasil',
+      message: `Penarikan saldo tunai sebesar ${formatRupiah(toNumber(w.amount))} (${w.receiptNo || 'WD'}). ${w.notes ? `Alasan: ${w.notes}.` : 'Penarikan langsung di loket teller.'}`,
+      amount: toNumber(w.amount),
+      timestamp: w.createdAt.toISOString(),
+      status: w.status || 'sukses',
+    })
+  }
+
+  // 4. Pelepasan Saldo Tertahan (Balance Releases)
+  for (const r of user.balanceReleasesAsUser || []) {
+    txNotifs.push({
+      id: `release-${r.id}`,
+      category: 'bank_sampah',
+      type: 'release_saldo',
+      title: 'Pelepasan Saldo Tertahan',
+      message: `Saldo tertahan sebesar ${formatRupiah(toNumber(r.amount))} telah dilepaskan ke saldo tersedia. ${r.keterangan || ''}`,
+      amount: toNumber(r.amount),
+      timestamp: r.createdAt.toISOString(),
+      status: 'sukses',
+    })
+  }
+
+  // 5. Penukaran Poin Reward (Redemptions)
+  for (const rd of user.redemptions || []) {
+    txNotifs.push({
+      id: `penukaran-${rd.id}`,
+      category: 'bank_sampah',
+      type: 'penukaran_poin',
+      title: 'Penukaran Poin Reward Berhasil',
+      message: `Penukaran ${toNumber(rd.quantity)}x ${rd.productNameSnapshot} senilai ${rd.pointsUsed} poin telah berhasil.`,
+      amount: 0,
+      timestamp: rd.redeemedAt.toISOString(),
+      status: 'sukses',
+    })
+  }
+
+  // 6. Koperasi simpanan transactions
   if (user.koperasiAnggota) {
     for (const tx of user.koperasiAnggota.simpananTx) {
       const isSetor = tx.tipe === 'setor'

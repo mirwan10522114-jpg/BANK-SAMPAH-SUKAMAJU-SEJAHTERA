@@ -5,7 +5,7 @@ import {
   Bell, BellRing, CalendarClock, Scale, HeartHandshake, PiggyBank,
   HandCoins, CreditCard, ShoppingBag, PackageCheck, Truck, XCircle,
   AlertTriangle, CheckCircle2, Loader2, RefreshCw, Store, FileText,
-  CheckCheck, CircleDot, X,
+  CheckCheck, CircleDot, X, Wallet, Unlock, Gift,
 } from 'lucide-react'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -88,6 +88,9 @@ function getTxIcon(notif: TxNotif) {
   if (category === 'bank_sampah') {
     if (type === 'nabung') return { Icon: Scale, color: 'text-emerald-600', bg: 'bg-emerald-50' }
     if (type === 'sedekah') return { Icon: HeartHandshake, color: 'text-rose-600', bg: 'bg-rose-50' }
+    if (type === 'penarikan_saldo') return { Icon: Wallet, color: 'text-emerald-600', bg: 'bg-emerald-50' }
+    if (type === 'release_saldo') return { Icon: Unlock, color: 'text-amber-600', bg: 'bg-amber-50' }
+    if (type === 'penukaran_poin') return { Icon: Gift, color: 'text-blue-600', bg: 'bg-blue-50' }
   }
   if (category === 'koperasi') {
     if (type.startsWith('simpanan')) return { Icon: PiggyBank, color: 'text-teal-600', bg: 'bg-teal-50' }
@@ -131,6 +134,9 @@ function typeLabel(type: string): string {
   const map: Record<string, string> = {
     nabung: 'Tabungan Sampah',
     sedekah: 'Sedekah Sampah',
+    penarikan_saldo: 'Penarikan Saldo',
+    release_saldo: 'Pelepasan Saldo Tertahan',
+    penukaran_poin: 'Penukaran Poin Reward',
     simpanan_pokok: 'Simpanan Pokok',
     simpanan_wajib: 'Simpanan Wajib',
     simpanan_sukarela: 'Simpanan Sukarela',
