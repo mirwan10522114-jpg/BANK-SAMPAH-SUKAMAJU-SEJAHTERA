@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
 // GET: list pinjaman yang jatuh tempo (untuk display di admin)
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const filter = searchParams.get('filter') || 'all' // all | jatuh_tempo | terlambat
+  const filter = searchParams.get('filter') || 'all' // all | terlambat | h0 | h3 | h7 | h14 | h30 | normal
 
   const pinjamans = await db.koperasiPinjaman.findMany({
     where: { status: 'berjalan' },
@@ -216,14 +216,38 @@ export async function GET(req: NextRequest) {
     jatuhTempo.setMonth(jatuhTempo.getMonth() + nextAngsuranKe)
     const selisihHari = Math.ceil((jatuhTempo.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 
-    let status = 'normal'
+    let urgency: 'terlambat' | 'h0' | 'h3' | 'h7' | 'h14' | 'h30' | 'normal' = 'normal'
     let statusLabel = `${selisihHari} hari lagi`
+    let colorScheme: 'red' | 'rose' | 'amber' | 'yellow' | 'blue' | 'emerald' = 'emerald'
+
     if (selisihHari < 0) {
-      status = 'terlambat'
+      urgency = 'terlambat'
       statusLabel = `Terlambat ${Math.abs(selisihHari)} hari`
+      colorScheme = 'red'
+    } else if (selisihHari === 0) {
+      urgency = 'h0'
+      statusLabel = 'Jatuh tempo HARI INI'
+      colorScheme = 'rose'
+    } else if (selisihHari <= 3) {
+      urgency = 'h3'
+      statusLabel = `H-${selisihHari} (${selisihHari} hari lagi)`
+      colorScheme = 'rose'
     } else if (selisihHari <= 7) {
-      status = 'mendekati'
-      statusLabel = `Jatuh tempo dalam ${selisihHari} hari`
+      urgency = 'h7'
+      statusLabel = `H-${selisihHari} (${selisihHari} hari lagi)`
+      colorScheme = 'amber'
+    } else if (selisihHari <= 14) {
+      urgency = 'h14'
+      statusLabel = `H-${selisihHari} (${selisihHari} hari lagi)`
+      colorScheme = 'yellow'
+    } else if (selisihHari <= 30) {
+      urgency = 'h30'
+      statusLabel = `H-${selisihHari} (${selisihHari} hari lagi)`
+      colorScheme = 'blue'
+    } else {
+      urgency = 'normal'
+      statusLabel = `Aman (${selisihHari} hari lagi)`
+      colorScheme = 'emerald'
     }
 
     return {
@@ -240,26 +264,48 @@ export async function GET(req: NextRequest) {
       angsuranKe: nextAngsuranKe,
       jatuhTempo: jatuhTempo.toISOString(),
       selisihHari,
-      status,
+      urgency,
       statusLabel,
+      colorScheme,
+      isOverdue: selisihHari < 0,
+      isDueToday: selisihHari === 0,
+      daysOverdue: selisihHari < 0 ? Math.abs(selisihHari) : 0,
     }
-  }).filter(Boolean)
+  }).filter(Boolean) as any[]
 
   // Filter
   let filtered = results
-  if (filter === 'jatuh_tempo') {
-    filtered = results.filter((r: any) => r.status === 'mendekati' || r.status === 'terlambat')
-  } else if (filter === 'terlambat') {
-    filtered = results.filter((r: any) => r.status === 'terlambat')
+  if (filter === 'terlambat') {
+    filtered = results.filter((r) => r.selisihHari < 0)
+  } else if (filter === 'h0') {
+    filtered = results.filter((r) => r.selisihHari === 0)
+  } else if (filter === 'h3') {
+    filtered = results.filter((r) => r.selisihHari <= 3)
+  } else if (filter === 'h7') {
+    filtered = results.filter((r) => r.selisihHari <= 7)
+  } else if (filter === 'h14') {
+    filtered = results.filter((r) => r.selisihHari <= 14)
+  } else if (filter === 'h30') {
+    filtered = results.filter((r) => r.selisihHari <= 30)
+  } else if (filter === 'normal') {
+    filtered = results.filter((r) => r.selisihHari > 30)
   }
+
+  const terlambatList = results.filter((r) => r.selisihHari < 0)
+  const terlambatNominal = terlambatList.reduce((sum, r) => sum + r.angsuranPerBulan, 0)
 
   return NextResponse.json({
     pinjamans: filtered,
     summary: {
       total: results.length,
-      terlambat: results.filter((r: any) => r.status === 'terlambat').length,
-      mendekati: results.filter((r: any) => r.status === 'mendekati').length,
-      normal: results.filter((r: any) => r.status === 'normal').length,
+      terlambat: terlambatList.length,
+      terlambatNominal,
+      h0: results.filter((r) => r.selisihHari === 0).length,
+      h3: results.filter((r) => r.selisihHari <= 3).length,
+      h7: results.filter((r) => r.selisihHari <= 7).length,
+      h14: results.filter((r) => r.selisihHari <= 14).length,
+      h30: results.filter((r) => r.selisihHari <= 30).length,
+      normal: results.filter((r) => r.selisihHari > 30).length,
     },
   })
 }

@@ -847,7 +847,7 @@ function PengumumanBlastForm() {
 function TagihanPinjamanView() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'terlambat' | 'jatuh_tempo'>('all')
+  const [filter, setFilter] = useState<'all' | 'terlambat' | 'h0' | 'h3' | 'h7' | 'h14' | 'h30' | 'normal'>('all')
   const [sending, setSending] = useState<string | null>(null)
 
   const load = async () => {
@@ -873,6 +873,7 @@ function TagihanPinjamanView() {
       const d = await res.json()
       if (d.success) {
         alert(`✅ Tagihan terkirim ke ${d.results[0]?.email || 'email anggota'}`)
+        load()
       } else {
         alert(d.error || 'Gagal kirim tagihan')
       }
@@ -884,7 +885,19 @@ function TagihanPinjamanView() {
   }
 
   const handleTagihSemua = async () => {
-    if (!confirm('Kirim tagihan ke SEMUA anggota dengan pinjaman berjalan?')) return
+    const targetLabel = filter === 'terlambat'
+      ? 'anggota yang TERLAMBAT / LEWAT JATUH TEMPO'
+      : filter === 'h3'
+      ? 'anggota dengan jatuh tempo ≤3 HARI'
+      : filter === 'h7'
+      ? 'anggota dengan jatuh tempo ≤7 HARI'
+      : filter === 'h14'
+      ? 'anggota dengan jatuh tempo ≤14 HARI'
+      : filter === 'h30'
+      ? 'anggota dengan jatuh tempo ≤30 HARI'
+      : 'SEMUA anggota pinjaman berjalan'
+
+    if (!confirm(`Kirim email tagihan ke ${targetLabel}?`)) return
     setSending('all')
     try {
       const res = await fetch('/api/koperasi/tagihan', {
@@ -894,7 +907,10 @@ function TagihanPinjamanView() {
       })
       const d = await res.json()
       if (d.success) {
-        alert(`✅ Terkirim: ${d.sentCount} email | Gagal: ${d.failedCount}`)
+        alert(`✅ Tagihan Pinjaman Terkirim: ${d.sentCount} email | Gagal: ${d.failedCount}`)
+        load()
+      } else {
+        alert(d.error || 'Gagal mengirim tagihan')
       }
     } catch (e: any) {
       alert('Gagal: ' + e.message)
@@ -903,126 +919,265 @@ function TagihanPinjamanView() {
     }
   }
 
-  if (loading) return <div className="py-10 text-center"><Loader2 className="size-6 mx-auto animate-spin text-emerald-600" /></div>
+  if (loading && !data) return <div className="py-10 text-center"><Loader2 className="size-6 mx-auto animate-spin text-emerald-600" /></div>
 
   const pinjamans = data?.pinjamans || []
-  const summary = data?.summary || { total: 0, terlambat: 0, mendekati: 0, normal: 0 }
+  const summary = data?.summary || { total: 0, terlambat: 0, terlambatNominal: 0, h0: 0, h3: 0, h7: 0, h14: 0, h30: 0, normal: 0 }
+
+  const filterOptions = [
+    { v: 'all', l: 'Semua', count: summary.total },
+    { v: 'terlambat', l: '🚨 Terlambat (Lewat Jatuh Tempo)', count: summary.terlambat, isHighlight: summary.terlambat > 0 },
+    { v: 'h0', l: '⚡ Jatuh Tempo Hari Ini (H-0)', count: summary.h0, isHighlight: summary.h0 > 0 },
+    { v: 'h3', l: '⚠️ H-3 (≤ 3 Hari)', count: summary.h3 },
+    { v: 'h7', l: '⏰ H-7 (≤ 7 Hari)', count: summary.h7 },
+    { v: 'h14', l: '📅 H-14 (≤ 14 Hari)', count: summary.h14 },
+    { v: 'h30', l: '📌 H-30 (≤ 30 Hari)', count: summary.h30 },
+    { v: 'normal', l: '✓ Normal (> 30 Hari)', count: summary.normal },
+  ] as const
 
   return (
     <div className="space-y-4">
-      {/* Summary Cards */}
-      <div className="grid gap-3 sm:grid-cols-4">
-        <Card className="bg-gradient-to-br from-zinc-50 to-zinc-100 border-zinc-200">
-          <CardContent className="p-4">
-            <p className="text-[10px] text-zinc-600 font-medium">Total Pinjaman Aktif</p>
-            <p className="mt-1 text-xl font-bold text-zinc-700">{summary.total}</p>
+      {/* 5 Summary Stat Cards */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Card className="bg-gradient-to-br from-zinc-50 to-zinc-100 border-zinc-200 shadow-2xs">
+          <CardContent className="p-3.5">
+            <p className="text-[11px] text-zinc-600 font-semibold uppercase tracking-wider">Total Pinjaman Aktif</p>
+            <p className="mt-1 text-2xl font-black text-zinc-900">{summary.total}</p>
+            <p className="text-[11px] text-zinc-500 mt-0.5">Semua pinjaman berjalan</p>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-rose-50 to-red-50 border-rose-200">
-          <CardContent className="p-4">
-            <p className="text-[10px] text-rose-700 font-medium">Terlambat</p>
-            <p className="mt-1 text-xl font-bold text-rose-700">{summary.terlambat}</p>
+
+        <Card className={cn(
+          'shadow-2xs transition-all',
+          summary.terlambat > 0
+            ? 'bg-gradient-to-br from-rose-50 via-red-50 to-rose-100 border-rose-300 ring-1 ring-rose-300/60'
+            : 'bg-gradient-to-br from-zinc-50 to-zinc-100 border-zinc-200'
+        )}>
+          <CardContent className="p-3.5">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] text-rose-800 font-bold uppercase tracking-wider">🚨 Lewat Jatuh Tempo</p>
+              {summary.terlambat > 0 && <span className="flex size-2 rounded-full bg-rose-600 animate-ping" />}
+            </div>
+            <p className="mt-1 text-2xl font-black text-rose-700">
+              {summary.terlambat} <span className="text-xs font-medium text-rose-600">Pinjaman</span>
+            </p>
+            <p className="text-[11px] font-bold text-rose-800 mt-0.5">
+              Tunggakan: {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(summary.terlambatNominal || 0)}
+            </p>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200">
-          <CardContent className="p-4">
-            <p className="text-[10px] text-amber-700 font-medium">Jatuh Tempo ≤7 hari</p>
-            <p className="mt-1 text-xl font-bold text-amber-700">{summary.mendekati}</p>
+
+        <Card className="bg-gradient-to-br from-orange-50 to-amber-50 border-orange-200 shadow-2xs">
+          <CardContent className="p-3.5">
+            <p className="text-[11px] text-orange-800 font-semibold uppercase tracking-wider">⚡ Mendesak (≤ 3 Hari)</p>
+            <p className="mt-1 text-2xl font-black text-orange-700">
+              {summary.h3} <span className="text-xs font-medium text-orange-600">Pinjaman</span>
+            </p>
+            <p className="text-[11px] text-orange-700/80 mt-0.5">
+              Hari ini: {summary.h0} · H-1 s/d H-3: {Math.max(0, summary.h3 - summary.h0)}
+            </p>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
-          <CardContent className="p-4">
-            <p className="text-[10px] text-emerald-700 font-medium">Normal</p>
-            <p className="mt-1 text-xl font-bold text-emerald-700">{summary.normal}</p>
+
+        <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200 shadow-2xs">
+          <CardContent className="p-3.5">
+            <p className="text-[11px] text-blue-800 font-semibold uppercase tracking-wider">📌 Pengingat (H-7 ~ H-30)</p>
+            <p className="mt-1 text-2xl font-black text-blue-700">
+              {Math.max(0, summary.h30 - summary.h3)} <span className="text-xs font-medium text-blue-600">Pinjaman</span>
+            </p>
+            <p className="text-[11px] text-blue-700/80 mt-0.5">
+              H-7: {summary.h7} · H-14: {summary.h14} · H-30: {summary.h30}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200 shadow-2xs">
+          <CardContent className="p-3.5">
+            <p className="text-[11px] text-emerald-800 font-semibold uppercase tracking-wider">✓ Aman (&gt; 30 Hari)</p>
+            <p className="mt-1 text-2xl font-black text-emerald-700">
+              {summary.normal} <span className="text-xs font-medium text-emerald-600">Pinjaman</span>
+            </p>
+            <p className="text-[11px] text-emerald-700/80 mt-0.5">Jatuh tempo masih lama</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filter & Tagih Semua */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-zinc-700">Filter:</span>
-        {([
-          { v: 'all', l: 'Semua' },
-          { v: 'terlambat', l: 'Terlambat' },
-          { v: 'jatuh_tempo', l: 'Jatuh Tempo' },
-        ] as const).map((f) => (
-          <button
-            key={f.v}
-            onClick={() => setFilter(f.v)}
-            className={`px-3 py-1 text-xs rounded-full transition-colors ${filter === f.v ? 'bg-emerald-600 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
-          >
-            {f.l}
-          </button>
-        ))}
-        <div className="ml-auto">
+      {/* Filter Bar & Tagih Action */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-zinc-200 bg-white p-3 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs font-bold text-zinc-700 mr-1">Filter Jatuh Tempo:</span>
+          {filterOptions.map((f) => (
+            <button
+              key={f.v}
+              onClick={() => setFilter(f.v as any)}
+              className={cn(
+                'flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold transition-all',
+                filter === f.v
+                  ? 'bg-emerald-700 text-white shadow-2xs ring-2 ring-emerald-500/30'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900',
+                f.isHighlight && filter !== f.v && 'bg-rose-100 text-rose-800 hover:bg-rose-200'
+              )}
+            >
+              <span>{f.l}</span>
+              <span className={cn(
+                'rounded-full px-1.5 py-0.2 text-[10px] font-black',
+                filter === f.v ? 'bg-white/30 text-white' : 'bg-zinc-200 text-zinc-700'
+              )}>
+                {f.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div>
           <Button
             onClick={handleTagihSemua}
             disabled={sending === 'all' || pinjamans.length === 0}
-            className="bg-rose-600 hover:bg-rose-700 text-white"
+            className="bg-rose-600 hover:bg-rose-700 text-white shadow-xs font-bold text-xs h-9"
             size="sm"
           >
-            {sending === 'all' ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Mail className="size-4 mr-2" />}
-            Tagih Semua
+            {sending === 'all' ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Mail className="size-4 mr-1.5" />}
+            Tagih Semua Sesuai Filter ({pinjamans.length})
           </Button>
         </div>
       </div>
 
       {/* Table */}
-      <Card className="border-zinc-200">
+      <Card className="border-zinc-200 shadow-2xs overflow-hidden">
         <CardContent className="p-0">
           {pinjamans.length === 0 ? (
-            <div className="py-10 text-center text-sm text-zinc-400">
-              <HandCoins className="size-10 mx-auto mb-2 opacity-30" />
-              Tidak ada pinjaman berjalan
+            <div className="py-12 text-center text-sm text-zinc-400">
+              <HandCoins className="size-12 mx-auto mb-2 opacity-30 text-emerald-600" />
+              <p className="font-semibold text-zinc-600">Tidak ada data pinjaman pada filter ini</p>
+              <p className="text-xs text-zinc-400 mt-1">Coba pilih filter lain di atas</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-zinc-50 border-b">
+                <thead className="bg-zinc-50/90 border-b border-zinc-200 text-zinc-600">
                   <tr>
-                    <th className="text-left p-3 text-xs font-semibold text-zinc-600">No. Pinjaman</th>
-                    <th className="text-left p-3 text-xs font-semibold text-zinc-600">Nama</th>
-                    <th className="text-right p-3 text-xs font-semibold text-zinc-600">Angsuran/Bln</th>
-                    <th className="text-center p-3 text-xs font-semibold text-zinc-600">Angsuran Ke</th>
-                    <th className="text-left p-3 text-xs font-semibold text-zinc-600">Jatuh Tempo</th>
-                    <th className="text-center p-3 text-xs font-semibold text-zinc-600">Status</th>
-                    <th className="text-center p-3 text-xs font-semibold text-zinc-600">Aksi</th>
+                    <th className="text-left p-3.5 text-xs font-bold">No. Pinjaman</th>
+                    <th className="text-left p-3.5 text-xs font-bold">Anggota & Kontak</th>
+                    <th className="text-right p-3.5 text-xs font-bold">Angsuran/Bln</th>
+                    <th className="text-right p-3.5 text-xs font-bold">Sisa Pokok</th>
+                    <th className="text-center p-3.5 text-xs font-bold">Angsuran Ke</th>
+                    <th className="text-left p-3.5 text-xs font-bold">Jatuh Tempo</th>
+                    <th className="text-center p-3.5 text-xs font-bold">Status Jatuh Tempo</th>
+                    <th className="text-center p-3.5 text-xs font-bold">Aksi</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {pinjamans.map((p: any, i: number) => (
-                    <tr key={i} className="border-b hover:bg-zinc-50">
-                      <td className="p-3 font-mono text-xs text-zinc-700">{p.nomorPinjaman}</td>
-                      <td className="p-3 text-xs text-zinc-700">{p.nama}</td>
-                      <td className="p-3 text-right text-xs font-medium text-amber-700">{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(p.angsuranPerBulan)}</td>
-                      <td className="p-3 text-center text-xs text-zinc-600">{p.angsuranKe}/{p.tenorBulan}</td>
-                      <td className="p-3 text-xs text-zinc-700">{new Date(p.jatuhTempo).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-                      <td className="p-3 text-center">
-                        <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
-                          p.status === 'terlambat' ? 'bg-rose-100 text-rose-700'
-                          : p.status === 'mendekati' ? 'bg-amber-100 text-amber-700'
-                          : 'bg-emerald-100 text-emerald-700'
-                        }`}>
-                          {p.statusLabel}
-                        </span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <Button
-                          onClick={() => handleTagih(p.id)}
-                          disabled={sending === p.id}
-                          size="sm"
-                          className={`h-7 text-[10px] ${
-                            p.status === 'terlambat' ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                            : p.status === 'mendekati' ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                            : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                          }`}
-                        >
-                          {sending === p.id ? <Loader2 className="size-3 animate-spin" /> : <Mail className="size-3" />}
-                          Tagih
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y divide-zinc-200/80">
+                  {pinjamans.map((p: any, i: number) => {
+                    const isOverdue = p.isOverdue || p.selisihHari < 0
+                    const isDueToday = p.isDueToday || p.selisihHari === 0
+
+                    return (
+                      <tr
+                        key={p.id || i}
+                        className={cn(
+                          'transition-colors hover:bg-zinc-50/80',
+                          isOverdue && 'bg-rose-50/40 border-l-4 border-l-rose-500',
+                          isDueToday && 'bg-amber-50/40 border-l-4 border-l-amber-500'
+                        )}
+                      >
+                        {/* No Pinjaman */}
+                        <td className="p-3.5 font-mono text-xs font-bold text-zinc-800">
+                          {p.nomorPinjaman}
+                          <div className="text-[10px] text-zinc-400 font-normal">ID: {p.nomorAnggota}</div>
+                        </td>
+
+                        {/* Nama & Kontak */}
+                        <td className="p-3.5 text-xs">
+                          <p className="font-bold text-zinc-900">{p.nama}</p>
+                          <p className="text-[11px] text-zinc-500">{p.email || '-'}</p>
+                          {p.phone && <p className="text-[10px] text-zinc-400">📱 {p.phone}</p>}
+                        </td>
+
+                        {/* Angsuran per bulan */}
+                        <td className="p-3.5 text-right text-xs font-bold text-amber-800">
+                          {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(p.angsuranPerBulan)}
+                        </td>
+
+                        {/* Sisa Pinjaman */}
+                        <td className="p-3.5 text-right text-xs font-medium text-zinc-700">
+                          {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(p.sisaPinjaman)}
+                        </td>
+
+                        {/* Angsuran Ke */}
+                        <td className="p-3.5 text-center text-xs">
+                          <span className="font-bold text-zinc-800">{p.angsuranKe}</span>
+                          <span className="text-zinc-400">/{p.tenorBulan} bln</span>
+                        </td>
+
+                        {/* Jatuh Tempo */}
+                        <td className="p-3.5 text-xs">
+                          <p className={cn('font-bold', isOverdue ? 'text-rose-700' : 'text-zinc-800')}>
+                            {new Date(p.jatuhTempo).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </p>
+                          {isOverdue && (
+                            <span className="text-[10px] font-extrabold text-rose-600 flex items-center gap-1 mt-0.5">
+                              🚨 Lewat {p.daysOverdue} hari
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Status Badge */}
+                        <td className="p-3.5 text-center">
+                          {isOverdue ? (
+                            <div className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-800 shadow-2xs border border-rose-200">
+                              <AlertTriangle className="size-3.5 text-rose-600 shrink-0" />
+                              <span>Terlambat {p.daysOverdue} Hari</span>
+                            </div>
+                          ) : isDueToday ? (
+                            <div className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-800 border border-red-200 animate-pulse">
+                              <Zap className="size-3.5 text-red-600 shrink-0" />
+                              <span>Jatuh Tempo Hari Ini</span>
+                            </div>
+                          ) : p.urgency === 'h3' ? (
+                            <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-bold text-orange-800 border border-orange-200">
+                              ⚠️ H-{p.selisihHari} ({p.selisihHari} hari lagi)
+                            </span>
+                          ) : p.urgency === 'h7' ? (
+                            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800 border border-amber-200">
+                              ⏰ H-{p.selisihHari} ({p.selisihHari} hari lagi)
+                            </span>
+                          ) : p.urgency === 'h14' ? (
+                            <span className="rounded-full bg-yellow-100 px-2.5 py-1 text-xs font-bold text-yellow-800 border border-yellow-200">
+                              📅 H-{p.selisihHari} ({p.selisihHari} hari lagi)
+                            </span>
+                          ) : p.urgency === 'h30' ? (
+                            <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-800 border border-blue-200">
+                              📌 H-{p.selisihHari} ({p.selisihHari} hari lagi)
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800 border border-emerald-200">
+                              ✓ Aman ({p.selisihHari} hari lagi)
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Aksi */}
+                        <td className="p-3.5 text-center">
+                          <Button
+                            onClick={() => handleTagih(p.id)}
+                            disabled={sending === p.id || !p.email}
+                            size="sm"
+                            className={cn(
+                              'h-8 text-xs font-bold shadow-xs',
+                              isOverdue
+                                ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                                : isDueToday || p.urgency === 'h3'
+                                ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                                : 'bg-teal-600 hover:bg-teal-700 text-white'
+                            )}
+                          >
+                            {sending === p.id ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <Mail className="size-3.5 mr-1" />}
+                            {isOverdue ? 'Tagih Terlambat' : 'Kirim Tagihan'}
+                          </Button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
