@@ -37,21 +37,25 @@ export type NavItem = {
   desc: string
 }
 
-export type NavGroup = {
+export type DropdownGroup = {
+  id: string
   title: string
+  icon: any
+  desc: string
   items: NavItem[]
 }
 
-const NAV_GROUPS: NavGroup[] = [
+const PRIMARY_NAV: NavItem[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, desc: 'Ringkasan & statistik' },
+  { id: 'teller', label: 'Teller Wizard', icon: Wand2, desc: 'Layanan satu pintu' },
+]
+
+const DROPDOWN_GROUPS: DropdownGroup[] = [
   {
-    title: 'Layanan & Ikhtisar',
-    items: [
-      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, desc: 'Ringkasan & metrik' },
-      { id: 'teller', label: 'Teller Wizard', icon: Wand2, desc: 'Layanan terpadu satu pintu' },
-    ],
-  },
-  {
+    id: 'bank-sampah',
     title: 'Bank Sampah',
+    icon: Scale,
+    desc: 'Operasional, kas & gudang',
     items: [
       { id: 'operasional', label: 'Operasional Sampah', icon: Scale, desc: 'Nabung & sedekah sampah' },
       { id: 'finansial', label: 'Finansial Sampah', icon: Banknote, desc: 'Penarikan saldo & kas' },
@@ -59,20 +63,29 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: 'Unit Bisnis & Usaha',
+    id: 'unit-bisnis',
+    title: 'Unit Usaha & Koperasi',
+    icon: HandCoins,
+    desc: 'Simpan pinjam & toko produk',
     items: [
       { id: 'koperasi', label: 'Koperasi Simpan Pinjam', icon: HandCoins, desc: 'Simpanan & pinjaman' },
       { id: 'penjualan', label: 'Penjualan Produk', icon: ShoppingBag, desc: 'Kasir POS & toko online' },
     ],
   },
   {
+    id: 'laporan-keuangan',
     title: 'Laporan & Keuangan',
+    icon: FileBarChart,
+    desc: 'Laporan laba rugi terpadu',
     items: [
-      { id: 'laporan', label: 'Laporan Laba Rugi', icon: FileBarChart, desc: 'Laporan keuangan terpadu' },
+      { id: 'laporan', label: 'Laporan Laba Rugi', icon: FileBarChart, desc: 'Laporan laba rugi terpadu' },
     ],
   },
   {
+    id: 'informasi-publikasi',
     title: 'Informasi & Publikasi',
+    icon: Megaphone,
+    desc: 'Pengumuman, edukasi & foto',
     items: [
       { id: 'pengumuman', label: 'Pengumuman & Tagihan', icon: Megaphone, desc: 'Blast email & tagihan' },
       { id: 'edukasi', label: 'Edukasi Lingkungan', icon: BookOpen, desc: 'Artikel & konten edukasi' },
@@ -80,14 +93,17 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: 'pengaturan-sistem',
     title: 'Sistem & Pengaturan',
+    icon: Database,
+    desc: 'Master data & konfigurasi',
     items: [
       { id: 'master', label: 'Master Data & Sistem', icon: Database, desc: 'Nasabah, barang & mitra' },
     ],
   },
 ]
 
-const NAV = NAV_GROUPS.flatMap((g) => g.items)
+const NAV: NavItem[] = [...PRIMARY_NAV, ...DROPDOWN_GROUPS.flatMap((g) => g.items)]
 
 export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const [section, setSection] = useState<Section>('dashboard')
@@ -95,6 +111,13 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
   const [showDashboardChooser, setShowDashboardChooser] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchMenu, setSearchMenu] = useState('')
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    'bank-sampah': true,
+    'unit-bisnis': false,
+    'laporan-keuangan': false,
+    'informasi-publikasi': false,
+    'pengaturan-sistem': false,
+  })
   const [users, setUsers] = useState<any[]>([])
   const [actingUserId, setActingUserId] = useState<string>('')
   const [showProfileMenu, setShowProfileMenu] = useState(false)
@@ -106,6 +129,18 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
       if (admin) { setActingUserId(admin.id); setActingUser(admin.id) }
     }).catch(() => {})
   }, [user.email])
+
+  // Auto expand group if active section is inside it
+  useEffect(() => {
+    const activeGrp = DROPDOWN_GROUPS.find((g) => g.items.some((it) => it.id === section))
+    if (activeGrp) {
+      setOpenGroups((prev) => ({ ...prev, [activeGrp.id]: true }))
+    }
+  }, [section])
+
+  const toggleGroup = (groupId: string) => {
+    setOpenGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }))
+  }
 
   const switchUser = (id: string) => {
     setActingUserId(id)
@@ -231,67 +266,159 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
               )}
             </div>
 
-            {/* Grouped Navigation */}
             <div className="space-y-3 pb-4">
+              {/* 1. PRIMARY STANDALONE MENUS (Dashboard & Teller Wizard) */}
               {(() => {
+                const q = searchMenu.toLowerCase().trim()
+                const matchingPrimary = PRIMARY_NAV.filter((item) => {
+                  if (!q) return true
+                  return item.label.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q)
+                })
+
+                if (matchingPrimary.length === 0 && q) return null
+
+                return (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 px-2.5 pt-1 pb-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800/80">
+                        Layanan Utama
+                      </p>
+                      <div className="h-[1px] flex-1 bg-emerald-100/70" />
+                    </div>
+
+                    <div className="space-y-1">
+                      {matchingPrimary.map((item) => {
+                        const Icon = item.icon
+                        const active = section === item.id
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => handleNavClick(item.id)}
+                            className={cn(
+                              'group flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-left transition-all',
+                              active
+                                ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm font-medium'
+                                : 'text-zinc-700 hover:bg-emerald-50/80 hover:text-emerald-950'
+                            )}
+                          >
+                            <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', active ? 'text-white' : 'text-emerald-600')} />
+                            <div className="flex-1 min-w-0 leading-tight">
+                              <p className={cn('text-xs font-semibold truncate', active ? 'text-white' : 'text-zinc-800')}>
+                                {item.label}
+                              </p>
+                              <p className={cn('text-[10px] truncate mt-0.5', active ? 'text-emerald-50/90' : 'text-zinc-400')}>
+                                {item.id === 'dashboard' && dashboardType ? dashboardDesc : item.desc}
+                              </p>
+                            </div>
+                            {item.id === 'dashboard' && dashboardType && (
+                              <span className={cn('mt-0.5 rounded px-1.5 py-0.5 text-[8px] font-bold uppercase', active ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800')}>
+                                {dashboardType === 'bank-sampah' ? 'BS' : dashboardType === 'koperasi' ? 'KOP' : 'PROD'}
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* 2. DROPDOWN ACCORDION GROUPS */}
+              {(() => {
+                const q = searchMenu.toLowerCase().trim()
                 let totalShown = 0
-                const groups = NAV_GROUPS.map((group, gIdx) => {
-                  const matchingItems = group.items.filter((item) => {
-                    if (!searchMenu.trim()) return true
-                    const q = searchMenu.toLowerCase()
-                    return item.label.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q)
+
+                const dropdownNodes = DROPDOWN_GROUPS.map((group) => {
+                  const matchingChildren = group.items.filter((item) => {
+                    if (!q) return true
+                    return item.label.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q) || group.title.toLowerCase().includes(q)
                   })
 
-                  if (matchingItems.length === 0) return null
-                  totalShown += matchingItems.length
+                  if (matchingChildren.length === 0) return null
+                  totalShown += matchingChildren.length
+
+                  const isChildActive = group.items.some((it) => it.id === section)
+                  const isOpen = q ? true : !!openGroups[group.id]
+                  const GroupIcon = group.icon
 
                   return (
-                    <div key={group.title || gIdx} className="space-y-1">
-                      <div className="flex items-center gap-2 px-2.5 pt-1.5 pb-1">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800/80">
-                          {group.title}
-                        </p>
-                        <div className="h-[1px] flex-1 bg-emerald-100/70" />
-                      </div>
+                    <div key={group.id} className="space-y-0.5">
+                      {/* Group Header Button (Dropdown toggle) */}
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(group.id)}
+                        className={cn(
+                          'group flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left transition-all',
+                          isChildActive
+                            ? 'bg-emerald-50/90 text-emerald-950 font-semibold border border-emerald-200/80 shadow-2xs'
+                            : 'text-zinc-700 hover:bg-zinc-100/80 hover:text-zinc-950'
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={cn(
+                            'flex h-7 w-7 items-center justify-center rounded-lg transition-colors shrink-0',
+                            isChildActive ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 group-hover:bg-emerald-100'
+                          )}>
+                            <GroupIcon className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="min-w-0 flex-1 leading-tight">
+                            <p className="text-xs font-semibold truncate">{group.title}</p>
+                            <p className="text-[10px] text-zinc-400 truncate">{group.desc}</p>
+                          </div>
+                        </div>
 
-                      <div className="space-y-0.5">
-                        {matchingItems.map((item) => {
-                          const Icon = item.icon
-                          const active = section === item.id
-                          return (
-                            <button
-                              key={item.id}
-                              onClick={() => handleNavClick(item.id)}
-                              className={cn(
-                                'group flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-left transition-all',
-                                active
-                                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm'
-                                  : 'text-zinc-700 hover:bg-emerald-50/80 hover:text-emerald-950'
-                              )}
-                            >
-                              <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', active ? 'text-white' : 'text-emerald-600')} />
-                              <div className="flex-1 min-w-0 leading-tight">
-                                <p className={cn('text-xs font-semibold truncate', active ? 'text-white' : 'text-zinc-800')}>
-                                  {item.label}
-                                </p>
-                                <p className={cn('text-[10px] truncate mt-0.5', active ? 'text-emerald-50/90' : 'text-zinc-400')}>
-                                  {item.id === 'dashboard' && dashboardType ? dashboardDesc : item.desc}
-                                </p>
-                              </div>
-                              {item.id === 'dashboard' && dashboardType && (
-                                <span className={cn('mt-0.5 rounded px-1.5 py-0.5 text-[8px] font-bold uppercase', active ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800')}>
-                                  {dashboardType === 'bank-sampah' ? 'BS' : dashboardType === 'koperasi' ? 'KOP' : 'PROD'}
-                                </span>
-                              )}
-                            </button>
-                          )
-                        })}
-                      </div>
+                        <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                          <span className={cn(
+                            'text-[9px] font-bold rounded px-1.5 py-0.5',
+                            isChildActive ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-500'
+                          )}>
+                            {group.items.length}
+                          </span>
+                          <ChevronDown
+                            className={cn(
+                              'size-3.5 text-zinc-400 transition-transform duration-200',
+                              isOpen && 'rotate-180 text-emerald-700'
+                            )}
+                          />
+                        </div>
+                      </button>
+
+                      {/* Dropdown Content */}
+                      {isOpen && (
+                        <div className="ml-4 pl-3 my-1 space-y-0.5 border-l-2 border-emerald-200/80">
+                          {matchingChildren.map((item) => {
+                            const ItemIcon = item.icon
+                            const active = section === item.id
+                            return (
+                              <button
+                                key={item.id}
+                                onClick={() => handleNavClick(item.id)}
+                                className={cn(
+                                  'group flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-all',
+                                  active
+                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xs font-medium'
+                                    : 'text-zinc-600 hover:bg-emerald-50 hover:text-emerald-900'
+                                )}
+                              >
+                                <ItemIcon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', active ? 'text-white' : 'text-emerald-600')} />
+                                <div className="flex-1 min-w-0 leading-tight">
+                                  <p className={cn('text-[11px] font-medium truncate', active ? 'text-white' : 'text-zinc-800')}>
+                                    {item.label}
+                                  </p>
+                                  <p className={cn('text-[9px] truncate mt-0.5', active ? 'text-emerald-100' : 'text-zinc-400')}>
+                                    {item.desc}
+                                  </p>
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
                   )
                 })
 
-                if (totalShown === 0) {
+                if (q && totalShown === 0 && PRIMARY_NAV.filter(it => it.label.toLowerCase().includes(q) || it.desc.toLowerCase().includes(q)).length === 0) {
                   return (
                     <div className="py-8 text-center text-xs text-zinc-400">
                       <p>Menu &quot;{searchMenu}&quot; tidak ditemukan</p>
@@ -305,7 +432,17 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
                   )
                 }
 
-                return groups
+                return (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 px-2.5 pt-1.5 pb-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800/80">
+                        Modul & Pengelolaan
+                      </p>
+                      <div className="h-[1px] flex-1 bg-emerald-100/70" />
+                    </div>
+                    {dropdownNodes}
+                  </div>
+                )
               })()}
             </div>
 
