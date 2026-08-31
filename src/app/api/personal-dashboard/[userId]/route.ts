@@ -312,6 +312,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
     metode: w.method,
     status: w.status,
     keterangan: w.notes,
+    alasan: w.notes,
+    notes: w.notes,
     processedAt: w.processedAt,
   }))
 
