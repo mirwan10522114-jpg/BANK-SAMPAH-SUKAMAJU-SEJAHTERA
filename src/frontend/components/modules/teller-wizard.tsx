@@ -156,7 +156,7 @@ export function TellerWizard() {
       setReceipt(res)
       toast.success('Transaksi berhasil diproses!')
       // reset
-      setItems([]); setSedekahItems([]); setOperations([]); setApplyQc(false); setNotes('')
+      setItems([]); setSedekahItems([]); setOperations([]); setQcMode('nanti'); setNotes('')
       // refresh balance
       const b = await api.operasional.nasabahBalance(nasabah.id)
       setBalance(b.balance)
@@ -175,7 +175,7 @@ export function TellerWizard() {
   }
 
   const reset = () => {
-    setNasabah(null); setAnggota(null); setBalance(null); setItems([]); setSedekahItems([]); setOperations([]); setStep(1); setReceipt(null); setPinjamanList([])
+    setNasabah(null); setAnggota(null); setBalance(null); setItems([]); setSedekahItems([]); setOperations([]); setStep(1); setReceipt(null); setPinjamanList([]); setQcMode('nanti'); setNotes('')
   }
 
   return (
