@@ -602,172 +602,724 @@ function DashboardView({
 }
 
 // ============================================================
-// Saldo View
+// Saldo View - ENHANCED WITH MUTASI & TIMELINE FILTERS
 // ============================================================
 function SaldoView({ data }: { data: any }) {
-  const { saldo } = data
-  return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-bold text-zinc-900">Saldo Saya</h2>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card className="border-0 bg-white p-5 shadow-sm ring-1 ring-zinc-100">
-          <p className="text-xs text-zinc-500">Saldo Tersedia</p>
-          <p className="mt-1 text-2xl font-bold text-emerald-600">{formatRupiah(saldo.saldoTersedia)}</p>
-          <p className="mt-1 text-[11px] text-zinc-400">Siap ditarik kapan saja</p>
-        </Card>
-        <Card className="border-0 bg-white p-5 shadow-sm ring-1 ring-zinc-100">
-          <p className="text-xs text-zinc-500">Poin Saat Ini</p>
-          <p className="mt-1 text-2xl font-bold text-emerald-600">{formatNumber(saldo.poin, 0)} pt</p>
-          <p className="mt-1 text-[11px] text-zinc-400">Dapat ditukarkan dengan produk</p>
-        </Card>
-      </div>
-    </div>
-  )
-}
+  const { saldo, riwayat } = data
 
-// ============================================================
-// Nabung View - REDESIGNED with QC filter + detail expand
-// ============================================================
-function NabungView({ data }: { data: any }) {
-  const rows = data.riwayat?.tabungan || []
-  const [filterQc, setFilterQc] = useState<'all' | 'menunggu_qc' | 'selesai' | 'dibatalkan'>('all')
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [filterWaktu, setFilterWaktu] = useState('all')
+  const [customDari, setCustomDari] = useState('')
+  const [customSampai, setCustomSampai] = useState('')
+  const [filterTipe, setFilterTipe] = useState('all')
 
-  const filtered = rows.filter((r: any) => {
-    if (filterQc === 'all') return true
-    return r.status === filterQc
+  // Combine financial movements
+  const tabunganList = (riwayat?.tabungan || [])
+    .filter((t: any) => t.status === 'selesai')
+    .map((t: any) => ({
+      id: `nb-${t.id}`,
+      tanggal: t.tanggal,
+      kode: t.kode || '-',
+      deskripsi: `Tabungan Sampah: ${t.barang}`,
+      tipe: 'masuk' as const,
+      kategori: 'Tabungan Sampah',
+      jumlah: toNumber(t.nilai),
+      status: 'selesai',
+    }))
+
+  const penarikanList = (riwayat?.penarikan || []).map((w: any) => ({
+    id: `wd-${w.id}`,
+    tanggal: w.tanggal,
+    kode: w.receiptNo || '-',
+    deskripsi: `Penarikan Saldo (${w.metode || 'Tunai'})`,
+    tipe: 'keluar' as const,
+    kategori: 'Penarikan Dana',
+    jumlah: toNumber(w.jumlah),
+    status: w.status,
+  }))
+
+  const releaseList = (riwayat?.releaseSaldo || []).map((r: any) => ({
+    id: `rl-${r.id}`,
+    tanggal: r.tanggal,
+    kode: '-',
+    deskripsi: `Release Saldo Tertahan: ${r.keterangan || 'Pencairan'}`,
+    tipe: 'release' as const,
+    kategori: 'Release Saldo',
+    jumlah: toNumber(r.jumlah),
+    status: r.status,
+  }))
+
+  const allMutasi = [...tabunganList, ...penarikanList, ...releaseList]
+    .sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime())
+
+  const filteredMutasi = allMutasi.filter((m) => {
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      if (!m.kode.toLowerCase().includes(q) && !m.deskripsi.toLowerCase().includes(q) && !m.kategori.toLowerCase().includes(q)) {
+        return false
+      }
+    }
+    if (!matchesDateFilter(m.tanggal, filterWaktu, customDari, customSampai)) return false
+    if (filterTipe === 'masuk' && m.tipe !== 'masuk') return false
+    if (filterTipe === 'keluar' && m.tipe !== 'keluar') return false
+    if (filterTipe === 'release' && m.tipe !== 'release') return false
+    return true
   })
 
-  const totalNilai = rows.reduce((s: number, r: any) => s + toNumber(r.nilai), 0)
-  const totalBerat = rows.reduce((s: number, r: any) => s + toNumber(r.berat), 0)
-  const menungguCount = rows.filter((r: any) => r.status === 'menunggu_qc').length
+  const totalMasuk = filteredMutasi.filter((m) => m.tipe === 'masuk').reduce((s, m) => s + m.jumlah, 0)
+  const totalKeluar = filteredMutasi.filter((m) => m.tipe === 'keluar' && m.status === 'selesai').reduce((s, m) => s + m.jumlah, 0)
+
+  const waktuOptions = [
+    { value: 'all', label: 'Semua Waktu' },
+    { value: 'today', label: 'Hari Ini' },
+    { value: 'this_month', label: 'Bulan Ini' },
+    { value: '1bul', label: '1 Bulan Terakhir' },
+    { value: '3bul', label: '3 Bulan Terakhir' },
+    { value: '6bul', label: '6 Bulan Terakhir' },
+    { value: '1thn', label: '1 Tahun Terakhir' },
+    { value: 'custom', label: 'Kustom Tanggal' },
+  ]
 
   return (
     <div className="space-y-5">
       <div>
         <h2 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
-          <Recycle className="size-5 text-emerald-600" /> Transaksi Nabung Sampah
+          <Wallet className="size-5 text-emerald-600" /> Saldo & Kas Saya
         </h2>
-        <p className="text-xs text-zinc-500 mt-1">Riwayat setoran sampah nasabah</p>
+        <p className="text-xs text-zinc-500 mt-0.5">Informasi posisi saldo dan riwayat mutasi transaksi keuangan</p>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-emerald-700 font-medium">Total Nilai Nabung</p>
-              <TrendingUp className="size-4 text-emerald-600" />
-            </div>
-            <p className="mt-2 text-2xl font-bold text-emerald-700">{formatRupiah(totalNilai)}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-blue-700 font-medium">Total Berat</p>
-              <Sprout className="size-4 text-blue-600" />
-            </div>
-            <p className="mt-2 text-2xl font-bold text-blue-700">{formatNumber(totalBerat, 2)} kg</p>
-          </CardContent>
-        </Card>
-        <Card className={`bg-gradient-to-br ${menungguCount > 0 ? 'from-amber-50 to-yellow-50 border-amber-200' : 'from-zinc-50 to-zinc-100 border-zinc-200'}`}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-amber-700 font-medium">Menunggu QC</p>
-              <Clock className={`size-4 ${menungguCount > 0 ? 'text-amber-600 animate-pulse' : 'text-zinc-400'}`} />
-            </div>
-            <p className={`mt-2 text-2xl font-bold ${menungguCount > 0 ? 'text-amber-700' : 'text-zinc-500'}`}>{menungguCount}</p>
-            {menungguCount > 0 && <p className="text-[10px] text-amber-600/70 mt-1">saldo belum masuk</p>}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filter QC */}
-      <Card className="border-zinc-200">
-        <CardContent className="p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-zinc-700 flex items-center gap-1">
-              <Filter className="size-3" /> Status:
-            </span>
-            {([
-              { v: 'all', l: 'Semua' },
-              { v: 'menunggu_qc', l: 'Menunggu QC' },
-              { v: 'selesai', l: 'Selesai' },
-              { v: 'dibatalkan', l: 'Dibatalkan' },
-            ] as const).map((s) => (
-              <button
-                key={s.v}
-                onClick={() => setFilterQc(s.v)}
-                className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                  filterQc === s.v
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                }`}
-              >
-                {s.l}
-              </button>
-            ))}
+      {/* Top Balance Cards */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-0 bg-white p-5 shadow-sm ring-1 ring-emerald-200 bg-gradient-to-br from-emerald-50/50 to-white">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">Saldo Tersedia</p>
+            <Wallet className="size-4 text-emerald-600" />
           </div>
+          <p className="mt-2 text-2xl font-bold text-emerald-700">{formatRupiah(saldo.saldoTersedia)}</p>
+          <p className="mt-1 text-[11px] text-zinc-500">Siap ditarik atau ditransfer</p>
+        </Card>
+
+        <Card className="border-0 bg-white p-5 shadow-sm ring-1 ring-zinc-200">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-zinc-600 uppercase tracking-wider">Saldo Tertahan</p>
+            <Clock className="size-4 text-amber-600" />
+          </div>
+          <p className="mt-2 text-2xl font-bold text-zinc-900">{formatRupiah(saldo.saldoTertahan)}</p>
+          <p className="mt-1 text-[11px] text-zinc-500">Dalam masa holding/verifikasi</p>
+        </Card>
+
+        <Card className="border-0 bg-white p-5 shadow-sm ring-1 ring-zinc-200">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wider">Poin Saat Ini</p>
+            <Award className="size-4 text-amber-600" />
+          </div>
+          <p className="mt-2 text-2xl font-bold text-amber-700">{formatNumber(saldo.poin, 0)} pt</p>
+          <p className="mt-1 text-[11px] text-zinc-500">Dapat ditukarkan produk merchandise</p>
+        </Card>
+
+        <Card className="border-0 bg-white p-5 shadow-sm ring-1 ring-zinc-200">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-blue-800 uppercase tracking-wider">Total Hasil Tabungan</p>
+            <TrendingUp className="size-4 text-blue-600" />
+          </div>
+          <p className="mt-2 text-2xl font-bold text-blue-700">{formatRupiah(saldo.totalNilaiPeriode ?? saldo.totalNilaiTabungan ?? totalMasuk)}</p>
+          <p className="mt-1 text-[11px] text-zinc-500">Akumulasi pendapatan sampah</p>
+        </Card>
+      </div>
+
+      {/* Mutasi Filter Toolbar */}
+      <Card className="border-0 bg-white shadow-sm ring-1 ring-zinc-200/80">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-800">
+              <Filter className="size-4 text-emerald-600" />
+              <span>Filter Mutasi & Riwayat Arus Kas</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-emerald-700 font-semibold">+ Masuk: {formatRupiah(totalMasuk)}</span>
+              <span className="text-zinc-300">•</span>
+              <span className="text-rose-700 font-semibold">- Keluar: {formatRupiah(totalKeluar)}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 size-3.5 text-zinc-400" />
+              <Input
+                placeholder="Cari transaksi / keterangan..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-8 pl-8 text-xs bg-white border-zinc-200"
+              />
+            </div>
+
+            <Select value={filterWaktu} onValueChange={setFilterWaktu}>
+              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
+                <Calendar className="size-3.5 mr-1.5 text-zinc-400" />
+                <SelectValue placeholder="Periode Waktu" />
+              </SelectTrigger>
+              <SelectContent>
+                {waktuOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={filterTipe} onValueChange={setFilterTipe}>
+              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
+                <SelectValue placeholder="Jenis Mutasi" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">Semua Jenis Mutasi</SelectItem>
+                <SelectItem value="masuk" className="text-xs">Pemasukan (Nabung)</SelectItem>
+                <SelectItem value="keluar" className="text-xs">Pengeluaran (Penarikan)</SelectItem>
+                <SelectItem value="release" className="text-xs">Release Saldo</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {filterWaktu === 'custom' && (
+            <div className="flex flex-wrap items-end gap-2.5 rounded-lg bg-emerald-50/60 p-2.5 border border-emerald-100">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900">Dari Tanggal</label>
+                <Input type="date" value={customDari} onChange={(e) => setCustomDari(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900">Sampai Tanggal</label>
+                <Input type="date" value={customSampai} onChange={(e) => setCustomSampai(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Table */}
-      <Card className="border-zinc-200">
+      {/* Mutasi Table Card */}
+      <Card className="border-0 bg-white shadow-sm ring-1 ring-zinc-100 overflow-hidden">
+        <div className="p-4 border-b border-zinc-100">
+          <h3 className="text-sm font-semibold text-zinc-900">Riwayat Mutasi Saldo</h3>
+        </div>
         <CardContent className="p-0">
-          {filtered.length === 0 ? (
+          {filteredMutasi.length === 0 ? (
             <div className="py-10 text-center text-sm text-zinc-400">
-              <Recycle className="size-10 mx-auto mb-2 opacity-30" />
-              Belum ada riwayat nabung
+              <Wallet className="size-8 mx-auto mb-2 opacity-30" />
+              <p>Belum ada riwayat mutasi yang cocok dengan filter.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-zinc-50 border-b">
+                <thead className="bg-zinc-50 border-b border-zinc-200 text-left">
                   <tr>
-                    <th className="text-left p-3 text-xs font-semibold text-zinc-600">Tanggal</th>
-                    <th className="text-left p-3 text-xs font-semibold text-zinc-600">Barang</th>
-                    <th className="text-center p-3 text-xs font-semibold text-zinc-600">Berat</th>
-                    <th className="text-right p-3 text-xs font-semibold text-zinc-600">Nilai</th>
-                    <th className="text-center p-3 text-xs font-semibold text-zinc-600">Status QC</th>
-                    <th className="text-center p-3 text-xs font-semibold text-zinc-600">Aksi</th>
+                    <th className="p-3 text-xs font-semibold text-zinc-600">Tanggal</th>
+                    <th className="p-3 text-xs font-semibold text-zinc-600">Kode Transaksi</th>
+                    <th className="p-3 text-xs font-semibold text-zinc-600">Keterangan</th>
+                    <th className="p-3 text-xs font-semibold text-zinc-600">Kategori</th>
+                    <th className="p-3 text-right text-xs font-semibold text-zinc-600">Nominal</th>
+                    <th className="p-3 text-center text-xs font-semibold text-zinc-600">Status</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredMutasi.map((m) => (
+                    <tr key={m.id} className="hover:bg-zinc-50/60">
+                      <td className="p-3 text-xs font-mono text-zinc-600 whitespace-nowrap">{formatDateTime(m.tanggal)}</td>
+                      <td className="p-3 text-xs font-mono font-medium text-emerald-700 whitespace-nowrap">{m.kode}</td>
+                      <td className="p-3 text-xs text-zinc-900 font-medium">{m.deskripsi}</td>
+                      <td className="p-3 text-xs text-zinc-500 whitespace-nowrap">{m.kategori}</td>
+                      <td className={`p-3 text-xs font-bold text-right whitespace-nowrap ${m.tipe === 'masuk' ? 'text-emerald-700' : m.tipe === 'keluar' ? 'text-rose-700' : 'text-blue-700'}`}>
+                        {m.tipe === 'masuk' ? `+${formatRupiah(m.jumlah)}` : m.tipe === 'keluar' ? `-${formatRupiah(m.jumlah)}` : formatRupiah(m.jumlah)}
+                      </td>
+                      <td className="p-3 text-center whitespace-nowrap">
+                        <Badge variant="outline" className={`text-[10px] ${m.status === 'selesai' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-zinc-50 text-zinc-600 border-zinc-200'}`}>
+                          {m.status}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// Helper for date matching
+function matchesDateFilter(dateStr: string | Date, preset: string, dari?: string, sampai?: string): boolean {
+  if (preset === 'all') return true
+  const d = new Date(dateStr)
+  const now = new Date()
+
+  if (preset === 'today') {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+    return d >= today && d < nextDay
+  }
+  if (preset === 'this_month') {
+    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    return d >= startMonth && d < nextMonth
+  }
+  if (preset === '1bul') {
+    const past = new Date(now)
+    past.setDate(past.getDate() - 30)
+    past.setHours(0, 0, 0, 0)
+    return d >= past && d <= now
+  }
+  if (preset === '3bul') {
+    const past = new Date(now)
+    past.setDate(past.getDate() - 90)
+    past.setHours(0, 0, 0, 0)
+    return d >= past && d <= now
+  }
+  if (preset === '6bul') {
+    const past = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+    past.setHours(0, 0, 0, 0)
+    return d >= past && d <= now
+  }
+  if (preset === '1thn') {
+    const past = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+    past.setHours(0, 0, 0, 0)
+    return d >= past && d <= now
+  }
+  if (preset === 'custom' && dari && sampai) {
+    const start = new Date(dari)
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(sampai)
+    end.setHours(23, 59, 59, 999)
+    return d >= start && d <= end
+  }
+  return true
+}
+
+// ============================================================
+// Nabung View - ENHANCED WITH COMPREHENSIVE FILTER SUITE
+// ============================================================
+function NabungView({ data }: { data: any }) {
+  const rows = data.riwayat?.tabungan || []
+  const masterCategories = data.masterData?.categories || []
+  const masterItems = data.masterData?.wasteItems || []
+
+  // Extract unique categories & items from rows + masterData
+  const availableCategories = Array.from(new Set([
+    ...masterCategories.map((c: any) => c.name),
+    ...rows.flatMap((r: any) => r.kategoriList || (r.kategori ? [r.kategori] : [])),
+  ])).filter(Boolean).sort()
+
+  const availableItems = Array.from(new Set([
+    ...masterItems.map((it: any) => it.name),
+    ...rows.flatMap((r: any) => r.barangList || (r.barang ? [r.barang] : [])),
+  ])).filter(Boolean).sort()
+
+  // Filter States
+  const [search, setSearch] = useState('')
+  const [filterWaktu, setFilterWaktu] = useState('all')
+  const [customDari, setCustomDari] = useState('')
+  const [customSampai, setCustomSampai] = useState('')
+  const [filterKategori, setFilterKategori] = useState('all')
+  const [filterBarang, setFilterBarang] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [filterQc, setFilterQc] = useState('all')
+  const [sortBy, setSortBy] = useState('date_desc')
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  // Reset Filters
+  const resetFilters = () => {
+    setSearch('')
+    setFilterWaktu('all')
+    setCustomDari('')
+    setCustomSampai('')
+    setFilterKategori('all')
+    setFilterBarang('all')
+    setFilterStatus('all')
+    setFilterQc('all')
+    setSortBy('date_desc')
+  }
+
+  const isFilterActive = search !== '' || filterWaktu !== 'all' || filterKategori !== 'all' || filterBarang !== 'all' || filterStatus !== 'all' || filterQc !== 'all'
+
+  // Filter & Sort Logic
+  const filtered = rows.filter((r: any) => {
+    // Search query
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      const matchKode = r.kode?.toLowerCase().includes(q)
+      const matchBarang = r.barang?.toLowerCase().includes(q)
+      const matchKategori = (r.kategoriList || []).some((k: string) => k.toLowerCase().includes(q))
+      const matchItemDetail = (r.items || []).some((it: any) => it.barang?.toLowerCase().includes(q) || it.kode?.toLowerCase().includes(q))
+      if (!matchKode && !matchBarang && !matchKategori && !matchItemDetail) return false
+    }
+
+    // Date filter
+    if (!matchesDateFilter(r.tanggal, filterWaktu, customDari, customSampai)) return false
+
+    // Category filter
+    if (filterKategori !== 'all') {
+      const rowCats = r.kategoriList || (r.kategori ? [r.kategori] : [])
+      const itemCats = (r.items || []).map((it: any) => it.kategori)
+      const allCats = [...rowCats, ...itemCats]
+      if (!allCats.some((c: string) => c.toLowerCase() === filterKategori.toLowerCase())) return false
+    }
+
+    // Waste Item filter
+    if (filterBarang !== 'all') {
+      const rowItems = r.barangList || [r.barang]
+      const itemNames = (r.items || []).map((it: any) => it.barang)
+      const allNames = [...rowItems, ...itemNames]
+      if (!allNames.some((b: string) => b.toLowerCase().includes(filterBarang.toLowerCase()))) return false
+    }
+
+    // Status filter
+    if (filterStatus !== 'all' && r.status !== filterStatus) return false
+
+    // QC status filter
+    if (filterQc !== 'all' && r.qcStatus !== filterQc) return false
+
+    return true
+  }).sort((a: any, b: any) => {
+    if (sortBy === 'date_desc') return new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime()
+    if (sortBy === 'date_asc') return new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime()
+    if (sortBy === 'weight_desc') return toNumber(b.berat) - toNumber(a.berat)
+    if (sortBy === 'value_desc') return toNumber(b.nilai) - toNumber(a.nilai)
+    if (sortBy === 'points_desc') return toNumber(b.poin) - toNumber(a.poin)
+    return 0
+  })
+
+  // Recalculate summary from filtered rows
+  const filteredNilai = filtered.reduce((s: number, r: any) => s + toNumber(r.nilai), 0)
+  const filteredBerat = filtered.reduce((s: number, r: any) => s + toNumber(r.berat), 0)
+  const filteredPoin = filtered.reduce((s: number, r: any) => s + toNumber(r.poin), 0)
+  const filteredMenunggu = filtered.filter((r: any) => r.status === 'menunggu_qc' || r.qcStatus === 'pending').length
+
+  const waktuOptions = [
+    { value: 'all', label: 'Semua Waktu' },
+    { value: 'today', label: 'Hari Ini' },
+    { value: 'this_month', label: 'Bulan Ini' },
+    { value: '1bul', label: '1 Bulan Terakhir' },
+    { value: '3bul', label: '3 Bulan Terakhir' },
+    { value: '6bul', label: '6 Bulan Terakhir' },
+    { value: '1thn', label: '1 Tahun Terakhir' },
+    { value: 'custom', label: 'Kustom Tanggal' },
+  ]
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+            <Recycle className="size-5 text-emerald-600" /> Transaksi Nabung Sampah
+          </h2>
+          <p className="text-xs text-zinc-500 mt-0.5">Riwayat & pelacakan detail setoran sampah nasabah</p>
+        </div>
+        {isFilterActive && (
+          <Button variant="outline" size="sm" onClick={resetFilters} className="self-start text-xs text-zinc-600 hover:text-rose-600 gap-1.5 border-zinc-200">
+            <X className="size-3.5" /> Reset Semua Filter
+          </Button>
+        )}
+      </div>
+
+      {/* Summary Cards (Dynamic Live Recalculation) */}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-emerald-800 font-medium">Total Nilai Tabungan</p>
+              <TrendingUp className="size-4 text-emerald-600" />
+            </div>
+            <p className="mt-2 text-xl sm:text-2xl font-bold text-emerald-700">{formatRupiah(filteredNilai)}</p>
+            <p className="mt-0.5 text-[10px] text-emerald-600">{filtered.length} transaksi</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-blue-800 font-medium">Total Berat Sampah</p>
+              <Scale className="size-4 text-blue-600" />
+            </div>
+            <p className="mt-2 text-xl sm:text-2xl font-bold text-blue-700">{formatNumber(filteredBerat, 2)} kg</p>
+            <p className="mt-0.5 text-[10px] text-blue-600">Terverifikasi sistem</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-amber-800 font-medium">Total Poin Diperoleh</p>
+              <Award className="size-4 text-amber-600" />
+            </div>
+            <p className="mt-2 text-xl sm:text-2xl font-bold text-amber-700">{formatNumber(filteredPoin, 0)} pt</p>
+            <p className="mt-0.5 text-[10px] text-amber-600">Reward partisipasi</p>
+          </CardContent>
+        </Card>
+        <Card className={`bg-gradient-to-br ${filteredMenunggu > 0 ? 'from-purple-50 to-violet-50 border-purple-200 shadow-sm' : 'from-zinc-50 to-zinc-100 border-zinc-200 shadow-sm'}`}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <p className={`text-xs font-medium ${filteredMenunggu > 0 ? 'text-purple-800' : 'text-zinc-600'}`}>Menunggu QC</p>
+              <Clock className={`size-4 ${filteredMenunggu > 0 ? 'text-purple-600 animate-pulse' : 'text-zinc-400'}`} />
+            </div>
+            <p className={`mt-2 text-xl sm:text-2xl font-bold ${filteredMenunggu > 0 ? 'text-purple-700' : 'text-zinc-600'}`}>{filteredMenunggu}</p>
+            <p className="mt-0.5 text-[10px] text-zinc-500">{filteredMenunggu > 0 ? 'Sedang proses timbang & sortir' : 'Semua transaksi selesai'}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ===== FILTER TOOLBAR CARD ===== */}
+      <Card className="border-0 bg-white shadow-sm ring-1 ring-zinc-200/80">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-800">
+            <Filter className="size-4 text-emerald-600" />
+            <span>Pusat Filter Transaksi & Sampah</span>
+          </div>
+
+          {/* Row 1: Search, Time, Category, Waste Item */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 size-3.5 text-zinc-400" />
+              <Input
+                placeholder="Cari kode trx / sampah..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-8 pl-8 text-xs bg-white border-zinc-200"
+              />
+            </div>
+
+            {/* Filter Waktu */}
+            <Select value={filterWaktu} onValueChange={setFilterWaktu}>
+              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
+                <Calendar className="size-3.5 mr-1.5 text-zinc-400" />
+                <SelectValue placeholder="Pilih Periode Waktu" />
+              </SelectTrigger>
+              <SelectContent>
+                {waktuOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Filter Kategori Sampah */}
+            <Select value={filterKategori} onValueChange={setFilterKategori}>
+              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
+                <Recycle className="size-3.5 mr-1.5 text-emerald-600" />
+                <SelectValue placeholder="Kategori Sampah" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">Semua Kategori</SelectItem>
+                {availableCategories.map((cat: string) => (
+                  <SelectItem key={cat} value={cat} className="text-xs">{cat}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Filter Jenis Barang */}
+            <Select value={filterBarang} onValueChange={setFilterBarang}>
+              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
+                <Package className="size-3.5 mr-1.5 text-blue-600" />
+                <SelectValue placeholder="Jenis Sampah" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">Semua Jenis Sampah</SelectItem>
+                {availableItems.map((item: string) => (
+                  <SelectItem key={item} value={item} className="text-xs">{item}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Row 2: Status Transaksi, Status QC, Sorting */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {/* Status Transaksi */}
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
+                <SelectValue placeholder="Status Transaksi" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">Semua Status Transaksi</SelectItem>
+                <SelectItem value="selesai" className="text-xs">Selesai</SelectItem>
+                <SelectItem value="menunggu_qc" className="text-xs">Menunggu QC</SelectItem>
+                <SelectItem value="dibatalkan" className="text-xs">Dibatalkan</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Status QC */}
+            <Select value={filterQc} onValueChange={setFilterQc}>
+              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
+                <SelectValue placeholder="Status QC" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">Semua Status QC</SelectItem>
+                <SelectItem value="tidak_perlu" className="text-xs">Bersih (Tanpa QC)</SelectItem>
+                <SelectItem value="passed" className="text-xs">Lolos QC</SelectItem>
+                <SelectItem value="adjusted" className="text-xs">Disesuaikan</SelectItem>
+                <SelectItem value="pending" className="text-xs">Menunggu QC</SelectItem>
+                <SelectItem value="rejected" className="text-xs">Ditolak</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Urutan / Sort */}
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
+                <SelectValue placeholder="Urutkan Berdasarkan" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date_desc" className="text-xs">Tanggal (Terbaru)</SelectItem>
+                <SelectItem value="date_asc" className="text-xs">Tanggal (Terlama)</SelectItem>
+                <SelectItem value="weight_desc" className="text-xs">Berat Terbesar</SelectItem>
+                <SelectItem value="value_desc" className="text-xs">Nilai Terbesar</SelectItem>
+                <SelectItem value="points_desc" className="text-xs">Poin Terbanyak</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Custom Date Range Pickers (if custom selected) */}
+          {filterWaktu === 'custom' && (
+            <div className="flex flex-wrap items-end gap-2.5 rounded-lg bg-emerald-50/60 p-2.5 border border-emerald-100">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900">Dari Tanggal</label>
+                <Input type="date" value={customDari} onChange={(e) => setCustomDari(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900">Sampai Tanggal</label>
+                <Input type="date" value={customSampai} onChange={(e) => setCustomSampai(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+              </div>
+              <p className="text-[11px] text-emerald-700 self-center">Rentang waktu otomatis disaring</p>
+            </div>
+          )}
+
+          {/* Active Filter Tags */}
+          {isFilterActive && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-zinc-100">
+              <span className="text-[10px] font-medium text-zinc-400">Filter aktif:</span>
+              {search && (
+                <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 gap-1">
+                  Cari: "{search}" <X className="size-2.5 cursor-pointer" onClick={() => setSearch('')} />
+                </Badge>
+              )}
+              {filterWaktu !== 'all' && (
+                <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 gap-1">
+                  Waktu: {waktuOptions.find((o) => o.value === filterWaktu)?.label} <X className="size-2.5 cursor-pointer" onClick={() => setFilterWaktu('all')} />
+                </Badge>
+              )}
+              {filterKategori !== 'all' && (
+                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 gap-1">
+                  Kategori: {filterKategori} <X className="size-2.5 cursor-pointer" onClick={() => setFilterKategori('all')} />
+                </Badge>
+              )}
+              {filterBarang !== 'all' && (
+                <Badge variant="outline" className="text-[10px] bg-purple-50 text-purple-700 border-purple-200 gap-1">
+                  Sampah: {filterBarang} <X className="size-2.5 cursor-pointer" onClick={() => setFilterBarang('all')} />
+                </Badge>
+              )}
+              {filterStatus !== 'all' && (
+                <Badge variant="outline" className="text-[10px] bg-zinc-50 text-zinc-700 border-zinc-200 gap-1">
+                  Status: {filterStatus} <X className="size-2.5 cursor-pointer" onClick={() => setFilterStatus('all')} />
+                </Badge>
+              )}
+              {filterQc !== 'all' && (
+                <Badge variant="outline" className="text-[10px] bg-teal-50 text-teal-700 border-teal-200 gap-1">
+                  QC: {qcLabel(filterQc)} <X className="size-2.5 cursor-pointer" onClick={() => setFilterQc('all')} />
+                </Badge>
+              )}
+              <button onClick={resetFilters} className="text-[10px] text-rose-600 hover:underline font-medium ml-1">
+                Hapus Semua
+              </button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ===== TABLE CARD ===== */}
+      <Card className="border-zinc-200 shadow-sm overflow-hidden">
+        <CardContent className="p-0">
+          {filtered.length === 0 ? (
+            <div className="py-12 text-center text-sm text-zinc-400">
+              <Recycle className="size-10 mx-auto mb-2 opacity-30" />
+              <p className="font-medium text-zinc-600">Tidak ada data transaksi yang cocok</p>
+              <p className="text-xs text-zinc-400 mt-1">Coba sesuaikan kata kunci atau filter periode waktu Anda.</p>
+              {isFilterActive && (
+                <Button variant="outline" size="sm" onClick={resetFilters} className="mt-3 text-xs">
+                  Reset Filter
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-zinc-50 border-b border-zinc-200 text-left">
+                  <tr>
+                    <th className="p-3 text-xs font-semibold text-zinc-600">Tanggal</th>
+                    <th className="p-3 text-xs font-semibold text-zinc-600">Kode Transaksi</th>
+                    <th className="p-3 text-xs font-semibold text-zinc-600">Rincian Sampah</th>
+                    <th className="p-3 text-center text-xs font-semibold text-zinc-600">Berat</th>
+                    <th className="p-3 text-right text-xs font-semibold text-zinc-600">Nilai Bersih</th>
+                    <th className="p-3 text-center text-xs font-semibold text-zinc-600">Poin</th>
+                    <th className="p-3 text-center text-xs font-semibold text-zinc-600">Status QC</th>
+                    <th className="p-3 text-center text-xs font-semibold text-zinc-600">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
                   {filtered.map((r: any, i: number) => {
                     const key = r.id || `n-${i}`
                     const isExpanded = expanded === key
                     return (
                       <Fragment key={key}>
-                        <tr className="border-b hover:bg-zinc-50 cursor-pointer" onClick={() => setExpanded(isExpanded ? null : key)}>
-                          <td className="p-3 text-zinc-700">{formatDate(r.tanggal)}</td>
-                          <td className="p-3 text-zinc-700 font-medium">{r.barang || '-'}</td>
-                          <td className="p-3 text-center text-zinc-700">{formatNumber(toNumber(r.berat), 2)} kg</td>
-                          <td className="p-3 text-right font-semibold text-emerald-700">{formatRupiah(r.nilai)}</td>
-                          <td className="p-3 text-center">
+                        <tr
+                          className={cn('hover:bg-emerald-50/40 cursor-pointer transition', isExpanded && 'bg-emerald-50/30')}
+                          onClick={() => setExpanded(isExpanded ? null : key)}
+                        >
+                          <td className="p-3 text-xs text-zinc-600 font-mono whitespace-nowrap">{formatDate(r.tanggal)}</td>
+                          <td className="p-3 text-xs font-mono font-medium text-emerald-700 whitespace-nowrap">{r.kode || '-'}</td>
+                          <td className="p-3 text-xs text-zinc-800 font-medium">{r.barang || '-'}</td>
+                          <td className="p-3 text-center text-xs font-semibold text-zinc-800 whitespace-nowrap">{formatNumber(toNumber(r.berat), 2)} kg</td>
+                          <td className="p-3 text-right text-xs font-bold text-emerald-700 whitespace-nowrap">{formatRupiah(r.nilai)}</td>
+                          <td className="p-3 text-center text-xs font-semibold text-amber-700 whitespace-nowrap">{r.poin || 0} pt</td>
+                          <td className="p-3 text-center whitespace-nowrap">
                             <Badge variant="outline" className={cn('text-[10px]', qcBadgeClass(r.qcStatus || r.status))}>
                               {qcLabel(r.qcStatus || r.status)}
                             </Badge>
                           </td>
                           <td className="p-3 text-center">
-                            <ChevronRight className={`size-4 mx-auto text-zinc-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                            <ChevronRight className={`size-4 mx-auto text-zinc-400 transition-transform duration-200 ${isExpanded ? 'rotate-90 text-emerald-600' : ''}`} />
                           </td>
                         </tr>
                         {isExpanded && (
-                          <tr className="bg-zinc-50/50">
-                            <td colSpan={6} className="p-4">
-                              <div className="grid grid-cols-2 gap-3 text-xs">
-                                <div>
-                                  <p className="text-zinc-500">Kode Transaksi:</p>
-                                  <p className="font-mono font-semibold text-emerald-700">{r.kode || '-'}</p>
+                          <tr className="bg-zinc-50/80 border-y border-zinc-200/80">
+                            <td colSpan={8} className="p-4">
+                              <div className="rounded-lg bg-white p-3 border border-zinc-200 space-y-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 pb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-zinc-800">Rincian Item Setoran ({r.items?.length || 1} jenis)</span>
+                                    <Badge variant="outline" className="text-[10px] font-mono">{r.kode || '-'}</Badge>
+                                  </div>
+                                  <span className="text-xs text-zinc-500">Waktu: {formatDateTime(r.tanggal)}</span>
                                 </div>
-                                <div>
-                                  <p className="text-zinc-500">Poin Didapat:</p>
-                                  <p className="font-semibold text-emerald-700">{r.poin || 0} pt</p>
-                                </div>
+
+                                {r.items && r.items.length > 0 ? (
+                                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                    {r.items.map((it: any) => (
+                                      <div key={it.id} className="p-2.5 rounded-md border border-zinc-100 bg-zinc-50/50 flex flex-col justify-between">
+                                        <div>
+                                          <div className="flex items-center justify-between text-xs">
+                                            <span className="font-semibold text-zinc-900">{it.barang}</span>
+                                            <Badge variant="outline" className="text-[9px] border-zinc-200 bg-white">{it.kategori}</Badge>
+                                          </div>
+                                          <p className="text-[10px] text-zinc-400 font-mono mt-0.5">Kode: {it.kode}</p>
+                                        </div>
+                                        <div className="mt-2 flex items-center justify-between text-xs pt-1.5 border-t border-zinc-100">
+                                          <span className="text-zinc-600 font-medium">{formatNumber(it.berat, 2)} kg</span>
+                                          <span className="font-bold text-emerald-700">{formatRupiah(it.nilai)}</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-zinc-600">Item: {r.barang} ({formatNumber(r.berat, 2)} kg — {formatRupiah(r.nilai)})</p>
+                                )}
+
                                 {r.status === 'menunggu_qc' && (
-                                  <div className="col-span-2 text-amber-700 italic">
-                                    ⚠ Transaksi ini masih menunggu QC. Saldo belum masuk ke akun Anda.
+                                  <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 border border-amber-200 flex items-center gap-1.5">
+                                    <AlertTriangle className="size-4 shrink-0 text-amber-600" />
+                                    <span>Transaksi ini masih menunggu pemeriksaan mutu & berat (QC). Saldo tabungan akan ditambahkan setelah lolos QC.</span>
                                   </div>
                                 )}
                               </div>
@@ -783,12 +1335,13 @@ function NabungView({ data }: { data: any }) {
           )}
         </CardContent>
       </Card>
+      <p className="text-center text-[11px] text-zinc-400">Menampilkan {filtered.length} dari total {rows.length} transaksi</p>
     </div>
   )
 }
 
 // ============================================================
-// Sedekah View
+// Sedekah View - ENHANCED WITH COMPREHENSIVE FILTER SUITE
 // ============================================================
 function qcBadgeClass(status: string) {
   switch (status) {
@@ -810,13 +1363,13 @@ function qcBadgeClass(status: string) {
 function qcLabel(status: string) {
   switch (status) {
     case 'passed':
-      return 'Lulus QC'
+      return 'Lolos QC'
     case 'adjusted':
       return 'Disesuaikan'
     case 'tidak_perlu':
       return 'Bersih (Tanpa QC)'
     case 'pending':
-      return 'Menunggu QC — Saldo belum masuk'
+      return 'Menunggu QC'
     case 'rejected':
       return 'Ditolak'
     default:
@@ -825,72 +1378,231 @@ function qcLabel(status: string) {
 }
 
 function SedekahView({ data }: { data: any }) {
-  const rows: any[] = data.riwayat.sedekah || []
-  // Aggregate totals across items
-  const totalBeratKotor = rows.reduce((s, r) => s + toNumber(r.beratKotor), 0)
-  const totalBeratBersih = rows.reduce((s, r) => s + toNumber(r.beratBersih), 0)
+  const rows: any[] = data.riwayat?.sedekah || []
+  const masterCategories = data.masterData?.categories || []
+  const masterItems = data.masterData?.wasteItems || []
+
+  const availableCategories = Array.from(new Set([
+    ...masterCategories.map((c: any) => c.name),
+    ...rows.map((r: any) => r.kategori),
+  ])).filter(Boolean).sort()
+
+  const availableItems = Array.from(new Set([
+    ...masterItems.map((it: any) => it.name),
+    ...rows.map((r: any) => r.barangNama || r.barang),
+  ])).filter(Boolean).sort()
+
+  // Filter States
+  const [search, setSearch] = useState('')
+  const [filterWaktu, setFilterWaktu] = useState('all')
+  const [customDari, setCustomDari] = useState('')
+  const [customSampai, setCustomSampai] = useState('')
+  const [filterKategori, setFilterKategori] = useState('all')
+  const [filterBarang, setFilterBarang] = useState('all')
+  const [filterQc, setFilterQc] = useState('all')
+  const [sortBy, setSortBy] = useState('date_desc')
+
+  const resetFilters = () => {
+    setSearch('')
+    setFilterWaktu('all')
+    setCustomDari('')
+    setCustomSampai('')
+    setFilterKategori('all')
+    setFilterBarang('all')
+    setFilterQc('all')
+    setSortBy('date_desc')
+  }
+
+  const isFilterActive = search !== '' || filterWaktu !== 'all' || filterKategori !== 'all' || filterBarang !== 'all' || filterQc !== 'all'
+
+  // Filter logic
+  const filtered = rows.filter((r: any) => {
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      const matchKode = r.kode?.toLowerCase().includes(q)
+      const matchBarang = r.barang?.toLowerCase().includes(q)
+      const matchKategori = r.kategori?.toLowerCase().includes(q)
+      if (!matchKode && !matchBarang && !matchKategori) return false
+    }
+
+    if (!matchesDateFilter(r.tanggal, filterWaktu, customDari, customSampai)) return false
+
+    if (filterKategori !== 'all' && r.kategori?.toLowerCase() !== filterKategori.toLowerCase()) return false
+
+    if (filterBarang !== 'all') {
+      const bName = (r.barangNama || r.barang || '').toLowerCase()
+      if (!bName.includes(filterBarang.toLowerCase())) return false
+    }
+
+    if (filterQc !== 'all' && r.qcStatus !== filterQc) return false
+
+    return true
+  }).sort((a: any, b: any) => {
+    if (sortBy === 'date_desc') return new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime()
+    if (sortBy === 'date_asc') return new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime()
+    if (sortBy === 'weight_desc') return toNumber(b.beratBersih) - toNumber(a.beratBersih)
+    if (sortBy === 'kotor_desc') return toNumber(b.beratKotor) - toNumber(a.beratKotor)
+    return 0
+  })
+
+  // Recalculate summary from filtered rows
+  const totalBeratKotor = filtered.reduce((s, r) => s + toNumber(r.beratKotor), 0)
+  const totalBeratBersih = filtered.reduce((s, r) => s + toNumber(r.beratBersih), 0)
   const totalSusut = totalBeratKotor - totalBeratBersih
-  // Approximate distinct transactions by distinct tanggal+barang signature
-  const totalTransaksi = new Set(rows.map((r) => String(r.tanggal))).size
+  const totalTransaksi = new Set(filtered.map((r) => String(r.tanggal))).size
 
   const summaryCards = [
-    { label: 'Total Berat Kotor', value: `${formatNumber(totalBeratKotor, 2)} kg`, color: 'text-zinc-900', bg: 'bg-zinc-100' },
-    { label: 'Total Berat Bersih', value: `${formatNumber(totalBeratBersih, 2)} kg`, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Total Susut', value: `${formatNumber(totalSusut, 2)} kg`, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'Jumlah Item', value: `${rows.length}`, color: 'text-teal-700', bg: 'bg-teal-50' },
+    { label: 'Total Berat Kotor', value: `${formatNumber(totalBeratKotor, 2)} kg`, color: 'text-zinc-900', bg: 'bg-zinc-100', icon: Scale },
+    { label: 'Total Berat Bersih', value: `${formatNumber(totalBeratBersih, 2)} kg`, color: 'text-emerald-600', bg: 'bg-emerald-50', icon: HeartHandshake },
+    { label: 'Total Susut QC', value: `${formatNumber(totalSusut, 2)} kg`, color: 'text-amber-600', bg: 'bg-amber-50', icon: AlertTriangle },
+    { label: 'Jumlah Item Donasi', value: `${filtered.length}`, color: 'text-purple-700', bg: 'bg-purple-50', icon: Package },
+  ]
+
+  const waktuOptions = [
+    { value: 'all', label: 'Semua Waktu' },
+    { value: 'today', label: 'Hari Ini' },
+    { value: 'this_month', label: 'Bulan Ini' },
+    { value: '1bul', label: '1 Bulan Terakhir' },
+    { value: '3bul', label: '3 Bulan Terakhir' },
+    { value: '6bul', label: '6 Bulan Terakhir' },
+    { value: '1thn', label: '1 Tahun Terakhir' },
+    { value: 'custom', label: 'Kustom Tanggal' },
   ]
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <HeartHandshake className="h-5 w-5 text-emerald-600" />
-        <h2 className="text-lg font-bold text-zinc-900">Sedekah Saya</h2>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
+            <HeartHandshake className="size-5 text-emerald-600" /> Sedekah Sampah Saya
+          </h2>
+          <p className="text-xs text-zinc-500 mt-0.5">Riwayat amal kebaikan dari sedekah sampah daur ulang</p>
+        </div>
+        {isFilterActive && (
+          <Button variant="outline" size="sm" onClick={resetFilters} className="self-start text-xs text-zinc-600 hover:text-rose-600 gap-1.5 border-zinc-200">
+            <X className="size-3.5" /> Reset Filter
+          </Button>
+        )}
       </div>
 
-      {rows.length === 0 ? (
-        <Card className="border-0 bg-white p-8 shadow-sm ring-1 ring-zinc-100">
-          <div className="flex flex-col items-center justify-center py-6 text-center">
-            <HeartHandshake className="h-12 w-12 text-zinc-300" />
-            <p className="mt-3 text-sm font-medium text-zinc-600">Belum ada riwayat sedekah</p>
-            <p className="mt-1 text-xs text-zinc-400">Sedekah sampah Anda akan tampil di sini setelah diproses oleh teller.</p>
-          </div>
-        </Card>
-      ) : (
-        <>
-          {/* Summary cards */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {summaryCards.map((c) => (
-              <div key={c.label} className="rounded-xl border border-zinc-100 bg-white p-4 shadow-sm">
-                <div className={cn('mb-2 flex h-7 w-7 items-center justify-center rounded-lg', c.bg)}>
-                  <HeartHandshake className={cn('h-4 w-4', c.color)} />
-                </div>
-                <p className={cn('text-lg font-bold', c.color)}>{c.value}</p>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{c.label}</p>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {summaryCards.map((c) => {
+          const Icon = c.icon
+          return (
+            <div key={c.label} className="rounded-xl border border-zinc-100 bg-white p-4 shadow-sm">
+              <div className={cn('mb-2 flex h-7 w-7 items-center justify-center rounded-lg', c.bg)}>
+                <Icon className={cn('h-4 w-4', c.color)} />
               </div>
-            ))}
+              <p className={cn('text-lg font-bold', c.color)}>{c.value}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{c.label}</p>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Filter Toolbar Card */}
+      <Card className="border-0 bg-white shadow-sm ring-1 ring-zinc-200/80">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-800">
+            <Filter className="size-4 text-emerald-600" />
+            <span>Filter Sedekah Sampah</span>
           </div>
 
-          <Card className="border-0 bg-white p-4 shadow-sm ring-1 ring-zinc-100">
-            <h3 className="mb-3 text-sm font-semibold text-zinc-900">Riwayat Sedekah Sampah</h3>
-            <SimpleTable
-              headers={['Tanggal', 'Kategori', 'Barang', 'Berat Kotor', 'Berat Bersih', 'Susut', 'QC Status']}
-              rows={rows.map((r: any) => [
-                formatDate(r.tanggal),
-                r.kategori,
-                r.barang,
-                `${formatNumber(r.beratKotor, 2)} kg`,
-                `${formatNumber(r.beratBersih, 2)} kg`,
-                `${formatNumber(r.susut, 2)} kg`,
-                <Badge key="qc" variant="outline" className={cn('text-[10px]', qcBadgeClass(r.qcStatus))}>{qcLabel(r.qcStatus)}</Badge>,
-              ])}
-              emptyMsg="Belum ada riwayat sedekah."
-            />
-          </Card>
-          <p className="text-[11px] text-zinc-400">
-            * Total berat dihitung dari item-level. {totalTransaksi > 0 ? `Tersebar di ${totalTransaksi} transaksi sedekah.` : ''}
-          </p>
-        </>
-      )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 size-3.5 text-zinc-400" />
+              <Input
+                placeholder="Cari kode trx / sampah..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-8 pl-8 text-xs bg-white border-zinc-200"
+              />
+            </div>
+
+            <Select value={filterWaktu} onValueChange={setFilterWaktu}>
+              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
+                <Calendar className="size-3.5 mr-1.5 text-zinc-400" />
+                <SelectValue placeholder="Periode Waktu" />
+              </SelectTrigger>
+              <SelectContent>
+                {waktuOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={filterKategori} onValueChange={setFilterKategori}>
+              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
+                <Recycle className="size-3.5 mr-1.5 text-emerald-600" />
+                <SelectValue placeholder="Kategori" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">Semua Kategori</SelectItem>
+                {availableCategories.map((cat: string) => (
+                  <SelectItem key={cat} value={cat} className="text-xs">{cat}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={filterQc} onValueChange={setFilterQc}>
+              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
+                <SelectValue placeholder="Status QC" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">Semua Status QC</SelectItem>
+                <SelectItem value="tidak_perlu" className="text-xs">Bersih (Tanpa QC)</SelectItem>
+                <SelectItem value="passed" className="text-xs">Lolos QC</SelectItem>
+                <SelectItem value="adjusted" className="text-xs">Disesuaikan</SelectItem>
+                <SelectItem value="pending" className="text-xs">Menunggu QC</SelectItem>
+                <SelectItem value="rejected" className="text-xs">Ditolak</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {filterWaktu === 'custom' && (
+            <div className="flex flex-wrap items-end gap-2.5 rounded-lg bg-emerald-50/60 p-2.5 border border-emerald-100">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900">Dari Tanggal</label>
+                <Input type="date" value={customDari} onChange={(e) => setCustomDari(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900">Sampai Tanggal</label>
+                <Input type="date" value={customSampai} onChange={(e) => setCustomSampai(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Table Card */}
+      <Card className="border-0 bg-white p-4 shadow-sm ring-1 ring-zinc-100">
+        <h3 className="mb-3 text-sm font-semibold text-zinc-900">Riwayat Sedekah Sampah</h3>
+        {filtered.length === 0 ? (
+          <div className="py-10 text-center text-sm text-zinc-400">
+            <HeartHandshake className="size-8 mx-auto mb-2 opacity-30" />
+            <p>Tidak ada riwayat sedekah yang sesuai dengan filter.</p>
+          </div>
+        ) : (
+          <SimpleTable
+            headers={['Tanggal', 'Kode Trx', 'Kategori', 'Barang', 'Berat Kotor', 'Berat Bersih', 'Susut', 'Status QC']}
+            rows={filtered.map((r: any) => [
+              formatDate(r.tanggal),
+              <span key="k" className="font-mono text-emerald-700 text-xs">{r.kode || '-'}</span>,
+              r.kategori,
+              r.barang,
+              `${formatNumber(r.beratKotor, 2)} kg`,
+              `${formatNumber(r.beratBersih, 2)} kg`,
+              `${formatNumber(r.susut, 2)} kg`,
+              <Badge key="qc" variant="outline" className={cn('text-[10px]', qcBadgeClass(r.qcStatus))}>{qcLabel(r.qcStatus)}</Badge>,
+            ])}
+            emptyMsg="Belum ada riwayat sedekah."
+          />
+        )}
+      </Card>
+      <p className="text-[11px] text-zinc-400">
+        * Total berat dihitung dari item-level. {totalTransaksi > 0 ? `Tersebar di ${totalTransaksi} transaksi sedekah.` : ''}
+      </p>
     </div>
   )
 }

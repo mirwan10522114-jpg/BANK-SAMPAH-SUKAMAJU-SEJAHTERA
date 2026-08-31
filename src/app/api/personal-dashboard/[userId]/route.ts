@@ -103,7 +103,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
     periodLabel = '1 Tahun Terakhir'
   }
 
-  const [user, savingAllTimeAgg, savingInRange, sedekahInRange, allSavingTxs, allSedekahTxs] = await Promise.all([
+  const [user, savingAllTimeAgg, savingInRange, sedekahInRange, allSavingTxs, allSedekahTxs, allCategories, allWasteItems] = await Promise.all([
     db.user.findUnique({
       where: { id: userId },
       include: {
@@ -150,15 +150,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
     db.savingTransaction.findMany({
       where: { userId },
       orderBy: { transactedAt: 'desc' },
-      take: 100,
+      take: 200,
       include: { items: { include: { wasteItem: { include: { category: true } } } } },
     }),
     db.sedekahTransaction.findMany({
       where: { userId },
       orderBy: { transactedAt: 'desc' },
-      take: 100,
+      take: 200,
       include: { items: { include: { wasteItem: { include: { category: true } } } } },
     }),
+    db.wasteCategory.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    db.wasteItem.findMany({ where: { isActive: true }, select: { id: true, name: true, code: true, wasteCategoryId: true }, orderBy: { name: 'asc' } }),
   ])
 
   if (!user) return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 })
@@ -202,11 +204,25 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
     const totalNilaiItem = t.items.reduce((s, it) => s + toNumber(it.subtotal), 0)
     const firstItem = t.items[0]
     const isMulti = t.items.length > 1
+    const kategoriList = Array.from(new Set(t.items.map((it) => it.categoryNameSnapshot || it.wasteItem?.category?.name || 'Lainnya')))
+    const barangList = t.items.map((it) => it.itemNameSnapshot || it.wasteItem?.name || '')
+    const itemsDetail = t.items.map((it) => ({
+      id: it.id,
+      kategori: it.categoryNameSnapshot || it.wasteItem?.category?.name || 'Lainnya',
+      barang: it.itemNameSnapshot || it.wasteItem?.name || '-',
+      kode: it.itemCodeSnapshot || it.wasteItem?.code || '-',
+      berat: toNumber(it.quantity),
+      nilai: toNumber(it.subtotal),
+    }))
+
     return {
       id: t.id,
       kode: t.kodeTransaksi || null,
       tanggal: t.transactedAt,
       barang: firstItem ? `${firstItem.itemCodeSnapshot || ''} · ${firstItem.itemNameSnapshot || ''}${isMulti ? ` (+${t.items.length - 1})` : ''}` : '-',
+      kategoriList,
+      barangList,
+      items: itemsDetail,
       berat: totalBeratItem,
       poin: t.pointsAwarded,
       nilai: t.status === 'selesai' ? toNumber(t.totalValue) : totalNilaiItem,
@@ -227,10 +243,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
       const susut = toNumber(it.susutQc)
       riwayatSedekah.push({
         id: it.id,
+        txId: t.id,
         kode: t.kodeTransaksi || null,
         tanggal: t.transactedAt,
         kategori: it.categoryNameSnapshot || it.wasteItem?.category?.name || '-',
         barang: `${it.itemCodeSnapshot || ''} · ${it.itemNameSnapshot || ''}`,
+        barangNama: it.itemNameSnapshot || it.wasteItem?.name || '-',
         beratKotor,
         beratBersih,
         susut,
@@ -282,6 +300,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
   return NextResponse.json({
     periodLabel,
     periodDates: { start: chartStart.toISOString(), end: chartEnd.toISOString() },
+    masterData: {
+      categories: allCategories,
+      wasteItems: allWasteItems,
+    },
     profile: {
       id: user.id,
       name: user.name,
@@ -307,10 +329,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
     trenTabungan,
     komposisiKategori,
     riwayat: {
-      tabungan: riwayatTabungan.slice(0, 50),
-      sedekah: riwayatSedekah.slice(0, 50),
-      poin: riwayatPoin.slice(0, 50),
-      penukaran: riwayatPenukaran.slice(0, 50),
+      tabungan: riwayatTabungan,
+      sedekah: riwayatSedekah,
+      poin: riwayatPoin,
+      penukaran: riwayatPenukaran,
       penarikan: riwayatPenarikan,
       releaseSaldo: riwayatRelease,
     },
