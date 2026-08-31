@@ -2676,7 +2676,7 @@ function PinjamanView({ user }: { user: AuthUser }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [schedulePinjaman, setSchedulePinjaman] = useState<any>(null)
-  const [filterStatus, setFilterStatus] = useState<'all' | 'berjalan' | 'lunas' | 'diajukan' | 'ditolak'>('all')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'berjalan' | 'lunas'>('all')
   const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => {
@@ -2778,8 +2778,6 @@ function PinjamanView({ user }: { user: AuthUser }) {
               { v: 'all', l: 'Semua' },
               { v: 'berjalan', l: 'Berjalan' },
               { v: 'lunas', l: 'Lunas' },
-              { v: 'diajukan', l: 'Diajukan' },
-              { v: 'ditolak', l: 'Ditolak' },
             ] as const).map((s) => (
               <button
                 key={s.v}

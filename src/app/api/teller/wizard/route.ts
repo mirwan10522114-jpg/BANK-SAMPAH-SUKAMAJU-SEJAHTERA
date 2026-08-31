@@ -267,13 +267,17 @@ export async function POST(req: NextRequest) {
             angsuranPerBulan,
             biayaAdmin: setting ? toNumber(setting.biayaAdminPinjaman) : 0,
             tanggalPengajuan: new Date(),
-            status: 'diajukan',
+            tanggalPencairan: new Date(),
+            status: 'berjalan',
             sisaPinjaman: op.jumlahPinjaman,
             sukuBunga,
-            keterangan: op.keterangan || `Pengajuan via Teller Wizard ${receiptNo}`,
+            keterangan: op.keterangan || `Pinjaman via Teller Wizard ${receiptNo}`,
             userId: actor?.id,
           },
         })
+        // Record kas keluar koperasi langsung
+        await recordKasTx('pinjaman', 'keluar', op.jumlahPinjaman, `Pemberian pinjaman koperasi ${nomor} (Wizard ${receiptNo})`, actor?.id, nomor)
+
         result.steps.push({
           type: 'pengajuan_pinjaman',
           status: 'ok',
@@ -284,6 +288,7 @@ export async function POST(req: NextRequest) {
           tenorBulan: op.tenorBulan,
           angsuranPerBulan,
           sukuBunga,
+          txStatus: 'berjalan',
         })
 
       } else if (op.type === 'bayar_angsuran' && op.pinjamanId) {

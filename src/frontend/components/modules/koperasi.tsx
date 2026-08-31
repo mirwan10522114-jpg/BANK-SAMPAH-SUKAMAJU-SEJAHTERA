@@ -950,18 +950,44 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
     }
     setSubmitting(true)
     try {
-      await api.koperasi.pinjamanCreate({
+      const res = await api.koperasi.pinjamanCreate({
         anggotaId,
         jumlahPinjaman: jp,
         tenorBulan: tb,
         keterangan: keterangan || undefined,
       })
-      toast.success('Pengajuan pinjaman berhasil dibuat')
+      toast.success(`Pinjaman ${res.nomorPinjaman} berhasil diberikan & langsung aktif berjalan!`)
       setDialogOpen(false)
       resetForm()
       loadList()
+
+      const anggota = anggotaList.find((a) => a.id === anggotaId) || null
+      showStruk({
+        type: 'pencairan_pinjaman',
+        receiptNo: res.nomorPinjaman,
+        tanggal: res?.tanggalPencairan || new Date().toISOString(),
+        anggotaName: anggota?.nama || '-',
+        anggotaCode: anggota?.nomorAnggota || '-',
+        summary: [
+          {
+            label: 'Jumlah Pinjaman',
+            value: formatRupiah(toNumber(res?.jumlahPinjaman)),
+          },
+          { label: 'Tenor', value: `${res?.tenorBulan} bulan` },
+          {
+            label: 'Suku Bunga',
+            value: `${toNumber(res?.sukuBunga)}% / thn`,
+          },
+          {
+            label: 'Angsuran per Bulan',
+            value: formatRupiah(toNumber(res?.angsuranPerBulan)),
+            highlight: true,
+          },
+        ],
+        notes: 'Pinjaman telah diserahkan langsung. Mohon bayar angsuran tepat waktu.',
+      })
     } catch (e: any) {
-      toast.error(e.message || 'Gagal mengajukan pinjaman')
+      toast.error(e.message || 'Gagal memberikan pinjaman')
     } finally {
       setSubmitting(false)
     }
@@ -1109,7 +1135,7 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
               <HandCoins className="h-5 w-5 text-emerald-600" /> Pinjaman & Angsuran
             </CardTitle>
             <CardDescription>
-              Ajukan, cairkan, dan bayar angsuran pinjaman anggota.
+              Pemberian pinjaman koperasi langsung cair & pembayaran angsuran pinjaman anggota.
             </CardDescription>
           </div>
           <Button
@@ -1117,7 +1143,7 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
             disabled={!anggotaId}
             className="bg-emerald-600 text-white hover:bg-emerald-700"
           >
-            <Plus className="mr-1.5 h-4 w-4" /> Ajukan Pinjaman
+            <Plus className="mr-1.5 h-4 w-4" /> Pinjaman Baru
           </Button>
         </div>
       </CardHeader>
@@ -1147,11 +1173,8 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Semua</SelectItem>
-                  <SelectItem value="diajukan">Diajukan</SelectItem>
-                  <SelectItem value="disetujui">Disetujui</SelectItem>
                   <SelectItem value="berjalan">Berjalan</SelectItem>
                   <SelectItem value="lunas">Lunas</SelectItem>
-                  <SelectItem value="ditolak">Ditolak</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1210,7 +1233,7 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
               <TableHeader className="sticky top-0 z-10 bg-emerald-50/95 backdrop-blur">
                 <TableRow>
                   <TableHead>Nomor</TableHead>
-                  <TableHead>Tanggal Pengajuan</TableHead>
+                  <TableHead>Tanggal Pinjaman</TableHead>
                   <TableHead className="text-right">Jumlah</TableHead>
                   <TableHead>Tenor</TableHead>
                   <TableHead className="text-right">Angsuran/Bln</TableHead>
@@ -1225,12 +1248,10 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
                 ) : list.length === 0 ? (
                   <EmptyRow
                     colSpan={8}
-                    message="Belum ada pinjaman. Klik 'Ajukan Pinjaman' untuk membuat."
+                    message="Belum ada pinjaman. Klik 'Pinjaman Baru' untuk membuat."
                   />
                 ) : (
                   list.map((p) => {
-                    const canApprove = p.status === 'diajukan'
-                    const canCairkan = p.status === 'disetujui'
                     const canBayar = p.status === 'berjalan'
                     return (
                       <TableRow key={p.id}>
@@ -1238,7 +1259,7 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
                           {p.nomorPinjaman}
                         </TableCell>
                         <TableCell className="text-xs">
-                          {formatDate(p.tanggalPengajuan)}
+                          {formatDate(p.tanggalPencairan || p.tanggalPengajuan)}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatRupiah(toNumber(p.jumlahPinjaman))}
@@ -1255,26 +1276,6 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap justify-end gap-1">
-                            {canApprove && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 border-amber-200 text-amber-700 hover:bg-amber-50"
-                                onClick={() => handleApprove(p)}
-                              >
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Setujui
-                              </Button>
-                            )}
-                            {canCairkan && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                                onClick={() => handleCairkan(p)}
-                              >
-                                <Banknote className="h-3.5 w-3.5" /> Cairkan
-                              </Button>
-                            )}
                             <Button
                               size="sm"
                               variant="outline"
@@ -1309,11 +1310,10 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
         <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-emerald-900">
-              <HandCoins className="h-5 w-5 text-emerald-600" /> Ajukan Pinjaman Baru
+              <HandCoins className="h-5 w-5 text-emerald-600" /> Pemberian Pinjaman Baru
             </DialogTitle>
             <DialogDescription>
-              Isi detail pengajuan pinjaman. Suku bunga & biaya admin mengikuti
-              pengaturan koperasi.
+              Anggota datang langsung ke koperasi. Pinjaman langsung disetujui & dicairkan di tempat (status langsung Berjalan).
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
@@ -1504,8 +1504,7 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
               </div>
               <p className="mt-2 flex items-center gap-1 text-[10px] text-emerald-700/70">
                 <Info className="h-3 w-3" />
-                Estimasi dihitung otomatis dari pengaturan koperasi. Backend
-                akan menyimpan nilai final saat pinjaman disetujui.
+                Dana kas koperasi langsung dicairkan ke anggota saat pinjaman dibuat.
               </p>
             </div>
 
@@ -1538,7 +1537,7 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
               )}
             >
               {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-              {eligibility && !eligibility.eligible ? 'Tidak Layak' : 'Ajukan'}
+              ✓ Berikan Pinjaman (Langsung Cair)
             </Button>
           </DialogFooter>
         </DialogContent>

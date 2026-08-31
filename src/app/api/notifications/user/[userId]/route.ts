@@ -188,33 +188,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
       })
     }
 
-    // 4. Koperasi pinjaman (pengajuan, pencairan, status changes)
+    // 4. Koperasi pinjaman (pemberian pinjaman langsung berjalan)
     for (const loan of user.koperasiAnggota.pinjamans) {
-      // Pengajuan
       txNotifs.push({
-        id: `pinjaman-pengajuan-${loan.id}`,
+        id: `pinjaman-${loan.id}`,
         category: 'koperasi',
-        type: 'pinjaman_pengajuan',
-        title: 'Pengajuan Pinjaman Dibuat',
-        message: `Pengajuan pinjaman ${formatRupiah(toNumber(loan.jumlahPinjaman))} dengan tenor ${loan.tenorBulan} bulan. Status: ${loan.status}.`,
+        type: 'pinjaman_cair',
+        title: 'Pinjaman Koperasi Aktif',
+        message: `Pinjaman ${loan.nomorPinjaman} sebesar ${formatRupiah(toNumber(loan.jumlahPinjaman))} aktif (berjalan). Angsuran ${formatRupiah(toNumber(loan.angsuranPerBulan))}/bulan (${loan.tenorBulan} bulan).`,
         amount: toNumber(loan.jumlahPinjaman),
-        timestamp: loan.tanggalPengajuan.toISOString(),
+        timestamp: (loan.tanggalPencairan || loan.tanggalPengajuan).toISOString(),
         status: loan.status,
       })
-
-      // Pencairan (when approved + disbursed)
-      if (loan.tanggalPencairan) {
-        txNotifs.push({
-          id: `pinjaman-cair-${loan.id}`,
-          category: 'koperasi',
-          type: 'pinjaman_cair',
-          title: 'Pinjaman Dicairkan',
-          message: `Pinjaman ${loan.nomorPinjaman} telah dicairkan. Cicilan ${formatRupiah(toNumber(loan.angsuranPerBulan))}/bulan selama ${loan.tenorBulan} bulan.`,
-          amount: toNumber(loan.jumlahPinjaman),
-          timestamp: loan.tanggalPencairan.toISOString(),
-          status: 'berjalan',
-        })
-      }
 
       // 5. Angsuran payments
       for (const ang of loan.angsurans || []) {

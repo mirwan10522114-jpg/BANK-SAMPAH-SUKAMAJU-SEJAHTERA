@@ -595,7 +595,7 @@ export function TellerWizard() {
                     )}>
                       {op.type === 'setor_simpanan' ? 'Setor Simpanan' :
                        op.type === 'tarik_sukarela' ? 'Tarik Sukarela' :
-                       op.type === 'pengajuan_pinjaman' ? 'Pengajuan Pinjaman' :
+                       op.type === 'pengajuan_pinjaman' ? 'Pinjaman (Langsung Cair)' :
                        'Bayar Angsuran'}
                     </Badge>
                     <span className="flex-1 text-sm text-emerald-900">
@@ -612,7 +612,7 @@ export function TellerWizard() {
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={() => addOp({ type: 'setor_simpanan', jenisSimpanan: 'wajib', jumlah: Number(koperasiSetting?.nominalSimpananWajib || 0), keterangan: '' })} className="border-teal-300 text-teal-700"><Plus className="h-3.5 w-3.5" /> Setor Simpanan</Button>
                   <Button variant="outline" size="sm" onClick={() => addOp({ type: 'tarik_sukarela', jumlah: 0 })} className="border-amber-300 text-amber-700"><Wallet className="h-3.5 w-3.5 mr-1" /> Tarik Sukarela</Button>
-                  <Button variant="outline" size="sm" onClick={() => addOp({ type: 'pengajuan_pinjaman', jumlahPinjaman: 0, tenorBulan: 12, keterangan: '' })} disabled={pinjamanEligibility && !pinjamanEligibility.eligible} className="border-blue-300 text-blue-700"><Landmark className="h-3.5 w-3.5 mr-1" /> Pengajuan Pinjaman</Button>
+                  <Button variant="outline" size="sm" onClick={() => addOp({ type: 'pengajuan_pinjaman', jumlahPinjaman: 0, tenorBulan: 12, keterangan: '' })} disabled={pinjamanEligibility && !pinjamanEligibility.eligible} className="border-blue-300 text-blue-700"><Landmark className="h-3.5 w-3.5 mr-1" /> Pinjaman Koperasi</Button>
                   {pinjamanEligibility && !pinjamanEligibility.eligible && (
                     <button
                       type="button"
@@ -1211,11 +1211,11 @@ export function TellerWizard() {
                     html += `<div class="summary-row"><span class="key">Tarik Sukarela</span><span class="val">${formatRupiah(s.jumlah)}</span></div>`
                     if (s.saldoSetelahnya != null) html += `<div class="summary-row"><span class="key" style="padding-left:8px;font-size:11px">Saldo setelahnya</span><span class="val" style="font-size:11px">${formatRupiah(s.saldoSetelahnya)}</span></div>`
                   } else if (s.type === 'pengajuan_pinjaman') {
-                    html += `<div class="summary-row"><span class="key">Pengajuan Pinjaman</span><span class="val">${formatRupiah(s.jumlahPinjaman)}</span></div>
+                    html += `<div class="summary-row"><span class="key">Pinjaman Koperasi</span><span class="val">${formatRupiah(s.jumlahPinjaman)}</span></div>
                     <div class="summary-row"><span class="key" style="padding-left:8px;font-size:11px">No. Pinjaman</span><span class="val" style="font-size:11px;font-family:monospace">${s.nomorPinjaman}</span></div>
                     <div class="summary-row"><span class="key" style="padding-left:8px;font-size:11px">Tenor</span><span class="val" style="font-size:11px">${s.tenorBulan} Bulan</span></div>
                     <div class="summary-row"><span class="key" style="padding-left:8px;font-size:11px">Angsuran/bulan</span><span class="val" style="font-size:11px">${formatRupiah(s.angsuranPerBulan)}</span></div>
-                    <div class="summary-row"><span class="key" style="padding-left:8px;font-size:11px">Status</span><span class="val" style="font-size:11px;font-weight:600;color:#d97706">Diajukan</span></div>`
+                    <div class="summary-row"><span class="key" style="padding-left:8px;font-size:11px">Status</span><span class="val" style="font-size:11px;font-weight:600;color:#059669">Berjalan (Dicairkan)</span></div>`
                   } else if (s.type === 'bayar_angsuran') {
                     html += `<div class="summary-row"><span class="key">Bayar Angsuran</span><span class="val">${formatRupiah(s.totalPaid)}</span></div>
                     <div class="summary-row"><span class="key" style="padding-left:8px;font-size:11px">Jumlah dibayar</span><span class="val" style="font-size:11px">${s.countPaid}x angsuran</span></div>`
@@ -1237,7 +1237,7 @@ export function TellerWizard() {
                 else if (s.type === 'sedekah_sampah') label = `Sedekah sampah ${formatNumber(s.totalWeight, 2)} kg`
                 else if (s.type === 'setor_simpanan') label = `Setor simpanan ${s.jenis || '-'} ${formatRupiah(s.jumlah || 0)}`
                 else if (s.type === 'tarik_sukarela') label = `Tarik sukarela ${formatRupiah(s.jumlah || 0)}`
-                else if (s.type === 'pengajuan_pinjaman') label = `Pengajuan pinjaman ${formatRupiah(s.jumlahPinjaman || 0)} (${s.tenorBulan || '-'} bln)`
+                else if (s.type === 'pengajuan_pinjaman') label = `Pemberian pinjaman ${formatRupiah(s.jumlahPinjaman || 0)} (${s.tenorBulan || '-'} bln - Langsung Cair)`
                 else if (s.type === 'bayar_angsuran') label = `Bayar angsuran ${s.countPaid || 0}x ${s.lunas ? '(LUNAS)' : ''}`
                 html += `<div class="step">${icon}<span>${label}</span></div>`
               }
@@ -1385,7 +1385,7 @@ export function TellerWizard() {
                           {s.type === 'pengajuan_pinjaman' && (
                             <>
                               <div className="flex justify-between text-xs">
-                                <span className="text-zinc-600">Pengajuan Pinjaman</span>
+                                <span className="text-zinc-600">Pinjaman Koperasi</span>
                                 <span className="font-medium text-zinc-900">{formatRupiah(s.jumlahPinjaman)}</span>
                               </div>
                               <div className="flex justify-between pl-2 text-[11px]">
@@ -1402,7 +1402,7 @@ export function TellerWizard() {
                               </div>
                               <div className="flex justify-between pl-2 text-[11px]">
                                 <span className="text-zinc-400">Status</span>
-                                <span className="font-medium text-amber-600">Diajukan</span>
+                                <span className="font-semibold text-emerald-700">Berjalan (Dicairkan)</span>
                               </div>
                             </>
                           )}
