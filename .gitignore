@@ -6,3 +6,4 @@ server.log
 .env
 .env*.local
 scratch/
+*.tsbuildinfo

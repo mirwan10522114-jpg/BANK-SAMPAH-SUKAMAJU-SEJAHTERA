@@ -419,6 +419,7 @@ export async function cairkanPinjaman(pinjamanId: string, userId?: string) {
   if (pinjaman.status !== 'disetujui') throw new Error('Pinjaman harus berstatus disetujui untuk dicairkan')
   const jumlah = toNumber(pinjaman.jumlahPinjaman)
   const tenor = pinjaman.tenorBulan
+  const setting = await db.koperasiSetting.findFirst()
   const sukuBunga = pinjaman.sukuBunga != null ? toNumber(pinjaman.sukuBunga) : (setting ? toNumber(setting.sukuBungaPinjaman) : 0)
   const { angsuranPerBulan } = calcAngsuranSchedule(jumlah, tenor, sukuBunga)
   const updated = await db.koperasiPinjaman.update({
