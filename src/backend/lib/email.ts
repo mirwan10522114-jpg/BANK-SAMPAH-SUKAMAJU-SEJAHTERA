@@ -196,6 +196,7 @@ interface SendStrukEmailParams {
   to: string
   subject: string
   strukHtml: string
+  attachments?: nodemailer.Attachment[]
 }
 
 export async function sendStrukEmail(params: SendStrukEmailParams): Promise<{ success: boolean; error?: string }> {
@@ -474,6 +475,7 @@ export async function sendStrukEmail(params: SendStrukEmailParams): Promise<{ su
       to,
       subject,
       html: emailHtml,
+      attachments: params.attachments,
     })
     console.log('[Struk Email] Sent successfully to:', to, '| messageId:', info.messageId)
     return { success: true }

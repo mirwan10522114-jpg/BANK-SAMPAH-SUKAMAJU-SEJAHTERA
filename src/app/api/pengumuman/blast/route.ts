@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import path from 'path'
+import fs from 'fs'
 
 // ============================================================
 // POST /api/pengumuman/blast
@@ -32,12 +34,45 @@ export async function POST(req: NextRequest) {
     const fromName = process.env.SMTP_FROM_NAME || 'Bank Sampah Sukamaju'
     const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER
 
-    // Build email HTML — professional template dengan gambar
-    const gambarHtml = gambarUrl
-      ? `<div style="text-align:center;margin:20px 0;">
-           <img src="${gambarUrl}" alt="${judul}" style="max-width:100%;max-height:400px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);" />
-         </div>`
-      : ''
+    // Handle Gambar: Gunakan CID (Content-ID) inline attachment agar selalu tampil di Gmail/Outlook/Apple Mail
+    const attachments: any[] = []
+    let gambarHtml = ''
+
+    if (gambarUrl && gambarUrl.trim()) {
+      const cleanUrl = gambarUrl.trim()
+      const cid = 'banner_pengumuman'
+
+      let localFilePath = ''
+      if (cleanUrl.startsWith('/uploads/') || cleanUrl.startsWith('uploads/')) {
+        const rel = cleanUrl.startsWith('/') ? cleanUrl.slice(1) : cleanUrl
+        localFilePath = path.join(process.cwd(), 'public', rel)
+      } else if (cleanUrl.startsWith('http://localhost') || cleanUrl.startsWith('http://127.0.0.1')) {
+        try {
+          const urlObj = new URL(cleanUrl)
+          const rel = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname
+          localFilePath = path.join(process.cwd(), 'public', rel)
+        } catch {}
+      }
+
+      if (localFilePath && fs.existsSync(localFilePath)) {
+        attachments.push({
+          filename: path.basename(localFilePath),
+          path: localFilePath,
+          cid: cid,
+        })
+        gambarHtml = `<div style="text-align:center;margin:24px 0;">
+          <img src="cid:${cid}" alt="${judul}" style="max-width:100%;max-height:480px;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.12);display:inline-block;" />
+        </div>`
+      } else if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
+        attachments.push({
+          path: cleanUrl,
+          cid: cid,
+        })
+        gambarHtml = `<div style="text-align:center;margin:24px 0;">
+          <img src="cid:${cid}" alt="${judul}" style="max-width:100%;max-height:480px;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.12);display:inline-block;" />
+        </div>`
+      }
+    }
 
     const html = `<!DOCTYPE html>
 <html lang="id">
@@ -81,6 +116,7 @@ export async function POST(req: NextRequest) {
           to: u.email,
           subject: `📢 ${judul}`,
           strukHtml: html.replace('${nama}', u.name || 'Nasabah'),
+          attachments: attachments.length > 0 ? attachments : undefined,
         })
         sentCount++
       } catch (e: any) {
