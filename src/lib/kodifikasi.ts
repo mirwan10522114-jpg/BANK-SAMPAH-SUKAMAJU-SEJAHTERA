@@ -18,12 +18,12 @@ function pad(n: number, len: number): string {
   return String(n).padStart(len, '0')
 }
 
-function ddMMYYYY(d: Date): string {
+function ddMMYYYY(d: Date | string): string {
   const date = new Date(d)
   return `${pad(date.getDate(), 2)}${pad(date.getMonth() + 1, 2)}${date.getFullYear()}`
 }
 
-function mmYYYY(d: Date): string {
+function mmYYYY(d: Date | string): string {
   const date = new Date(d)
   return `${pad(date.getMonth() + 1, 2)}${date.getFullYear()}`
 }
