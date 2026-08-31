@@ -260,6 +260,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Catat ke AdminDailyTaskLog agar checklist harian menandai tugas selesai untuk hari ini
+    const todayDateString = now.toISOString().split('T')[0]
+    const { recordDailyTaskLog } = await import('@/backend/lib/daily-task-log')
+    await recordDailyTaskLog({
+      taskKey: 'simpanan_wajib_reminder',
+      dateString: todayDateString,
+      action: blastSemua ? 'blast_email' : 'single_reminder',
+      sentCount: sentCount || 1,
+      failedCount,
+      notes: `Blast reminder simpanan wajib (${namaBulan})`,
+    })
+
     return NextResponse.json({
       success: true,
       sentCount,

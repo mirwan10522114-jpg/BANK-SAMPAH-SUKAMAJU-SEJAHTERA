@@ -1512,17 +1512,20 @@ function DailyChecklistModal({
                     <div className="flex flex-wrap items-center gap-2 self-start sm:self-center ml-auto">
                       {isPinjaman && (
                         <>
-                          {!task.isDone && (
-                            <Button
-                              size="sm"
-                              onClick={handleBlastPinjaman}
-                              disabled={runningAction === 'pinjaman'}
-                              className="bg-rose-600 hover:bg-rose-700 text-white text-xs h-8 shadow-xs"
-                            >
-                              {runningAction === 'pinjaman' ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Zap className="size-3.5 mr-1.5" />}
-                              Tagih Semua (Email)
-                            </Button>
-                          )}
+                          <Button
+                            size="sm"
+                            onClick={handleBlastPinjaman}
+                            disabled={runningAction === 'pinjaman'}
+                            className={cn(
+                              'text-xs h-8 shadow-xs',
+                              task.isDone
+                                ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border border-zinc-200'
+                                : 'bg-rose-600 hover:bg-rose-700 text-white'
+                            )}
+                          >
+                            {runningAction === 'pinjaman' ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Zap className="size-3.5 mr-1.5" />}
+                            {task.isDone ? 'Kirim Ulang Tagihan' : 'Tagih Semua (Email)'}
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
@@ -1536,17 +1539,20 @@ function DailyChecklistModal({
 
                       {isSimpanan && (
                         <>
-                          {!task.isDone && (
-                            <Button
-                              size="sm"
-                              onClick={handleBlastSimpanan}
-                              disabled={runningAction === 'simpanan'}
-                              className="bg-teal-600 hover:bg-teal-700 text-white text-xs h-8 shadow-xs"
-                            >
-                              {runningAction === 'simpanan' ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Send className="size-3.5 mr-1.5" />}
-                              Blast Reminder Wajib
-                            </Button>
-                          )}
+                          <Button
+                            size="sm"
+                            onClick={handleBlastSimpanan}
+                            disabled={runningAction === 'simpanan'}
+                            className={cn(
+                              'text-xs h-8 shadow-xs',
+                              task.isDone
+                                ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border border-zinc-200'
+                                : 'bg-teal-600 hover:bg-teal-700 text-white'
+                            )}
+                          >
+                            {runningAction === 'simpanan' ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Send className="size-3.5 mr-1.5" />}
+                            {task.isDone ? 'Kirim Ulang Blast' : 'Blast Reminder Wajib'}
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"

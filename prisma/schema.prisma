@@ -1126,3 +1126,19 @@ model District {
 
   @@index([cityId])
 }
+
+// ==================== ADMIN: DAILY TASK & REMINDER LOG ====================
+model AdminDailyTaskLog {
+  id          String   @id @default(cuid())
+  taskKey     String   // 'pinjaman_reminders' | 'simpanan_wajib_reminder' | 'antrian_qc_verification' | 'stok_produk_monitoring'
+  dateString  String   // 'YYYY-MM-DD'
+  action      String   // 'blast_email' | 'tagih_semua' | 'manual_complete'
+  sentCount   Int      @default(0)
+  failedCount Int      @default(0)
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([taskKey, dateString])
+}
+

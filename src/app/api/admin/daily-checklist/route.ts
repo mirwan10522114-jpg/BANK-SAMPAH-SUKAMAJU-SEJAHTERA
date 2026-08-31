@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { toNumber, formatRupiah } from '@/lib/format'
+import { getDailyTaskLogs, recordDailyTaskLog, getLocalDateString } from '@/backend/lib/daily-task-log'
 
 const MONTH_NAMES = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ]
+
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 // ============================================================
 // GET /api/admin/daily-checklist
@@ -17,6 +21,15 @@ export async function GET(req: NextRequest) {
     const currentMonth = today.getMonth() + 1
     const currentYear = today.getFullYear()
     const namaBulan = `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`
+    const todayDateString = getLocalDateString(today)
+
+    // 0. Ambil Log Tugas Hari Ini dari Database
+    const dailyLogs = await getDailyTaskLogs(todayDateString)
+
+    const simpananLog = dailyLogs.find((l: any) => (l.taskKey || l.taskkey) === 'simpanan_wajib_reminder')
+    const pinjamanLog = dailyLogs.find((l: any) => (l.taskKey || l.taskkey) === 'pinjaman_reminders')
+    const qcLog = dailyLogs.find((l: any) => (l.taskKey || l.taskkey) === 'antrian_qc_verification')
+    const stokLog = dailyLogs.find((l: any) => (l.taskKey || l.taskkey) === 'stok_produk_monitoring')
 
     // 1. PINJAMAN KOPERASI (Cek tagihan jatuh tempo H-30, H-14, H-7, H-3, & Terlambat)
     const pinjamans = await db.koperasiPinjaman.findMany({
@@ -80,6 +93,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const isPinjamanDone = loansNeedingAction.length === 0 || !!pinjamanLog
+
     // 2. SIMPANAN WAJIB (Cek anggota yang belum menyetor iuran wajib bulan ini)
     const startDateMonth = new Date(currentYear, currentMonth - 1, 1, 0, 0, 0, 0)
     const endDateMonth = new Date(currentYear, currentMonth, 0, 23, 59, 59, 999)
@@ -111,22 +126,22 @@ export async function GET(req: NextRequest) {
       email: a.user?.email || '',
     }))
 
+    const isSimpananDone = membersUnpaidWajib.length === 0 || !!simpananLog
+
     // 3. ANTRIAN QC SAMPAH (Nabung & Sedekah berstatus menunggu_qc)
     const [pendingSavingQc, pendingSedekahQc] = await Promise.all([
       db.savingTransaction.count({ where: { status: 'menunggu_qc' } }),
       db.sedekahTransaction.count({ where: { status: 'menunggu_qc' } }),
     ])
     const totalPendingQc = pendingSavingQc + pendingSedekahQc
+    const isQcDone = totalPendingQc === 0 || !!qcLog
 
     // 4. STOK PRODUK OLAHAN (Cek apakah ada produk aktif dengan stok 0 / habis)
     const outOfStockProducts = await db.product.findMany({
       where: { stock: { lte: 0 }, isActive: true },
       select: { id: true, name: true, unit: true, price: true },
     })
-
-    // 5. KAS & SALDO
-    const kasBankSampah = await db.bankSampahKas.findFirst({ orderBy: { createdAt: 'desc' } })
-    const saldoKasBankSampah = kasBankSampah ? toNumber(kasBankSampah.saldoSetelah) : 0
+    const isStokDone = outOfStockProducts.length === 0 || !!stokLog
 
     // SUSUN DAFTAR TUGAS OPERASIONAL ADMIN
     const tasks = [
@@ -134,12 +149,14 @@ export async function GET(req: NextRequest) {
         id: 'pinjaman_reminders',
         title: 'Penagihan Pinjaman Anggota (H-30, H-14, H-7, H-3 & Terlambat)',
         description: loansNeedingAction.length === 0
-          ? 'Semua jadwal angsuran pinjaman dalam kondisi aman / telah ditagih.'
+          ? 'Semua jadwal angsuran pinjaman dalam kondisi aman / tidak ada yang jatuh tempo.'
+          : pinjamanLog
+          ? `✓ Sudah ditagih hari ini (${pinjamanLog.sentCount} email terkirim pada ${new Date(pinjamanLog.updatedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB). Selesai untuk hari ini!`
           : `Ada ${loansNeedingAction.length} anggota dengan pinjaman yang perlu diingatkan (jatuh tempo ≤30 hari / terlambat).`,
         category: 'koperasi',
         iconName: 'Banknote',
-        isDone: loansNeedingAction.length === 0,
-        count: loansNeedingAction.length,
+        isDone: isPinjamanDone,
+        count: isPinjamanDone ? 0 : loansNeedingAction.length,
         priority: loansNeedingAction.some((l) => l.categoryUrgency === 'terlambat' || l.categoryUrgency === 'h3') ? 'high' : 'medium',
         actionLabel: 'Kirim Tagihan Pinjaman',
         targetSection: 'pengumuman',
@@ -152,6 +169,10 @@ export async function GET(req: NextRequest) {
           h7Count: loansNeedingAction.filter((l) => l.categoryUrgency === 'h7').length,
           h14Count: loansNeedingAction.filter((l) => l.categoryUrgency === 'h14').length,
           h30Count: loansNeedingAction.filter((l) => l.categoryUrgency === 'h30').length,
+          lastBlast: pinjamanLog ? {
+            sentCount: pinjamanLog.sentCount,
+            time: new Date(pinjamanLog.updatedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          } : null,
         },
       },
       {
@@ -159,11 +180,13 @@ export async function GET(req: NextRequest) {
         title: `Reminder Iuran Simpanan Wajib (${namaBulan})`,
         description: membersUnpaidWajib.length === 0
           ? `Seluruh anggota koperasi telah melunasi simpanan wajib untuk bulan ${namaBulan}.`
+          : simpananLog
+          ? `✓ Pengingat Simpanan Wajib telah di-blast hari ini (${simpananLog.sentCount} email terkirim pada ${new Date(simpananLog.updatedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB). Selesai untuk hari ini!`
           : `Terdapat ${membersUnpaidWajib.length} dari ${anggotas.length} anggota yang belum setor simpanan wajib (${formatRupiah(nominalWajib)}/bln).`,
         category: 'koperasi',
         iconName: 'Wallet',
-        isDone: membersUnpaidWajib.length === 0,
-        count: membersUnpaidWajib.length,
+        isDone: isSimpananDone,
+        count: isSimpananDone ? 0 : membersUnpaidWajib.length,
         priority: today.getDate() <= 10 ? 'high' : 'medium',
         actionLabel: 'Blast Reminder Simpanan',
         targetSection: 'pengumuman',
@@ -174,6 +197,10 @@ export async function GET(req: NextRequest) {
           nominalWajib,
           namaBulan,
           sampleMembers: membersUnpaidWajib.slice(0, 5),
+          lastBlast: simpananLog ? {
+            sentCount: simpananLog.sentCount,
+            time: new Date(simpananLog.updatedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          } : null,
         },
       },
       {
@@ -181,11 +208,13 @@ export async function GET(req: NextRequest) {
         title: 'Verifikasi Antrian QC Sampah (Nabung & Sedekah)',
         description: totalPendingQc === 0
           ? 'Tidak ada antrian QC sampah tertunda. Semua sampah telah ditimbang & lolos QC.'
+          : qcLog
+          ? `✓ Antrian QC telah diverifikasi / ditandai selesai hari ini.`
           : `Terdapat ${totalPendingQc} transaksi sampah (${pendingSavingQc} tabungan, ${pendingSedekahQc} sedekah) menunggu verifikasi QC.`,
         category: 'operasional',
         iconName: 'CheckCircle2',
-        isDone: totalPendingQc === 0,
-        count: totalPendingQc,
+        isDone: isQcDone,
+        count: isQcDone ? 0 : totalPendingQc,
         priority: totalPendingQc > 0 ? 'high' : 'low',
         actionLabel: 'Buka Antrian QC',
         targetSection: 'operasional',
@@ -200,11 +229,13 @@ export async function GET(req: NextRequest) {
         title: 'Pengecekan Ketersediaan Stok Produk Upcycle',
         description: outOfStockProducts.length === 0
           ? 'Katalog produk memiliki stok yang cukup untuk penjualan offline & online.'
+          : stokLog
+          ? `✓ Pengecekan stok telah ditinjau hari ini.`
           : `Terdapat ${outOfStockProducts.length} produk dengan stok habis (0 pcs) yang perlu dijadwalkan pengolahan.`,
         category: 'inventaris',
         iconName: 'Package',
-        isDone: outOfStockProducts.length === 0,
-        count: outOfStockProducts.length,
+        isDone: isStokDone,
+        count: isStokDone ? 0 : outOfStockProducts.length,
         priority: outOfStockProducts.length > 0 ? 'medium' : 'low',
         actionLabel: 'Buka Pengolahan & Inventaris',
         targetSection: 'inventaris',
@@ -245,5 +276,35 @@ export async function GET(req: NextRequest) {
   } catch (error: any) {
     console.error('[Daily Checklist] Error:', error)
     return NextResponse.json({ error: `Gagal memuat daily checklist: ${error.message}` }, { status: 500 })
+  }
+}
+
+// ============================================================
+// POST /api/admin/daily-checklist
+// Menandai tugas harian selesai / merekam tindakan manual
+// ============================================================
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const { taskKey, action = 'manual_complete', notes } = body as { taskKey: string; action?: string; notes?: string }
+
+    if (!taskKey) {
+      return NextResponse.json({ error: 'taskKey wajib diisi' }, { status: 400 })
+    }
+
+    const todayDateString = new Date().toISOString().split('T')[0]
+    const result = await recordDailyTaskLog({
+      taskKey,
+      dateString: todayDateString,
+      action,
+      sentCount: 1,
+      failedCount: 0,
+      notes: notes || 'Ditandai selesai oleh admin',
+    })
+
+    return NextResponse.json(result)
+  } catch (error: any) {
+    console.error('[Daily Checklist POST] Error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

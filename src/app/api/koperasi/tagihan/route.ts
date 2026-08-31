@@ -166,6 +166,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Catat ke AdminDailyTaskLog agar checklist harian menandai tugas selesai untuk hari ini
+    const todayDateString = now.toISOString().split('T')[0]
+    const { recordDailyTaskLog } = await import('@/backend/lib/daily-task-log')
+    await recordDailyTaskLog({
+      taskKey: 'pinjaman_reminders',
+      dateString: todayDateString,
+      action: tagihSemua ? 'tagih_semua' : 'single_tagih',
+      sentCount: sentCount || 1,
+      failedCount,
+      notes: 'Tagihan pinjaman angsuran jatuh tempo/terlambat',
+    })
+
     return NextResponse.json({
       success: true,
       sentCount,
