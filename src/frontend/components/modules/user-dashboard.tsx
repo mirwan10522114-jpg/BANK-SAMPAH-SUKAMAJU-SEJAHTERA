@@ -723,7 +723,7 @@ function DashboardView({
 }
 
 // ============================================================
-// Saldo View - ENHANCED WITH MUTASI & TIMELINE FILTERS
+// Saldo View - FOKUS SALDO TABUNGAN SAMPAH (TANPA ARUS KELUAR)
 // ============================================================
 function SaldoView({ data }: { data: any }) {
   const { saldo, riwayat } = data
@@ -732,9 +732,8 @@ function SaldoView({ data }: { data: any }) {
   const [filterWaktu, setFilterWaktu] = useState('all')
   const [customDari, setCustomDari] = useState('')
   const [customSampai, setCustomSampai] = useState('')
-  const [filterTipe, setFilterTipe] = useState('all')
 
-  // Combine financial movements
+  // Daftar transaksi tabungan sampah & perolehan saldo
   const tabunganList = (riwayat?.tabungan || [])
     .filter((t: any) => t.status === 'selesai')
     .map((t: any) => ({
@@ -742,38 +741,29 @@ function SaldoView({ data }: { data: any }) {
       tanggal: t.tanggal,
       kode: t.kode || '-',
       deskripsi: `Tabungan Sampah: ${t.barang}`,
-      tipe: 'masuk' as const,
-      kategori: 'Tabungan Sampah',
+      kategori: (t.kategoriList && t.kategoriList.length > 0) ? t.kategoriList.join(', ') : 'Tabungan Sampah',
       jumlah: toNumber(t.nilai),
+      berat: toNumber(t.berat),
+      poin: t.poin || 0,
       status: 'selesai',
     }))
-
-  const penarikanList = (riwayat?.penarikan || []).map((w: any) => ({
-    id: `wd-${w.id}`,
-    tanggal: w.tanggal,
-    kode: w.receiptNo || '-',
-    deskripsi: `Penarikan Saldo (${w.metode || 'Tunai'})`,
-    tipe: 'keluar' as const,
-    kategori: 'Penarikan Dana',
-    jumlah: toNumber(w.jumlah),
-    status: w.status,
-  }))
 
   const releaseList = (riwayat?.releaseSaldo || []).map((r: any) => ({
     id: `rl-${r.id}`,
     tanggal: r.tanggal,
     kode: '-',
-    deskripsi: `Release Saldo Tertahan: ${r.keterangan || 'Pencairan'}`,
-    tipe: 'release' as const,
-    kategori: 'Release Saldo',
+    deskripsi: `Pencairan Saldo Tertahan: ${r.keterangan || 'Pencairan'}`,
+    kategori: 'Pelepasan Saldo',
     jumlah: toNumber(r.jumlah),
+    berat: 0,
+    poin: 0,
     status: r.status,
   }))
 
-  const allMutasi = [...tabunganList, ...penarikanList, ...releaseList]
+  const allRiwayat = [...tabunganList, ...releaseList]
     .sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime())
 
-  const filteredMutasi = allMutasi.filter((m) => {
+  const filteredRiwayat = allRiwayat.filter((m) => {
     if (search.trim()) {
       const q = search.toLowerCase()
       if (!m.kode.toLowerCase().includes(q) && !m.deskripsi.toLowerCase().includes(q) && !m.kategori.toLowerCase().includes(q)) {
@@ -781,14 +771,10 @@ function SaldoView({ data }: { data: any }) {
       }
     }
     if (!matchesDateFilter(m.tanggal, filterWaktu, customDari, customSampai)) return false
-    if (filterTipe === 'masuk' && m.tipe !== 'masuk') return false
-    if (filterTipe === 'keluar' && m.tipe !== 'keluar') return false
-    if (filterTipe === 'release' && m.tipe !== 'release') return false
     return true
   })
 
-  const totalMasuk = filteredMutasi.filter((m) => m.tipe === 'masuk').reduce((s, m) => s + m.jumlah, 0)
-  const totalKeluar = filteredMutasi.filter((m) => m.tipe === 'keluar' && m.status === 'selesai').reduce((s, m) => s + m.jumlah, 0)
+  const totalNilaiPeriode = filteredRiwayat.reduce((s, m) => s + m.jumlah, 0)
 
   const waktuOptions = [
     { value: 'all', label: 'Semua Waktu' },
@@ -805,51 +791,48 @@ function SaldoView({ data }: { data: any }) {
     <div className="space-y-5">
       <div>
         <h2 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
-          <Wallet className="size-5 text-emerald-600" /> Saldo & Kas Saya
+          <Wallet className="size-5 text-emerald-600" /> Saldo Tabungan Saya
         </h2>
-        <p className="text-xs text-zinc-500 mt-0.5">Informasi posisi saldo dan riwayat mutasi transaksi keuangan</p>
+        <p className="text-xs text-zinc-500 mt-0.5">Informasi akumulasi saldo tabungan sampah dan riwayat perolehannya</p>
       </div>
 
-      {/* Top Balance Cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-0 bg-white p-5 shadow-sm ring-1 ring-emerald-200 bg-gradient-to-br from-emerald-50/50 to-white">
+      {/* Top Balance Cards - 3 Clean Cards (Satu Card Total Saldo) */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card className="border-0 p-5 shadow-sm ring-1 ring-emerald-200 bg-gradient-to-br from-emerald-50/70 via-emerald-50/20 to-white rounded-2xl">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">Saldo Tersedia</p>
-            <Wallet className="size-4 text-emerald-600" />
+            <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">Total Saldo Tabungan</p>
+            <div className="flex size-8 items-center justify-center rounded-xl bg-emerald-100/80 text-emerald-700">
+              <Wallet className="size-4" />
+            </div>
           </div>
-          <p className="mt-2 text-2xl font-bold text-emerald-700">{formatRupiah(saldo.saldoTersedia)}</p>
-          <p className="mt-1 text-[11px] text-zinc-500">Siap ditarik atau ditransfer</p>
+          <p className="mt-3 text-2xl sm:text-3xl font-bold text-emerald-700">{formatRupiah(saldo.saldoTersedia)}</p>
+          <p className="mt-1.5 text-[11px] text-zinc-500">Saldo aktif hasil tabungan sampah siap digunakan</p>
         </Card>
 
-        <Card className="border-0 bg-white p-5 shadow-sm ring-1 ring-zinc-200">
+        <Card className="border-0 bg-white p-5 shadow-sm ring-1 ring-zinc-200/80 rounded-2xl">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-zinc-600 uppercase tracking-wider">Saldo Tertahan</p>
-            <Clock className="size-4 text-amber-600" />
+            <div className="flex size-8 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+              <Clock className="size-4" />
+            </div>
           </div>
-          <p className="mt-2 text-2xl font-bold text-zinc-900">{formatRupiah(saldo.saldoTertahan)}</p>
-          <p className="mt-1 text-[11px] text-zinc-500">Dalam masa holding/verifikasi</p>
+          <p className="mt-3 text-2xl sm:text-3xl font-bold text-zinc-900">{formatRupiah(saldo.saldoTertahan)}</p>
+          <p className="mt-1.5 text-[11px] text-zinc-500">Dalam masa holding atau antrian verifikasi QC</p>
         </Card>
 
-        <Card className="border-0 bg-white p-5 shadow-sm ring-1 ring-zinc-200">
+        <Card className="border-0 bg-white p-5 shadow-sm ring-1 ring-zinc-200/80 rounded-2xl">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wider">Poin Saat Ini</p>
-            <Award className="size-4 text-amber-600" />
+            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wider">Poin Reward</p>
+            <div className="flex size-8 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+              <Award className="size-4" />
+            </div>
           </div>
-          <p className="mt-2 text-2xl font-bold text-amber-700">{formatNumber(saldo.poin, 0)} pt</p>
-          <p className="mt-1 text-[11px] text-zinc-500">Dapat ditukarkan produk merchandise</p>
-        </Card>
-
-        <Card className="border-0 bg-white p-5 shadow-sm ring-1 ring-zinc-200">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-blue-800 uppercase tracking-wider">Total Hasil Tabungan</p>
-            <TrendingUp className="size-4 text-blue-600" />
-          </div>
-          <p className="mt-2 text-2xl font-bold text-blue-700">{formatRupiah(saldo.totalNilaiPeriode ?? saldo.totalNilaiTabungan ?? totalMasuk)}</p>
-          <p className="mt-1 text-[11px] text-zinc-500">Akumulasi pendapatan sampah</p>
+          <p className="mt-3 text-2xl sm:text-3xl font-bold text-amber-700">{formatNumber(saldo.poin, 0)} pt</p>
+          <p className="mt-1.5 text-[11px] text-zinc-500">Dapat ditukarkan dengan produk olahan / merchandise</p>
         </Card>
       </div>
 
-      {/* Mutasi Filter Toolbar */}
+      {/* Filter Toolbar (Tanpa uang masuk/keluar) */}
       <Card className="border border-zinc-200/80 bg-white shadow-sm rounded-2xl overflow-hidden">
         <CardContent className="p-4 sm:p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-zinc-100">
@@ -858,25 +841,22 @@ function SaldoView({ data }: { data: any }) {
                 <Filter className="size-4" />
               </div>
               <div>
-                <h3 className="text-xs font-bold text-zinc-900">Filter Mutasi & Riwayat Arus Kas</h3>
-                <p className="text-[11px] text-zinc-400">Pantau pergerakan tabungan masuk, penarikan saldo, dan pelepasan dana</p>
+                <h3 className="text-xs font-bold text-zinc-900">Filter Riwayat Tabungan</h3>
+                <p className="text-[11px] text-zinc-400">Pilih periode waktu atau cari berdasarkan kode transaksi</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 text-xs">
-              <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                + Masuk: {formatRupiah(totalMasuk)}
-              </span>
-              <span className="font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
-                - Keluar: {formatRupiah(totalKeluar)}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-zinc-500 bg-zinc-100 px-2.5 py-1 rounded-lg">
+                {filteredRiwayat.length} Transaksi
               </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-zinc-400 pointer-events-none" />
               <Input
-                placeholder="Cari transaksi / keterangan..."
+                placeholder="Cari kode transaksi / nama sampah..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="h-9.5 w-full pl-9 pr-8 text-xs bg-zinc-50/50 border-zinc-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
@@ -905,21 +885,6 @@ function SaldoView({ data }: { data: any }) {
                 ))}
               </SelectContent>
             </Select>
-
-            <Select value={filterTipe} onValueChange={setFilterTipe}>
-              <SelectTrigger className="!w-full w-full h-9.5 rounded-xl bg-zinc-50/50 border-zinc-200 text-xs text-zinc-700 hover:bg-white hover:border-zinc-300 transition focus:ring-2 focus:ring-emerald-500/20">
-                <div className="flex items-center gap-2 truncate">
-                  <Wallet className="size-3.5 text-blue-600 shrink-0" />
-                  <SelectValue placeholder="Jenis Mutasi" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs">Semua Jenis Mutasi</SelectItem>
-                <SelectItem value="masuk" className="text-xs">Pemasukan (Nabung)</SelectItem>
-                <SelectItem value="keluar" className="text-xs">Pengeluaran (Penarikan)</SelectItem>
-                <SelectItem value="release" className="text-xs">Release Saldo</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
           {filterWaktu === 'custom' && (
@@ -937,42 +902,47 @@ function SaldoView({ data }: { data: any }) {
         </CardContent>
       </Card>
 
-      {/* Mutasi Table Card */}
-      <Card className="border-0 bg-white shadow-sm ring-1 ring-zinc-100 overflow-hidden">
-        <div className="p-4 border-b border-zinc-100">
-          <h3 className="text-sm font-semibold text-zinc-900">Riwayat Mutasi Saldo</h3>
+      {/* Riwayat Table Card */}
+      <Card className="border-0 bg-white shadow-sm ring-1 ring-zinc-100 overflow-hidden rounded-2xl">
+        <div className="p-4 border-b border-zinc-100 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-zinc-900">Riwayat Saldo Tabungan</h3>
+          {totalNilaiPeriode > 0 && (
+            <span className="text-xs font-bold text-emerald-700">
+              Total Nilai: {formatRupiah(totalNilaiPeriode)}
+            </span>
+          )}
         </div>
         <CardContent className="p-0">
-          {filteredMutasi.length === 0 ? (
+          {filteredRiwayat.length === 0 ? (
             <div className="py-10 text-center text-sm text-zinc-400">
               <Wallet className="size-8 mx-auto mb-2 opacity-30" />
-              <p>Belum ada riwayat mutasi yang cocok dengan filter.</p>
+              <p>Belum ada riwayat saldo yang cocok dengan filter.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-zinc-50 border-b border-zinc-200 text-left">
+                <thead className="bg-zinc-50/80 border-b border-zinc-200 text-left">
                   <tr>
                     <th className="p-3 text-xs font-semibold text-zinc-600">Tanggal</th>
                     <th className="p-3 text-xs font-semibold text-zinc-600">Kode Transaksi</th>
-                    <th className="p-3 text-xs font-semibold text-zinc-600">Keterangan</th>
+                    <th className="p-3 text-xs font-semibold text-zinc-600">Keterangan Sampah</th>
                     <th className="p-3 text-xs font-semibold text-zinc-600">Kategori</th>
-                    <th className="p-3 text-right text-xs font-semibold text-zinc-600">Nominal</th>
+                    <th className="p-3 text-right text-xs font-semibold text-zinc-600">Nilai Tabungan</th>
                     <th className="p-3 text-center text-xs font-semibold text-zinc-600">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {filteredMutasi.map((m) => (
-                    <tr key={m.id} className="hover:bg-zinc-50/60">
+                  {filteredRiwayat.map((m) => (
+                    <tr key={m.id} className="hover:bg-zinc-50/60 transition">
                       <td className="p-3 text-xs font-mono text-zinc-600 whitespace-nowrap">{formatDateTime(m.tanggal)}</td>
                       <td className="p-3 text-xs font-mono font-medium text-emerald-700 whitespace-nowrap">{m.kode}</td>
                       <td className="p-3 text-xs text-zinc-900 font-medium">{m.deskripsi}</td>
                       <td className="p-3 text-xs text-zinc-500 whitespace-nowrap">{m.kategori}</td>
-                      <td className={`p-3 text-xs font-bold text-right whitespace-nowrap ${m.tipe === 'masuk' ? 'text-emerald-700' : m.tipe === 'keluar' ? 'text-rose-700' : 'text-blue-700'}`}>
-                        {m.tipe === 'masuk' ? `+${formatRupiah(m.jumlah)}` : m.tipe === 'keluar' ? `-${formatRupiah(m.jumlah)}` : formatRupiah(m.jumlah)}
+                      <td className="p-3 text-xs font-bold text-right whitespace-nowrap text-emerald-700">
+                        {formatRupiah(m.jumlah)}
                       </td>
                       <td className="p-3 text-center whitespace-nowrap">
-                        <Badge variant="outline" className={`text-[10px] ${m.status === 'selesai' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-zinc-50 text-zinc-600 border-zinc-200'}`}>
+                        <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold">
                           {m.status}
                         </Badge>
                       </td>
