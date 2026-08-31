@@ -241,32 +241,32 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
       <div className="flex flex-1">
         {/* Sidebar */}
         <aside className={cn(
-          'fixed inset-y-0 left-0 top-16 z-30 w-72 transform border-r border-emerald-200/60 bg-white transition-transform duration-200 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:translate-x-0',
+          'fixed inset-y-0 left-0 top-16 z-30 w-80 transform border-r border-emerald-200/60 bg-white transition-transform duration-200 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}>
-          <nav className="flex h-full flex-col overflow-y-auto p-3">
+          <nav className="flex h-full flex-col overflow-y-auto p-3.5">
             {/* Search Menu Input */}
-            <div className="relative mb-2 px-1">
-              <Search className="absolute left-3.5 top-2.5 size-3.5 text-zinc-400" />
+            <div className="relative mb-2.5 px-0.5">
+              <Search className="absolute left-3.5 top-3 size-4 text-zinc-400" />
               <input
                 type="text"
                 value={searchMenu}
                 onChange={(e) => setSearchMenu(e.target.value)}
                 placeholder="Cari menu admin..."
-                className="h-8 w-full rounded-lg border border-zinc-200 bg-zinc-50/80 pl-8 pr-7 text-xs text-zinc-800 placeholder-zinc-400 focus:border-emerald-500 focus:bg-white focus:outline-none transition-colors"
+                className="h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50/90 pl-10 pr-8 text-sm text-zinc-800 placeholder-zinc-400 focus:border-emerald-500 focus:bg-white focus:outline-none transition-colors"
               />
               {searchMenu && (
                 <button
                   type="button"
                   onClick={() => setSearchMenu('')}
-                  className="absolute right-3 top-2 text-zinc-400 hover:text-zinc-600"
+                  className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600"
                 >
-                  <X className="size-3.5" />
+                  <X className="size-4" />
                 </button>
               )}
             </div>
 
-            <div className="space-y-3 pb-4">
+            <div className="space-y-4 pb-4">
               {/* 1. PRIMARY STANDALONE MENUS (Dashboard & Teller Wizard) */}
               {(() => {
                 const q = searchMenu.toLowerCase().trim()
@@ -278,15 +278,15 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
                 if (matchingPrimary.length === 0 && q) return null
 
                 return (
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <div className="flex items-center gap-2 px-2.5 pt-1 pb-1">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800/80">
+                      <p className="text-xs font-bold uppercase tracking-wider text-emerald-900">
                         Layanan Utama
                       </p>
-                      <div className="h-[1px] flex-1 bg-emerald-100/70" />
+                      <div className="h-[1px] flex-1 bg-emerald-200/70" />
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       {matchingPrimary.map((item) => {
                         const Icon = item.icon
                         const active = section === item.id
@@ -295,23 +295,23 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
                             key={item.id}
                             onClick={() => handleNavClick(item.id)}
                             className={cn(
-                              'group flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-left transition-all',
+                              'group flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-all',
                               active
-                                ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-sm font-medium'
-                                : 'text-zinc-700 hover:bg-emerald-50/80 hover:text-emerald-950'
+                                ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md font-medium'
+                                : 'text-zinc-700 hover:bg-emerald-50/90 hover:text-emerald-950 border border-transparent hover:border-emerald-100'
                             )}
                           >
-                            <Icon className={cn('mt-0.5 h-4 w-4 shrink-0', active ? 'text-white' : 'text-emerald-600')} />
+                            <Icon className={cn('mt-0.5 h-5 w-5 shrink-0', active ? 'text-white' : 'text-emerald-600')} />
                             <div className="flex-1 min-w-0 leading-tight">
-                              <p className={cn('text-xs font-semibold truncate', active ? 'text-white' : 'text-zinc-800')}>
+                              <p className={cn('text-sm font-bold truncate', active ? 'text-white' : 'text-zinc-900')}>
                                 {item.label}
                               </p>
-                              <p className={cn('text-[10px] truncate mt-0.5', active ? 'text-emerald-50/90' : 'text-zinc-400')}>
+                              <p className={cn('text-xs truncate mt-0.5', active ? 'text-emerald-50' : 'text-zinc-500')}>
                                 {item.id === 'dashboard' && dashboardType ? dashboardDesc : item.desc}
                               </p>
                             </div>
                             {item.id === 'dashboard' && dashboardType && (
-                              <span className={cn('mt-0.5 rounded px-1.5 py-0.5 text-[8px] font-bold uppercase', active ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800')}>
+                              <span className={cn('mt-0.5 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase', active ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800')}>
                                 {dashboardType === 'bank-sampah' ? 'BS' : dashboardType === 'koperasi' ? 'KOP' : 'PROD'}
                               </span>
                             )}
@@ -342,41 +342,41 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
                   const GroupIcon = group.icon
 
                   return (
-                    <div key={group.id} className="space-y-0.5">
+                    <div key={group.id} className="space-y-1">
                       {/* Group Header Button (Dropdown toggle) */}
                       <button
                         type="button"
                         onClick={() => toggleGroup(group.id)}
                         className={cn(
-                          'group flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left transition-all',
+                          'group flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition-all',
                           isChildActive
-                            ? 'bg-emerald-50/90 text-emerald-950 font-semibold border border-emerald-200/80 shadow-2xs'
-                            : 'text-zinc-700 hover:bg-zinc-100/80 hover:text-zinc-950'
+                            ? 'bg-emerald-50/90 text-emerald-950 font-semibold border border-emerald-300/80 shadow-xs'
+                            : 'text-zinc-700 hover:bg-zinc-100/90 hover:text-zinc-950 border border-transparent'
                         )}
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
                           <div className={cn(
-                            'flex h-7 w-7 items-center justify-center rounded-lg transition-colors shrink-0',
+                            'flex h-8.5 w-8.5 items-center justify-center rounded-xl transition-colors shrink-0',
                             isChildActive ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 group-hover:bg-emerald-100'
                           )}>
-                            <GroupIcon className="h-3.5 w-3.5" />
+                            <GroupIcon className="h-4.5 w-4.5" />
                           </div>
                           <div className="min-w-0 flex-1 leading-tight">
-                            <p className="text-xs font-semibold truncate">{group.title}</p>
-                            <p className="text-[10px] text-zinc-400 truncate">{group.desc}</p>
+                            <p className="text-sm font-bold text-zinc-900 truncate">{group.title}</p>
+                            <p className="text-xs text-zinc-500 truncate mt-0.5">{group.desc}</p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                        <div className="flex items-center gap-2 shrink-0 ml-1.5">
                           <span className={cn(
-                            'text-[9px] font-bold rounded px-1.5 py-0.5',
-                            isChildActive ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-500'
+                            'text-[10px] font-bold rounded-md px-2 py-0.5',
+                            isChildActive ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-600'
                           )}>
                             {group.items.length}
                           </span>
                           <ChevronDown
                             className={cn(
-                              'size-3.5 text-zinc-400 transition-transform duration-200',
+                              'size-4 text-zinc-400 transition-transform duration-200',
                               isOpen && 'rotate-180 text-emerald-700'
                             )}
                           />
@@ -385,7 +385,7 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
 
                       {/* Dropdown Content */}
                       {isOpen && (
-                        <div className="ml-4 pl-3 my-1 space-y-0.5 border-l-2 border-emerald-200/80">
+                        <div className="ml-5 pl-3.5 my-1.5 space-y-1 border-l-2 border-emerald-300">
                           {matchingChildren.map((item) => {
                             const ItemIcon = item.icon
                             const active = section === item.id
@@ -394,18 +394,18 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
                                 key={item.id}
                                 onClick={() => handleNavClick(item.id)}
                                 className={cn(
-                                  'group flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-all',
+                                  'group flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-all',
                                   active
                                     ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xs font-medium'
-                                    : 'text-zinc-600 hover:bg-emerald-50 hover:text-emerald-900'
+                                    : 'text-zinc-700 hover:bg-emerald-50 hover:text-emerald-950'
                                 )}
                               >
-                                <ItemIcon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', active ? 'text-white' : 'text-emerald-600')} />
+                                <ItemIcon className={cn('mt-0.5 h-4 w-4 shrink-0', active ? 'text-white' : 'text-emerald-600')} />
                                 <div className="flex-1 min-w-0 leading-tight">
-                                  <p className={cn('text-[11px] font-medium truncate', active ? 'text-white' : 'text-zinc-800')}>
+                                  <p className={cn('text-xs font-bold truncate', active ? 'text-white' : 'text-zinc-800')}>
                                     {item.label}
                                   </p>
-                                  <p className={cn('text-[9px] truncate mt-0.5', active ? 'text-emerald-100' : 'text-zinc-400')}>
+                                  <p className={cn('text-[11px] truncate mt-0.5', active ? 'text-emerald-100' : 'text-zinc-500')}>
                                     {item.desc}
                                   </p>
                                 </div>
@@ -420,11 +420,11 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
 
                 if (q && totalShown === 0 && PRIMARY_NAV.filter(it => it.label.toLowerCase().includes(q) || it.desc.toLowerCase().includes(q)).length === 0) {
                   return (
-                    <div className="py-8 text-center text-xs text-zinc-400">
+                    <div className="py-8 text-center text-sm text-zinc-400">
                       <p>Menu &quot;{searchMenu}&quot; tidak ditemukan</p>
                       <button
                         onClick={() => setSearchMenu('')}
-                        className="mt-2 text-xs text-emerald-600 hover:underline"
+                        className="mt-2 text-xs text-emerald-600 hover:underline font-semibold"
                       >
                         Reset pencarian
                       </button>
@@ -433,12 +433,12 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
                 }
 
                 return (
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2 px-2.5 pt-1.5 pb-1">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800/80">
+                      <p className="text-xs font-bold uppercase tracking-wider text-emerald-900">
                         Modul & Pengelolaan
                       </p>
-                      <div className="h-[1px] flex-1 bg-emerald-100/70" />
+                      <div className="h-[1px] flex-1 bg-emerald-200/70" />
                     </div>
                     {dropdownNodes}
                   </div>
@@ -447,9 +447,9 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
             </div>
 
             {/* Quick Tips */}
-            <div className="mt-auto rounded-xl border border-emerald-200/60 bg-emerald-50/60 p-2.5">
-              <p className="text-[11px] font-bold text-emerald-900">💡 Tips Singkat</p>
-              <p className="mt-0.5 text-[10px] leading-relaxed text-emerald-700/80">
+            <div className="mt-auto rounded-xl border border-emerald-200/80 bg-emerald-50/70 p-3">
+              <p className="text-xs font-bold text-emerald-900">💡 Tips Singkat</p>
+              <p className="mt-1 text-xs leading-relaxed text-emerald-800/90">
                 Gunakan <b>Teller Wizard</b> untuk transaksi nasabah satu pintu. Klik <b>Dashboard</b> untuk berganti view.
               </p>
             </div>
