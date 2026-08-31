@@ -35,8 +35,8 @@ function bucketKey(d: Date, granularity: 'day' | 'week' | 'month'): string {
 function buildBuckets(rangeStart: Date, rangeEnd: Date): { keys: string[]; labels: string[]; granularity: 'day' | 'week' | 'month' } {
   const diffDays = Math.ceil((rangeEnd.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24))
   let granularity: 'day' | 'week' | 'month'
-  if (diffDays <= 31) granularity = 'day'
-  else if (diffDays <= 92) granularity = 'week'
+  if (diffDays <= 35) granularity = 'day'
+  else if (diffDays <= 120) granularity = 'week'
   else granularity = 'month'
 
   const keys: string[] = []
@@ -82,53 +82,70 @@ export async function GET(req: NextRequest) {
   const logStatusQc = searchParams.get('statusQc') || ''
   const logKategori = searchParams.get('kategori') || ''
   const logBarang = searchParams.get('barang') || ''
-  const logRange = searchParams.get('range') || '30'
+  const logRange = searchParams.get('range') // optional log range override
   const logDari = searchParams.get('logDari') // yyyy-mm-dd (custom log range)
   const logSampai = searchParams.get('logSampai') // yyyy-mm-dd (custom log range)
 
-  // Chart range filter
+  // Chart / Period filter
   const chartRange = searchParams.get('chartRange') || '1thn' // 1bul | 3bul | 6bul | 1thn | custom
   const chartDari = searchParams.get('chartDari') // yyyy-mm-dd
   const chartSampai = searchParams.get('chartSampai') // yyyy-mm-dd
 
   const now = new Date()
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
 
   // Compute chart range start/end
   let chartStart: Date
-  let chartEnd: Date = now
+  let chartEnd: Date = endOfToday
+  let periodLabel = '1 Tahun Terakhir'
+
   if (chartRange === 'custom' && chartDari && chartSampai) {
     chartStart = new Date(chartDari)
     chartStart.setHours(0, 0, 0, 0)
     chartEnd = new Date(chartSampai)
     chartEnd.setHours(23, 59, 59, 999)
+    periodLabel = `${chartDari} s/d ${chartSampai}`
   } else if (chartRange === '1bul') {
-    chartStart = new Date(now); chartStart.setDate(chartStart.getDate() - 29); chartStart.setHours(0, 0, 0, 0)
+    chartStart = new Date(now)
+    chartStart.setDate(chartStart.getDate() - 29)
+    chartStart.setHours(0, 0, 0, 0)
+    periodLabel = '1 Bulan Terakhir'
   } else if (chartRange === '3bul') {
-    chartStart = new Date(now); chartStart.setDate(chartStart.getDate() - 89); chartStart.setHours(0, 0, 0, 0)
+    chartStart = new Date(now)
+    chartStart.setDate(chartStart.getDate() - 89)
+    chartStart.setHours(0, 0, 0, 0)
+    periodLabel = '3 Bulan Terakhir'
   } else if (chartRange === '6bul') {
     chartStart = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+    chartStart.setHours(0, 0, 0, 0)
+    periodLabel = '6 Bulan Terakhir'
   } else {
     // 1thn (default)
     chartStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+    chartStart.setHours(0, 0, 0, 0)
+    periodLabel = '1 Tahun Terakhir'
   }
 
-  // Transaction log range
-  let logRangeStart: Date
-  let logRangeEnd: Date = now
-  if (logRange === 'custom' && logDari && logSampai) {
-    logRangeStart = new Date(logDari)
-    logRangeStart.setHours(0, 0, 0, 0)
-    logRangeEnd = new Date(logSampai)
-    logRangeEnd.setHours(23, 59, 59, 999)
-  } else {
-    const rangeDays = parseInt(logRange, 10) || 30
-    logRangeStart = new Date(now)
-    logRangeStart.setDate(logRangeStart.getDate() - rangeDays)
+  // Transaction log range: default to match global chart period unless specifically overridden
+  let logRangeStart: Date = chartStart
+  let logRangeEnd: Date = chartEnd
+  if (logRange && logRange !== 'inherit' && logRange !== 'all') {
+    if (logRange === 'custom' && logDari && logSampai) {
+      logRangeStart = new Date(logDari)
+      logRangeStart.setHours(0, 0, 0, 0)
+      logRangeEnd = new Date(logSampai)
+      logRangeEnd.setHours(23, 59, 59, 999)
+    } else {
+      const rangeDays = parseInt(logRange, 10) || 30
+      logRangeStart = new Date(now)
+      logRangeStart.setDate(logRangeStart.getDate() - rangeDays)
+      logRangeStart.setHours(0, 0, 0, 0)
+    }
   }
 
-  // ===== TOP METRICS (QC-passed & tidak_perlu, filtered by chart range) =====
-  const [allSaving, allSedekah, nasabahCount] = await Promise.all([
+  // ===== TOP METRICS (QC-passed & tidak_perlu, filtered by chosen period) =====
+  const [allSaving, allSedekah, nasabahCount, allTimeSaving, allTimeSedekah] = await Promise.all([
     db.savingTransaction.findMany({
       where: { transactedAt: { gte: chartStart, lte: chartEnd }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       select: { totalValue: true, totalWeight: true },
@@ -138,6 +155,15 @@ export async function GET(req: NextRequest) {
       select: { totalWeightBersih: true },
     }),
     db.user.count({ where: { OR: [{ roles: { contains: 'nasabah' } }, { roles: { contains: 'koperasi' } }] } }),
+    // All-time totals for reference
+    db.savingTransaction.aggregate({
+      where: { qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
+      _sum: { totalValue: true, totalWeight: true },
+    }),
+    db.sedekahTransaction.aggregate({
+      where: { qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
+      _sum: { totalWeightBersih: true },
+    }),
   ])
 
   const totalNilaiTabungan = allSaving.reduce((s, t) => s + toNumber(t.totalValue), 0)
@@ -147,15 +173,15 @@ export async function GET(req: NextRequest) {
   // ===== TODAY SUMMARY (always today, not affected by chart range) =====
   const [todaySaving, todaySedekah, todaySavingNasabah, pendingQcSaving, pendingQcSedekah] = await Promise.all([
     db.savingTransaction.findMany({
-      where: { transactedAt: { gte: startOfToday }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
+      where: { transactedAt: { gte: startOfToday, lte: endOfToday }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       select: { totalValue: true, totalWeight: true, userId: true },
     }),
     db.sedekahTransaction.findMany({
-      where: { transactedAt: { gte: startOfToday }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
+      where: { transactedAt: { gte: startOfToday, lte: endOfToday }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       select: { totalWeightBersih: true },
     }),
     db.savingTransaction.findMany({
-      where: { transactedAt: { gte: startOfToday }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
+      where: { transactedAt: { gte: startOfToday, lte: endOfToday }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       select: { userId: true },
       distinct: ['userId'],
     }),
@@ -244,7 +270,7 @@ export async function GET(req: NextRequest) {
   })
   const totalAset = toNumber(balanceAgg._sum.saldoTertahan) + toNumber(balanceAgg._sum.saldoTersedia)
 
-  // ===== TRANSACTION LOG (with filters, uses logRange not chartRange) =====
+  // ===== TRANSACTION LOG (with filters, uses logRange or chartRange) =====
   const savingWhere: any = { transactedAt: { gte: logRangeStart, lte: logRangeEnd } }
   if (logStatusQc) savingWhere.qcStatus = logStatusQc
   if (logSearch) {
@@ -261,7 +287,7 @@ export async function GET(req: NextRequest) {
   }
 
   const [savingLogs, sedekahLogs] = await Promise.all([
-    db.savingTransaction.findMany({
+    logTipe === 'sedekah' ? [] : db.savingTransaction.findMany({
       where: savingWhere,
       orderBy: { transactedAt: 'desc' },
       take: 200,
@@ -270,7 +296,7 @@ export async function GET(req: NextRequest) {
         items: { select: { id: true, categoryNameSnapshot: true, itemNameSnapshot: true, quantity: true, subtotal: true, wasteItemId: true } },
       },
     }),
-    db.sedekahTransaction.findMany({
+    logTipe === 'nabung' ? [] : db.sedekahTransaction.findMany({
       where: sedekahWhere,
       orderBy: { transactedAt: 'desc' },
       take: 200,
@@ -361,11 +387,21 @@ export async function GET(req: NextRequest) {
   ])
 
   return NextResponse.json({
+    periodLabel,
+    periodDates: {
+      start: chartStart.toISOString(),
+      end: chartEnd.toISOString(),
+    },
     topMetrics: {
       totalNilaiTabungan,
       totalSampahDitabung,
       totalSampahDisedekahkan,
       totalNasabah: nasabahCount,
+    },
+    allTimeMetrics: {
+      totalNilaiTabungan: toNumber(allTimeSaving._sum.totalValue),
+      totalSampahDitabung: toNumber(allTimeSaving._sum.totalWeight),
+      totalSampahDisedekahkan: toNumber(allTimeSedekah._sum.totalWeightBersih),
     },
     todaySummary: {
       nabungSahHariIni: todayNabungCount,
@@ -393,7 +429,7 @@ export async function GET(req: NextRequest) {
     filters: {
       kategori: kategoriOpts,
       barang: barangOpts,
-      range: logRange,
+      range: logRange || 'inherit',
     },
   })
 }

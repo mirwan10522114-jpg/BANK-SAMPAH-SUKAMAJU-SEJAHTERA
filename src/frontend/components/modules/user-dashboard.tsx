@@ -44,24 +44,49 @@ export function UserDashboard({ user, onLogout, onSettings }: { user: AuthUser; 
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [trenRange, setTrenRange] = useState('6bul')
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
+  const [trenRange, setTrenRange] = useState('1thn')
   const [chartDari, setChartDari] = useState('')
   const [chartSampai, setChartSampai] = useState('')
   const reqId = useRef(0)
 
-  useEffect(() => {
+  const loadData = useCallback((isSilent = false) => {
     if (!user?.id) return
     const myId = ++reqId.current
-    Promise.resolve().then(() => setLoading(true))
+    if (isSilent) setIsRefreshing(true)
+    else setLoading(true)
     api.personalDashboard(user.id, {
       chartRange: trenRange,
       chartDari: trenRange === 'custom' ? chartDari : undefined,
       chartSampai: trenRange === 'custom' ? chartSampai : undefined,
     })
-      .then((res) => { if (myId === reqId.current) { setData(res); setLoading(false) } })
-      .catch((e) => { if (myId === reqId.current) { toast.error('Gagal memuat data: ' + e.message); setLoading(false) } })
-    return () => { reqId.current++ }
+      .then((res) => {
+        if (myId === reqId.current) {
+          setData(res)
+          setLoading(false)
+          setIsRefreshing(false)
+          setLastUpdated(new Date())
+        }
+      })
+      .catch((e) => {
+        if (myId === reqId.current) {
+          if (!isSilent) toast.error('Gagal memuat data: ' + e.message)
+          setLoading(false)
+          setIsRefreshing(false)
+        }
+      })
   }, [user?.id, trenRange, chartDari, chartSampai])
+
+  useEffect(() => {
+    loadData()
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadData(true)
+      }
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [loadData])
 
   const navItems = [
     { id: 'dashboard' as View, label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
@@ -143,7 +168,21 @@ export function UserDashboard({ user, onLogout, onSettings }: { user: AuthUser; 
               </div>
             ) : data ? (
               <>
-                {view === 'dashboard' && <DashboardView data={data} user={user} trenRange={trenRange} setTrenRange={setTrenRange} chartDari={chartDari} setChartDari={setChartDari} chartSampai={chartSampai} setChartSampai={setChartSampai} />}
+                {view === 'dashboard' && (
+                  <DashboardView
+                    data={data}
+                    user={user}
+                    trenRange={trenRange}
+                    setTrenRange={setTrenRange}
+                    chartDari={chartDari}
+                    setChartDari={setChartDari}
+                    chartSampai={chartSampai}
+                    setChartSampai={setChartSampai}
+                    onRefresh={() => loadData(true)}
+                    isRefreshing={isRefreshing}
+                    lastUpdated={lastUpdated}
+                  />
+                )}
                 {view === 'saldo' && <SaldoView data={data} />}
                 {view === 'nabung' && <NabungView data={data} />}
                 {view === 'sedekah' && <SedekahView data={data} />}
@@ -236,7 +275,19 @@ function relativeDaysLabel(days: number): string {
 // ============================================================
 // Dashboard View (main overview)
 // ============================================================
-function DashboardView({ data, user, trenRange, setTrenRange, chartDari, setChartDari, chartSampai, setChartSampai }: {
+function DashboardView({
+  data,
+  user,
+  trenRange,
+  setTrenRange,
+  chartDari,
+  setChartDari,
+  chartSampai,
+  setChartSampai,
+  onRefresh,
+  isRefreshing,
+  lastUpdated,
+}: {
   data: any
   user: AuthUser
   trenRange: string
@@ -245,8 +296,11 @@ function DashboardView({ data, user, trenRange, setTrenRange, chartDari, setChar
   setChartDari: (v: string) => void
   chartSampai: string
   setChartSampai: (v: string) => void
+  onRefresh?: () => void
+  isRefreshing?: boolean
+  lastUpdated?: Date
 }) {
-  const { profile, saldo, trenTabungan, komposisiKategori, riwayat, koperasiInfo } = data
+  const { profile, saldo, trenTabungan, komposisiKategori, riwayat, koperasiInfo, periodLabel } = data
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
 
   // Fetch active pinjaman + last simpanan wajib setor to compute due-date notifications
@@ -320,11 +374,24 @@ function DashboardView({ data, user, trenRange, setTrenRange, chartDari, setChar
   }, [koperasiInfo?.anggotaId])
 
   const statCards = [
-    { label: 'Saldo Tersedia', value: formatRupiah(saldo.saldoTersedia), color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Poin Saat Ini', value: `${formatNumber(saldo.poin, 0)} pt`, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Total Ditabung', value: `${formatNumber(saldo.totalDitabung, 1)} kg`, color: 'text-zinc-900', bg: 'bg-zinc-100' },
+    { label: 'Saldo Tersedia', value: formatRupiah(saldo.saldoTersedia), color: 'text-emerald-600', bg: 'bg-emerald-50', icon: Wallet },
+    { label: 'Poin Saat Ini', value: `${formatNumber(saldo.poin, 0)} pt`, color: 'text-emerald-600', bg: 'bg-emerald-50', icon: Award },
+    {
+      label: `Tabungan (${periodLabel || 'Periode'})`,
+      value: `${formatNumber(saldo.totalDitabungPeriode ?? saldo.totalDitabung, 1)} kg`,
+      color: 'text-zinc-900',
+      bg: 'bg-amber-50',
+      icon: Scale,
+      sub: saldo.totalNilaiPeriode ? `Nilai: ${formatRupiah(saldo.totalNilaiPeriode)}` : undefined,
+    },
+    {
+      label: `Sedekah (${periodLabel || 'Periode'})`,
+      value: `${formatNumber(saldo.totalSedekahPeriode ?? 0, 1)} kg`,
+      color: 'text-purple-600',
+      bg: 'bg-purple-50',
+      icon: HeartHandshake,
+    },
   ]
-  // trenTabungan now comes from the API filtered by the selected range (no client-side slicing)
   const trenFiltered = trenTabungan
   const trenRangeOptions = [
     { value: '1bul', label: '1 Bulan' },
@@ -371,17 +438,75 @@ function DashboardView({ data, user, trenRange, setTrenRange, chartDari, setChar
         </CardContent>
       </Card>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        {statCards.map((c) => (
-          <div key={c.label} className="rounded-xl border border-zinc-100 bg-white p-3 shadow-sm sm:p-4">
-            <div className={cn('mb-2 flex h-7 w-7 items-center justify-center rounded-lg', c.bg)}>
-              <Wallet className={cn('h-4 w-4', c.color)} />
+      {/* Global Period Filter Card for Nasabah */}
+      <Card className="border-0 bg-white shadow-sm ring-1 ring-zinc-200/80">
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700 mr-2">
+                <Calendar className="h-4 w-4 text-emerald-600" />
+                <span>Periode:</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {trenRangeOptions.map((b) => (
+                  <button
+                    key={b.value}
+                    onClick={() => setTrenRange(b.value)}
+                    className={cn(
+                      'rounded-lg px-3 py-1.5 text-xs font-medium transition',
+                      trenRange === b.value ? 'bg-emerald-600 text-white shadow-sm' : 'bg-zinc-50 text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-100'
+                    )}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <p className={cn('text-base sm:text-xl font-bold', c.color)}>{c.value}</p>
-            <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{c.label}</p>
+
+            <div className="flex items-center gap-3 text-xs">
+              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] font-medium text-emerald-700">
+                <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Realtime
+              </Badge>
+              {onRefresh && (
+                <Button variant="outline" size="sm" onClick={onRefresh} className="h-7 gap-1 text-[11px] text-zinc-600 hover:text-emerald-700">
+                  <RotateCw className={cn('h-3 w-3', isRefreshing && 'animate-spin text-emerald-600')} />
+                  Segarkan
+                </Button>
+              )}
+            </div>
           </div>
-        ))}
+
+          {trenRange === 'custom' && (
+            <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-zinc-50 p-3 border border-zinc-100">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Dari</label>
+                <Input type="date" value={chartDari} onChange={(e) => setChartDari(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Sampai</label>
+                <Input type="date" value={chartSampai} onChange={(e) => setChartSampai(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+              </div>
+              <p className="text-[11px] text-emerald-600 self-center">Filter diterapkan otomatis</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {statCards.map((c) => {
+          const Icon = c.icon
+          return (
+            <div key={c.label} className="rounded-xl border border-zinc-100 bg-white p-3 shadow-sm sm:p-4">
+              <div className={cn('mb-2 flex h-7 w-7 items-center justify-center rounded-lg', c.bg)}>
+                <Icon className={cn('h-4 w-4', c.color)} />
+              </div>
+              <p className={cn('text-base sm:text-lg font-bold', c.color)}>{c.value}</p>
+              <p className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{c.label}</p>
+              {c.sub && <p className="mt-0.5 text-[10px] text-zinc-500">{c.sub}</p>}
+            </div>
+          )
+        })}
       </div>
 
       {/* Charts */}
@@ -390,47 +515,16 @@ function DashboardView({ data, user, trenRange, setTrenRange, chartDari, setChar
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-sm font-semibold text-zinc-900">Tren Tabungan</h3>
-              <p className="text-[11px] text-zinc-500">Berat sampah (kg) per bulan
-                {trenRange === 'custom' && chartDari && chartSampai ? ` · ${chartDari} s/d ${chartSampai}` : trenRange !== 'custom' ? ` · ${trenRangeOptions.find((o) => o.value === trenRange)?.label}` : ''}
+              <p className="text-[11px] text-zinc-500">
+                Berat sampah (kg) · Periode {periodLabel}
               </p>
             </div>
-            <div className="flex flex-wrap gap-1">
-              {trenRangeOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setTrenRange(opt.value)}
-                  className={cn(
-                    'rounded-md px-2.5 py-1 text-[11px] font-medium transition',
-                    trenRange === opt.value ? 'bg-emerald-500 text-white shadow-sm' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200',
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
           </div>
-          {/* Custom date range inputs */}
-          {trenRange === 'custom' && (
-            <div className="mb-3 flex flex-wrap items-end gap-2 rounded-lg bg-zinc-50 p-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Dari</label>
-                <Input type="date" value={chartDari} onChange={(e) => setChartDari(e.target.value)} className="h-9 w-40 border-zinc-200 text-sm" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Sampai</label>
-                <Input type="date" value={chartSampai} onChange={(e) => setChartSampai(e.target.value)} className="h-9 w-40 border-zinc-200 text-sm" />
-              </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-amber-600">
-                <Filter className="h-3 w-3" />
-                <span>Filter diterapkan otomatis</span>
-              </div>
-            </div>
-          )}
           <div className="h-56 w-full">
             {trenFiltered.every((t: any) => t.berat === 0) ? (
               <div className="flex h-full flex-col items-center justify-center text-center">
                 <Scale className="h-8 w-8 text-zinc-300" />
-                <p className="mt-2 text-xs text-zinc-400">Belum ada data tabungan untuk ditampilkan.</p>
+                <p className="mt-2 text-xs text-zinc-400">Belum ada data tabungan pada periode {periodLabel}.</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -439,7 +533,7 @@ function DashboardView({ data, user, trenRange, setTrenRange, chartDari, setChar
                   <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 12 }} formatter={(v: any) => [`${formatNumber(v, 2)} kg`, 'Berat']} />
-                  <Line type="monotone" dataKey="berat" stroke="#4caf50" strokeWidth={2.5} dot={{ r: 4, fill: '#4caf50' }} />
+                  <Line type="monotone" dataKey="berat" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4, fill: '#10b981' }} />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -449,8 +543,7 @@ function DashboardView({ data, user, trenRange, setTrenRange, chartDari, setChar
         <Card className="border-0 bg-white p-4 shadow-sm ring-1 ring-zinc-100">
           <h3 className="text-sm font-semibold text-zinc-900">Total Sampah per Kategori</h3>
           <p className="text-[11px] text-zinc-500">
-            Kilogram per kategori
-            {trenRange === 'custom' && chartDari && chartSampai ? ` · ${chartDari} s/d ${chartSampai}` : trenRange !== 'custom' ? ` · ${trenRangeOptions.find((o) => o.value === trenRange)?.label}` : ''}
+            Kilogram per kategori ({periodLabel})
           </p>
           {komposisiKategori.length === 0 ? (
             <div className="flex h-48 flex-col items-center justify-center"><Scale className="h-8 w-8 text-zinc-300" /><p className="mt-2 text-xs text-zinc-400">Belum ada data.</p></div>
