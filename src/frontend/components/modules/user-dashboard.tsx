@@ -8,7 +8,7 @@ import {
   FileText, CreditCard, CheckCircle2, XCircle, Clock, AlertTriangle,
   Landmark, ShieldCheck, ShieldX, UserCircle, Info,
   HeartHandshake, Bell, BellRing, CalendarClock, CalendarDays, ChevronLeft, Loader2, Filter,
-  Unlock, Gift, Sprout, TrendingUp, ChevronRight, RotateCw,
+  Unlock, Gift, Sprout, TrendingUp, ChevronRight, RotateCw, Search, Package,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
