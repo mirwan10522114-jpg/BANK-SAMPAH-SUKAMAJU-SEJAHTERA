@@ -63,52 +63,21 @@ export async function POST(req: NextRequest) {
 
   const wasteItems = await db.wasteItem.findMany({ where: { id: { in: inputs.map((i) => i.wasteItemId) } }, include: { category: true } })
 
-  // ============================================================
-  // Auto-create produk baru untuk output yang tidak punya productId
-  // ============================================================
+  // Validasi produk terdaftar di master data
   const productIds: string[] = []
   const outputProductMap: Map<number, { id: string; name: string; unit: string }> = new Map()
 
   for (let idx = 0; idx < outputs.length; idx++) {
     const o = outputs[idx]
-    if (o.productId) {
-      // Produk yang sudah ada
-      productIds.push(o.productId)
-      const p = await db.product.findUnique({ where: { id: o.productId }, select: { id: true, name: true, unit: true } })
-      if (p) {
-        outputProductMap.set(idx, { id: p.id, name: p.name, unit: p.unit })
-      }
-    } else if (o.newProductName) {
-      // Buat produk baru otomatis
-      const slug = o.newProductName
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .trim()
-      // Cek uniqueness slug
-      const existing = await db.product.findUnique({ where: { slug } })
-      const finalSlug = existing ? `${slug}-${Date.now().toString(36)}` : slug
-
-      const newProduct = await db.product.create({
-        data: {
-          name: o.newProductName,
-          slug: finalSlug,
-          price: o.newProductPrice || 0,
-          unit: o.newProductUnit || 'pcs',
-          weightGram: o.newProductWeightGram || 0,
-          productCategoryId: o.newProductCategory || null,
-          isActive: true,
-          dijualOnline: false,
-          dijualOffline: true,
-          minOrderQty: 1,
-          maxOrderQty: 0,
-        },
-      })
-      outputProductMap.set(idx, { id: newProduct.id, name: newProduct.name, unit: newProduct.unit })
-    } else {
-      return NextResponse.json({ error: `Output #${idx + 1}: pilih produk atau isi nama produk baru` }, { status: 400 })
+    if (!o.productId) {
+      return NextResponse.json({ error: `Output #${idx + 1}: pilih produk yang sudah terdaftar di Master Data` }, { status: 400 })
     }
+    productIds.push(o.productId)
+    const p = await db.product.findUnique({ where: { id: o.productId }, select: { id: true, name: true, unit: true } })
+    if (!p) {
+      return NextResponse.json({ error: `Produk #${idx + 1} tidak ditemukan di Master Data` }, { status: 404 })
+    }
+    outputProductMap.set(idx, { id: p.id, name: p.name, unit: p.unit })
   }
 
   const totalInputWeight = inputs.reduce((s, i) => s + toNumber(i.quantity), 0)

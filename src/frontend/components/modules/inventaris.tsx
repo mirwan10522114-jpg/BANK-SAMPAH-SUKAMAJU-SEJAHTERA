@@ -404,11 +404,6 @@ interface InputRow { wasteItemId: string; source: string; quantity: string }
 interface OutputRow {
   productId: string
   quantity: string
-  isNewProduct: boolean
-  newProductName: string
-  newProductPrice: string
-  newProductUnit: string
-  newProductWeightGram: string
 }
 
 interface RecipeRow {
@@ -441,7 +436,7 @@ function PengolahanTab() {
   const [inventory, setInventory] = React.useState<StokRow[]>([])
 
   const [inputs, setInputs] = React.useState<InputRow[]>([{ wasteItemId: '', source: '', quantity: '' }])
-  const [outputs, setOutputs] = React.useState<OutputRow[]>([{ productId: '', quantity: '', isNewProduct: false, newProductName: '', newProductPrice: '', newProductUnit: 'pcs', newProductWeightGram: '' }])
+  const [outputs, setOutputs] = React.useState<OutputRow[]>([{ productId: '', quantity: '' }])
   const [notes, setNotes] = React.useState('')
 
   // Load recipes
@@ -504,7 +499,7 @@ function PengolahanTab() {
 
   const openCreate = async () => {
     setInputs([{ wasteItemId: '', source: '', quantity: '' }])
-    setOutputs([{ productId: '', quantity: '', isNewProduct: false, newProductName: '', newProductPrice: '', newProductUnit: 'pcs', newProductWeightGram: '' }])
+    setOutputs([{ productId: '', quantity: '' }])
     setNotes('')
     setDialogOpen(true)
     try {
@@ -561,7 +556,7 @@ function PengolahanTab() {
     // Jika ada resep aktif untuk produk ini, auto-isi input bahan baku
     // dengan quantity = quantityPerUnit × jumlah produk
     // ============================================================
-    if (field === 'productId' && val && !outputs[idx]?.isNewProduct) {
+    if (field === 'productId' && val) {
       const productRecipes = recipes.filter(
         (r) => r.productId === val && r.isActive
       )
@@ -582,7 +577,7 @@ function PengolahanTab() {
     }
 
     // Jika quantity output berubah & resep aktif → update input quantity
-    if (field === 'quantity' && !outputs[idx]?.isNewProduct && outputs[idx]?.productId) {
+    if (field === 'quantity' && outputs[idx]?.productId) {
       const productRecipes = recipes.filter(
         (r) => r.productId === outputs[idx].productId && r.isActive
       )
@@ -605,7 +600,7 @@ function PengolahanTab() {
       }
     }
   }
-  const addOutput = () => setOutputs((p) => [...p, { productId: '', quantity: '', isNewProduct: false, newProductName: '', newProductPrice: '', newProductUnit: 'pcs', newProductWeightGram: '' }])
+  const addOutput = () => setOutputs((p) => [...p, { productId: '', quantity: '' }])
   const removeOutput = (idx: number) => setOutputs((p) => p.filter((_, i) => i !== idx))
 
   const totalInputWeight = inputs.reduce((s, r) => s + (parseFloat(r.quantity) || 0), 0)
@@ -616,25 +611,8 @@ function PengolahanTab() {
       .filter((r) => r.wasteItemId && r.quantity && r.source)
       .map((r) => ({ wasteItemId: r.wasteItemId, quantity: parseFloat(r.quantity), source: r.source }))
     const cleanOutputs = outputs
-      .filter((r) => {
-        if (r.isNewProduct) {
-          return r.newProductName.trim() && r.quantity
-        }
-        return r.productId && r.quantity
-      })
-      .map((r) => {
-        if (r.isNewProduct) {
-          return {
-            productId: '',
-            quantity: parseFloat(r.quantity),
-            newProductName: r.newProductName.trim(),
-            newProductPrice: parseFloat(r.newProductPrice) || 0,
-            newProductUnit: r.newProductUnit || 'pcs',
-            newProductWeightGram: parseInt(r.newProductWeightGram) || 0,
-          }
-        }
-        return { productId: r.productId, quantity: parseFloat(r.quantity) }
-      })
+      .filter((r) => r.productId && r.quantity)
+      .map((r) => ({ productId: r.productId, quantity: parseFloat(r.quantity) }))
 
     if (cleanInputs.length === 0) {
       toast.error('Minimal 1 bahan baku harus diisi')
@@ -932,74 +910,26 @@ function PengolahanTab() {
               <div className="space-y-2">
                 {outputs.map((row, idx) => {
                   const product = products.find((p) => p.id === row.productId)
-                  const hargaJual = row.isNewProduct
-                    ? (parseFloat(row.newProductPrice) || 0)
-                    : (product ? toNumber(product.price) : 0)
+                  const hargaJual = product ? toNumber(product.price) : 0
                   const outQty = parseFloat(row.quantity) || 0
                   const totalNilaiJual = hargaJual * outQty
-                  const productUnit = row.isNewProduct ? (row.newProductUnit || 'pcs') : (product?.unit || 'pcs')
+                  const productUnit = product?.unit || 'pcs'
                   return (
                     <div key={idx} className="rounded-lg border border-teal-100 bg-teal-50/30 p-3">
-                      {/* Toggle: Pilih Produk / Buat Produk Baru */}
-                      <div className="mb-2 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            updateOutput(idx, 'isNewProduct', 'false')
-                            updateOutput(idx, 'productId', '')
-                          }}
-                          className={cn(
-                            'rounded-md px-3 py-1 text-xs font-semibold transition-colors',
-                            !row.isNewProduct
-                              ? 'bg-teal-600 text-white'
-                              : 'bg-white text-teal-700 border border-teal-200 hover:bg-teal-50'
-                          )}
-                        >
-                          Pilih Produk
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            updateOutput(idx, 'isNewProduct', 'true')
-                            updateOutput(idx, 'productId', '')
-                          }}
-                          className={cn(
-                            'rounded-md px-3 py-1 text-xs font-semibold transition-colors',
-                            row.isNewProduct
-                              ? 'bg-teal-600 text-white'
-                              : 'bg-white text-teal-700 border border-teal-200 hover:bg-teal-50'
-                          )}
-                        >
-                          + Buat Produk Baru
-                        </button>
-                      </div>
-
                       {/* Row 1: Produk/Jumlah/Remove */}
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_140px_auto] sm:items-end">
                         <div className="space-y-1.5">
-                          <Label className="text-xs text-teal-700/70">
-                            {row.isNewProduct ? 'Nama Produk Baru' : 'Produk'}
-                          </Label>
-                          {row.isNewProduct ? (
-                            <Input
-                              type="text"
-                              placeholder="Contoh: Pot Tanaman Daur Ulang"
-                              value={row.newProductName}
-                              onChange={(e) => updateOutput(idx, 'newProductName', e.target.value)}
-                              className="bg-white"
-                            />
-                          ) : (
-                            <Select value={row.productId} onValueChange={(v) => updateOutput(idx, 'productId', v)}>
-                              <SelectTrigger className="w-full bg-white"><SelectValue placeholder="Pilih produk..." /></SelectTrigger>
-                              <SelectContent>
-                                {products.map((p) => (
-                                  <SelectItem key={p.id} value={p.id}>
-                                    {p.name} <span className="text-teal-600/60">· stok {formatNumber(toNumber(p.stock), 0)} · {formatRupiah(toNumber(p.price))}</span>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
+                          <Label className="text-xs text-teal-700/70">Produk Hasil</Label>
+                          <Select value={row.productId} onValueChange={(v) => updateOutput(idx, 'productId', v)}>
+                            <SelectTrigger className="w-full bg-white"><SelectValue placeholder="Pilih produk..." /></SelectTrigger>
+                            <SelectContent>
+                              {products.map((p) => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  {p.name} <span className="text-teal-600/60">· stok {formatNumber(toNumber(p.stock), 0)} · {formatRupiah(toNumber(p.price))}</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                         <div className="space-y-1.5">
                           <Label className="text-xs text-teal-700/70">Jumlah ({productUnit})</Label>
@@ -1026,63 +956,20 @@ function PengolahanTab() {
                         </Button>
                       </div>
 
-                      {/* Row 2: Jika produk baru — tampilkan form harga/satuan/berat */}
-                      {row.isNewProduct && (
-                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3 sm:items-end">
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-teal-700/70">Harga Jual/pcs</Label>
-                            <Input
-                              type="number"
-                              inputMode="numeric"
-                              min="0"
-                              placeholder="0"
-                              value={row.newProductPrice}
-                              onChange={(e) => updateOutput(idx, 'newProductPrice', e.target.value)}
-                              className="bg-white"
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-teal-700/70">Satuan</Label>
-                            <Select value={row.newProductUnit} onValueChange={(v) => updateOutput(idx, 'newProductUnit', v)}>
-                              <SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pcs">pcs</SelectItem>
-                                <SelectItem value="kg">kg</SelectItem>
-                                <SelectItem value="pack">pack</SelectItem>
-                                <SelectItem value="set">set</SelectItem>
-                                <SelectItem value="box">box</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-teal-700/70">Berat (gram)</Label>
-                            <Input
-                              type="number"
-                              inputMode="numeric"
-                              min="0"
-                              placeholder="0"
-                              value={row.newProductWeightGram}
-                              onChange={(e) => updateOutput(idx, 'newProductWeightGram', e.target.value)}
-                              className="bg-white"
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Row 3: Harga Jual + Total Nilai Jual */}
+                      {/* Row 2: Harga Jual + Total Nilai Jual */}
                       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-end">
                         <div className="space-y-1.5">
                           <Label className="text-xs text-teal-700/70">
-                            Harga Jual/{productUnit} {row.isNewProduct ? '(isi di atas)' : '(dari master produk)'}
+                            Harga Jual/{productUnit} (dari master produk)
                           </Label>
                           <div className="flex h-9 items-center rounded-md border border-teal-200 bg-teal-50 px-3 text-sm font-medium text-teal-900">
-                            {(row.isNewProduct || row.productId) ? formatRupiah(hargaJual) : '—'}
+                            {row.productId ? formatRupiah(hargaJual) : '—'}
                           </div>
                         </div>
                         <div className="space-y-1.5">
                           <Label className="text-xs text-teal-700/70">Total Nilai Jual</Label>
                           <div className="flex h-9 items-center rounded-md border border-teal-200 bg-teal-50 px-3 text-sm font-bold text-teal-900">
-                            {(row.isNewProduct || row.productId) && outQty > 0 ? formatRupiah(totalNilaiJual) : 'Rp 0'}
+                            {row.productId && outQty > 0 ? formatRupiah(totalNilaiJual) : 'Rp 0'}
                           </div>
                         </div>
                       </div>
@@ -1101,9 +988,6 @@ function PengolahanTab() {
                 return s + hb * (parseFloat(r.quantity) || 0)
               }, 0)
               const totalNilaiJual = outputs.reduce((s, r) => {
-                if (r.isNewProduct) {
-                  return s + (parseFloat(r.newProductPrice) || 0) * (parseFloat(r.quantity) || 0)
-                }
                 const p = products.find((pp) => pp.id === r.productId)
                 return s + (p ? toNumber(p.price) * (parseFloat(r.quantity) || 0) : 0)
               }, 0)
