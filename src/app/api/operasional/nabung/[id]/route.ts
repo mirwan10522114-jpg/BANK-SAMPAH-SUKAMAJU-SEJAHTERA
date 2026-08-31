@@ -244,25 +244,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const { sendStrukEmail } = await import('@/lib/email')
     if (existing.user?.email) {
-      const kodeTransaksi = `NB / ${new Date(updated.transactedAt).getDate().toString().padStart(2, '0')}${(new Date(updated.transactedAt).getMonth() + 1).toString().padStart(2, '0')}${new Date(updated.transactedAt).getFullYear()} / ${updated.id.slice(-5)}`
+      const kodeTransaksi = updated.kodeTransaksi || existing.kodeTransaksi || `NB / ${new Date(updated.transactedAt).getDate().toString().padStart(2, '0')}${(new Date(updated.transactedAt).getMonth() + 1).toString().padStart(2, '0')}${new Date(updated.transactedAt).getFullYear()} / ${updated.id.slice(-5)}`
       const fmtIDR = (n: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n)
-      let html = `<div class="struk-header"><div class="icon">✅</div><h2>Bank Sampah</h2><div class="sub">Sukamaju Sejahtera</div><div class="badge">STRUK NABUNG — QC SELESAI</div></div>`
-      html += `<div class="struk-section"><div class="info-row"><span class="key">Kode Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal QC</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${existing.user.name}</span></div><div class="info-row"><span class="key">Status</span><span class="val bold" style="color:#047857;">Selesai</span></div></div>`
-      html += `<div class="struk-section"><div class="label">Detail QC per Item</div><table class="items-table"><thead><tr><th>Kategori</th><th>Nama</th><th class="center">Kotor</th><th class="center">Bersih</th><th class="center">Susut</th><th class="right">Harga</th><th class="right">Subtotal</th></tr></thead><tbody>`
+      
+      const latestBalance = await db.balance.findUnique({ where: { userId } })
+      
+      let html = `<div class="struk-header"><div class="icon">✅</div><h2>Bank Sampah</h2><div class="sub">Sukamaju Sejahtera</div><div class="desc">Verifikasi Mutu & Timbang Bersih (QC)</div><div class="badge">STRUK TABUNGAN — QC SELESAI</div></div>`
+      html += `<div class="struk-section"><div class="info-row"><span class="key">No. Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal Setor</span><span class="val">${new Date(existing.transactedAt).toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Waktu Verifikasi QC</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${existing.user.name}</span></div><div class="info-row"><span class="key">Kode Member</span><span class="val mono">${existing.user.memberCode || '-'}</span></div><div class="info-row"><span class="key">Petugas QC</span><span class="val">${actor?.name || 'Petugas QC'}</span></div><div class="info-row"><span class="key">Hasil QC</span><span class="val bold" style="color:#047857;">${newQcStatus === 'passed' ? 'Lolos Bersih' : 'Disesuaikan'}</span></div></div>`
+      
+      if (qcNotes) {
+        html += `<div class="struk-section"><div class="info-row"><span class="key">Catatan QC</span><span class="val" style="color:#b45309;font-style:italic;">${qcNotes}</span></div></div>`
+      }
+
+      html += `<div class="struk-section"><div class="label">Rincian Hasil Timbang & Pemeriksaan Mutu (QC)</div><table class="items-table"><thead><tr><th>Kategori</th><th>Nama</th><th class="center">Kotor</th><th class="center">Bersih</th><th class="center">Susut</th><th class="right">Harga</th><th class="right">Subtotal</th></tr></thead><tbody>`
       for (const upd of itemUpdates) {
         const item = existing.items.find((i) => i.id === upd.id)
         const unit = item?.unitSnapshot || 'kg'
         const catName = item?.categoryNameSnapshot || '-'
         const itemName = item?.itemNameSnapshot || '-'
-        html += `<tr><td>${catName}</td><td>${itemName}</td><td class="center">${upd.quantityBeforeQc} ${unit}</td><td class="center">${upd.quantityAfterQc} ${unit}</td><td class="center">${upd.susutQc > 0 ? `${upd.susutQc} ${unit}` : '-'}</td><td class="right">${fmtIDR(upd.pricePerUnit)}</td><td class="right">${fmtIDR(upd.subtotal)}</td></tr>`
+        html += `<tr><td>${catName}</td><td>${itemName}</td><td class="center">${upd.quantityBeforeQc} ${unit}</td><td class="center bold" style="color:#047857;">${upd.quantityAfterQc} ${unit}</td><td class="center">${upd.susutQc > 0 ? `${upd.susutQc} ${unit}` : '-'}</td><td class="right">${fmtIDR(upd.pricePerUnit)}</td><td class="right bold">${fmtIDR(upd.subtotal)}</td></tr>`
         if (upd.qcReason) {
-          html += `<tr><td colspan="7" style="font-style:italic;color:#dc2626;font-size:9px;">↳ Alasan QC: ${upd.qcReason}</td></tr>`
+          html += `<tr><td colspan="7" style="font-style:italic;color:#dc2626;font-size:11px;padding:4px 6px;">↳ Catatan Item: ${upd.qcReason}</td></tr>`
         }
       }
       html += `</tbody></table></div>`
-      html += `<div class="struk-section"><div class="summary-row"><span class="key">Total Berat Bersih</span><span class="val">${newTotalWeight} kg</span></div><div class="summary-row highlight"><span class="key">Total Nilai (Final)</span><span class="val">${fmtIDR(newTotalValue)}</span></div><div class="summary-row"><span class="key">Poin Didapat</span><span class="val">${newPoints}</span></div></div>`
-      html += `<div class="struk-footer"><div class="thanks">Saldo Anda telah bertambah. Terima kasih telah menabung sampah.</div></div>`
-      await sendStrukEmail({ to: existing.user.email, subject: `✅ Struk Final Nabung — QC Selesai`, strukHtml: html })
+
+      html += `<div class="struk-section"><div class="summary-row"><span class="key">Total Berat Bersih</span><span class="val bold">${newTotalWeight} kg</span></div><div class="summary-row highlight"><span class="key">Total Nilai Saldo Masuk</span><span class="val bold">${fmtIDR(newTotalValue)}</span></div><div class="summary-row"><span class="key">Poin Reward Diperoleh</span><span class="val">${newPoints} pt</span></div>${latestBalance ? `<div class="summary-row"><span class="key">Saldo Tersedia Saat Ini</span><span class="val">${fmtIDR(toNumber(latestBalance.saldoTersedia))}</span></div>` : ''}</div>`
+      html += `<div class="struk-footer"><div class="thanks">Saldo tabungan sampah Anda telah berhasil ditambahkan.<br>Terima kasih telah berpartisipasi menjaga kelestarian lingkungan bersama Bank Sampah Sukamaju Sejahtera.</div></div>`
+      
+      await sendStrukEmail({
+        to: existing.user.email,
+        subject: `✅ Struk Tabungan Sampah (Lolos QC) — ${kodeTransaksi}`,
+        strukHtml: html,
+      })
     }
   } catch (e) {
     console.error('[QC Confirm Email] Error:', e)

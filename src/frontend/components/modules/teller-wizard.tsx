@@ -154,7 +154,11 @@ export function TellerWizard() {
     try {
       const res = await api.teller.wizard({ userId: nasabah.id, anggotaId: anggota?.id, operations: ops })
       setReceipt(res)
-      toast.success('Transaksi berhasil diproses!')
+      if (res?._meta?.emailDeferredForQc) {
+        toast.success('Transaksi berhasil dicatat! Struk akan dikirim ke email nasabah setelah lolos verifikasi QC.')
+      } else {
+        toast.success('Transaksi berhasil diproses & struk telah dikirim ke email nasabah!')
+      }
       // reset
       setItems([]); setSedekahItems([]); setOperations([]); setQcMode('nanti'); setNotes('')
       // refresh balance
@@ -346,18 +350,18 @@ export function TellerWizard() {
                 </div>
                 {/* Info banner sesuai mode */}
                 {qcMode === 'nanti' && (
-                  <div className="mt-2 rounded bg-amber-100/70 px-2 py-1 text-[10px] text-amber-800">
-                    ⏳ Sampah akan dikumpulkan & di-QC kemudian. Saldo <strong>belum masuk</strong> sampai QC dikonfirmasi.
+                  <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200/80 p-2.5 text-[11px] text-amber-800">
+                    ⏳ <strong>Mode QC Nanti:</strong> Sampah masuk antrian QC. Saldo <strong>belum ditambahkan</strong> dan <strong>email struk belum dikirim</strong>. Struk tabungan final otomatis dikirim ke email nasabah ketika QC telah diverifikasi & disetujui di Antrian QC.
                   </div>
                 )}
                 {qcMode === 'langsung' && (
-                  <div className="mt-2 rounded bg-emerald-100/70 px-2 py-1 text-[10px] text-emerald-800">
-                    ⚖️ Input berat bersih di kolom "Berat Bersih". Saldo <strong>langsung masuk</strong> setelah submit.
+                  <div className="mt-2 rounded-lg bg-emerald-50 border border-emerald-200/80 p-2.5 text-[11px] text-emerald-800">
+                    ⚖️ <strong>Mode QC Langsung:</strong> Masukkan berat bersih di kolom input. Saldo & poin <strong>langsung masuk</strong> dan email struk dikirim saat ini juga.
                   </div>
                 )}
                 {qcMode === 'bersih' && (
-                  <div className="mt-2 rounded bg-blue-100/70 px-2 py-1 text-[10px] text-blue-800">
-                    ✅ Sampah dianggap bersih. Berat kotor = berat bersih. Saldo <strong>langsung masuk</strong>.
+                  <div className="mt-2 rounded-lg bg-blue-50 border border-blue-200/80 p-2.5 text-[11px] text-blue-800">
+                    ✅ <strong>Mode Sampah Bersih:</strong> Tanpa QC (berat kotor = bersih). Saldo <strong>langsung masuk</strong> dan email struk dikirim saat ini juga.
                   </div>
                 )}
               </div>

@@ -323,90 +323,104 @@ export async function POST(req: NextRequest) {
     teller: actor?.name,
   }
 
-  // Send combined struk via email to nasabah
-  try {
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { email: true, name: true, memberCode: true },
-    })
-    if (user?.email) {
-      const { sendStrukEmail } = await import('@/lib/email')
-      const fmtIDR = (n: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n)
-      const ddmmyyyy = `${String(new Date().getDate()).padStart(2, '0')}${String(new Date().getMonth() + 1).padStart(2, '0')}${new Date().getFullYear()}`
-      const kodeTransaksi = `KWT / ${ddmmyyyy} / ${receiptNo.slice(-5)}`
+  // Send combined struk via email to nasabah HANYA jika TIDAK ADA operasi nabung yang pending QC
+  const hasPendingQcNabung = result.steps.some(
+    (s: any) => s.type === 'nabung' && (s.txStatus === 'menunggu_qc' || s.qcStatus === 'pending' || s.qcStatus === 'Menunggu QC')
+  )
 
-      let html = `<div class="struk-header"><div class="icon">🧾</div><h2>Bank Sampah</h2><div class="sub">Sukamaju Sejahtera</div><div class="desc">Teller Wizard — Multi Transaksi</div><div class="badge">KUITANSI TRANSAKSI</div></div>`
-      html += `<div class="struk-section"><div class="info-row"><span class="key">No. Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${user.name}</span></div><div class="info-row"><span class="key">Kode</span><span class="val mono">${user.memberCode || '-'}</span></div><div class="info-row"><span class="key">Teller</span><span class="val">${actor?.name || '-'}</span></div></div>`
-
-      // Detail per operasi dengan kode transaksi
-      const okSteps = result.steps.filter((s: any) => s.status === 'ok')
-      if (okSteps.length > 0) {
-        // Header tabel ringkasan operasi
-        html += `<div class="struk-section"><div class="label">Rincian Operasi & Kode Transaksi</div><table class="items-table"><thead><tr><th>Operasi</th><th>Kode Transaksi</th><th class="right">Jumlah/Detail</th></tr></thead><tbody>`
-        for (const s of okSteps) {
-          let label = s.type.replace(/_/g, ' ')
-          let detail = ''
-          if (s.type === 'nabung') detail = `${fmtIDR(s.totalValue)} (${toNumber(s.totalWeight)} kg)`
-          else if (s.type === 'sedekah_sampah') detail = `${toNumber(s.totalWeight)} kg`
-          else if (s.type === 'setor_simpanan') detail = `${fmtIDR(s.jumlah)} (${s.jenis})`
-          else if (s.type === 'tarik_sukarela') detail = `${fmtIDR(s.jumlah)}`
-          else if (s.type === 'pengajuan_pinjaman') detail = `${fmtIDR(s.jumlahPinjaman)} (${s.tenorBulan} bln)`
-          else if (s.type === 'bayar_angsuran') detail = `${fmtIDR(s.totalPaid)}`
-          const kode = s.kodeTransaksi || '-'
-          html += `<tr><td>${label}</td><td class="mono">${kode}</td><td class="right">${detail}</td></tr>`
-        }
-        html += `</tbody></table></div>`
-
-        // Detail item per operasi nabung
-        const nabungSteps = okSteps.filter((s: any) => s.type === 'nabung' && s.items?.length)
-        for (const s of nabungSteps) {
-          html += `<div class="struk-section"><div class="label">Detail Nabung: ${s.kodeTransaksi} (QC: ${s.qcStatus || '-'})</div><table class="items-table"><thead><tr><th>Kategori</th><th>Nama</th><th class="center">Kotor</th><th class="center">Bersih</th><th class="center">Susut</th><th class="right">Harga</th><th class="right">Subtotal</th></tr></thead><tbody>`
-          let tKotor = 0, tBersih = 0, tSubtotal = 0
-          for (const r of s.items) {
-            const kotor = toNumber(r.kotor)
-            const bersih = toNumber(r.bersih)
-            const susut = toNumber(r.susut)
-            const unit = r.unit || 'kg'
-            tKotor += kotor; tBersih += bersih; tSubtotal += toNumber(r.subtotal)
-            html += `<tr><td>${r.kategori}</td><td>${r.nama}</td><td class="center">${kotor} ${unit}</td><td class="center">${bersih} ${unit}</td><td class="center">${susut > 0 ? `${susut} ${unit}` : '-'}</td><td class="right">${fmtIDR(toNumber(r.harga))}</td><td class="right">${fmtIDR(toNumber(r.subtotal))}</td></tr>`
-          }
-          html += `<tr class="total-row"><td colspan="2">TOTAL</td><td class="center">${tKotor} kg</td><td class="center">${tBersih} kg</td><td class="center">${tKotor - tBersih > 0 ? `${tKotor - tBersih} kg` : '-'}</td><td></td><td class="right">${fmtIDR(tSubtotal)}</td></tr>`
-          html += `</tbody></table></div>`
-        }
-
-        // Detail item per operasi sedekah
-        const sedekahSteps = okSteps.filter((s: any) => s.type === 'sedekah_sampah' && s.items?.length)
-        for (const s of sedekahSteps) {
-          html += `<div class="struk-section"><div class="label">Detail Sedekah: ${s.kodeTransaksi} (QC: ${s.qcStatus || '-'})</div><table class="items-table"><thead><tr><th>Kategori</th><th>Nama</th><th class="center">Kotor</th><th class="center">Bersih</th><th class="center">Susut</th></tr></thead><tbody>`
-          let tKotor = 0, tBersih = 0
-          for (const r of s.items) {
-            const kotor = toNumber(r.kotor)
-            const bersih = toNumber(r.bersih)
-            const susut = toNumber(r.susut)
-            const unit = r.unit || 'kg'
-            tKotor += kotor; tBersih += bersih
-            html += `<tr><td>${r.kategori}</td><td>${r.nama}</td><td class="center">${kotor} ${unit}</td><td class="center">${bersih} ${unit}</td><td class="center">${susut > 0 ? `${susut} ${unit}` : '-'}</td></tr>`
-            if (r.qcReason) {
-              html += `<tr><td colspan="5" style="font-style:italic;color:#dc2626;font-size:11px;padding:6px 6px 8px;">↳ Alasan QC: ${r.qcReason}</td></tr>`
-            }
-          }
-          html += `<tr class="total-row"><td colspan="2">TOTAL</td><td class="center">${tKotor} kg</td><td class="center">${tBersih} kg</td><td class="center">${tKotor - tBersih > 0 ? `${tKotor - tBersih} kg` : '-'}</td></tr>`
-          html += `</tbody></table></div>`
-        }
-      }
-
-      // Summary
-      html += `<div class="struk-section"><div class="summary-row"><span class="key">Total Saldo Ditahan</span><span class="val">${fmtIDR(totalSaldoDitahan)}</span></div><div class="summary-row"><span class="key">Total Saldo Diambil</span><span class="val">${fmtIDR(totalSaldoDiambil)}</span></div><div class="summary-row"><span class="key">Total Berat Nabung</span><span class="val">${toNumber(totalBerat)} kg</span></div><div class="summary-row"><span class="key">Total Berat Sedekah</span><span class="val">${toNumber(totalSedekahBerat)} kg</span></div><div class="summary-row highlight"><span class="key">Poin Didapat</span><span class="val">${totalPoin}</span></div><div class="summary-row"><span class="key">Saldo Tertahan Akhir</span><span class="val">${fmtIDR(toNumber(balance?.saldoTertahan || 0))}</span></div><div class="summary-row"><span class="key">Poin Akhir</span><span class="val">${balance?.points || 0}</span></div></div>`
-      html += `<div class="struk-footer"><div class="thanks">Terima kasih telah bertransaksi</div></div>`
-
-      await sendStrukEmail({
-        to: user.email,
-        subject: `Kuitansi Transaksi ${kodeTransaksi}`,
-        strukHtml: html,
-      })
+  if (hasPendingQcNabung) {
+    console.log(`[Teller Wizard] Transaksi ${receiptNo} memiliki setoran nabung yang berstatus Menunggu QC. Email struk ditangguhkan hingga verifikasi QC selesai di antrian QC.`)
+    ;(result as any)._meta = {
+      ...(result as any)._meta,
+      emailSent: false,
+      emailDeferredForQc: true,
+      qcMessage: 'Email struk tabungan akan otomatis dikirimkan ke nasabah setelah verifikasi QC disetujui di Antrian QC.',
     }
-  } catch (e) {
-    console.error('[Teller Wizard Struk Email] Error:', e)
+  } else {
+    try {
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { email: true, name: true, memberCode: true },
+      })
+      if (user?.email) {
+        const { sendStrukEmail } = await import('@/lib/email')
+        const fmtIDR = (n: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n)
+        const ddmmyyyy = `${String(new Date().getDate()).padStart(2, '0')}${String(new Date().getMonth() + 1).padStart(2, '0')}${new Date().getFullYear()}`
+        const kodeTransaksi = `KWT / ${ddmmyyyy} / ${receiptNo.slice(-5)}`
+
+        let html = `<div class="struk-header"><div class="icon">🧾</div><h2>Bank Sampah</h2><div class="sub">Sukamaju Sejahtera</div><div class="desc">Teller Wizard — Multi Transaksi</div><div class="badge">KUITANSI TRANSAKSI</div></div>`
+        html += `<div class="struk-section"><div class="info-row"><span class="key">No. Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${user.name}</span></div><div class="info-row"><span class="key">Kode</span><span class="val mono">${user.memberCode || '-'}</span></div><div class="info-row"><span class="key">Teller</span><span class="val">${actor?.name || '-'}</span></div></div>`
+
+        // Detail per operasi dengan kode transaksi
+        const okSteps = result.steps.filter((s: any) => s.status === 'ok')
+        if (okSteps.length > 0) {
+          // Header tabel ringkasan operasi
+          html += `<div class="struk-section"><div class="label">Rincian Operasi & Kode Transaksi</div><table class="items-table"><thead><tr><th>Operasi</th><th>Kode Transaksi</th><th class="right">Jumlah/Detail</th></tr></thead><tbody>`
+          for (const s of okSteps) {
+            let label = s.type.replace(/_/g, ' ')
+            let detail = ''
+            if (s.type === 'nabung') detail = `${fmtIDR(s.totalValue)} (${toNumber(s.totalWeight)} kg)`
+            else if (s.type === 'sedekah_sampah') detail = `${toNumber(s.totalWeight)} kg`
+            else if (s.type === 'setor_simpanan') detail = `${fmtIDR(s.jumlah)} (${s.jenis})`
+            else if (s.type === 'tarik_sukarela') detail = `${fmtIDR(s.jumlah)}`
+            else if (s.type === 'pengajuan_pinjaman') detail = `${fmtIDR(s.jumlahPinjaman)} (${s.tenorBulan} bln)`
+            else if (s.type === 'bayar_angsuran') detail = `${fmtIDR(s.totalPaid)}`
+            const kode = s.kodeTransaksi || '-'
+            html += `<tr><td>${label}</td><td class="mono">${kode}</td><td class="right">${detail}</td></tr>`
+          }
+          html += `</tbody></table></div>`
+
+          // Detail item per operasi nabung
+          const nabungSteps = okSteps.filter((s: any) => s.type === 'nabung' && s.items?.length)
+          for (const s of nabungSteps) {
+            html += `<div class="struk-section"><div class="label">Detail Nabung: ${s.kodeTransaksi} (QC: ${s.qcStatus || '-'})</div><table class="items-table"><thead><tr><th>Kategori</th><th>Nama</th><th class="center">Kotor</th><th class="center">Bersih</th><th class="center">Susut</th><th class="right">Harga</th><th class="right">Subtotal</th></tr></thead><tbody>`
+            let tKotor = 0, tBersih = 0, tSubtotal = 0
+            for (const r of s.items) {
+              const kotor = toNumber(r.kotor)
+              const bersih = toNumber(r.bersih)
+              const susut = toNumber(r.susut)
+              const unit = r.unit || 'kg'
+              tKotor += kotor; tBersih += bersih; tSubtotal += toNumber(r.subtotal)
+              html += `<tr><td>${r.kategori}</td><td>${r.nama}</td><td class="center">${kotor} ${unit}</td><td class="center">${bersih} ${unit}</td><td class="center">${susut > 0 ? `${susut} ${unit}` : '-'}</td><td class="right">${fmtIDR(toNumber(r.harga))}</td><td class="right">${fmtIDR(toNumber(r.subtotal))}</td></tr>`
+            }
+            html += `<tr class="total-row"><td colspan="2">TOTAL</td><td class="center">${tKotor} kg</td><td class="center">${tBersih} kg</td><td class="center">${tKotor - tBersih > 0 ? `${tKotor - tBersih} kg` : '-'}</td><td></td><td class="right">${fmtIDR(tSubtotal)}</td></tr>`
+            html += `</tbody></table></div>`
+          }
+
+          // Detail item per operasi sedekah
+          const sedekahSteps = okSteps.filter((s: any) => s.type === 'sedekah_sampah' && s.items?.length)
+          for (const s of sedekahSteps) {
+            html += `<div class="struk-section"><div class="label">Detail Sedekah: ${s.kodeTransaksi} (QC: ${s.qcStatus || '-'})</div><table class="items-table"><thead><tr><th>Kategori</th><th>Nama</th><th class="center">Kotor</th><th class="center">Bersih</th><th class="center">Susut</th></tr></thead><tbody>`
+            let tKotor = 0, tBersih = 0
+            for (const r of s.items) {
+              const kotor = toNumber(r.kotor)
+              const bersih = toNumber(r.bersih)
+              const susut = toNumber(r.susut)
+              const unit = r.unit || 'kg'
+              tKotor += kotor; tBersih += bersih
+              html += `<tr><td>${r.kategori}</td><td>${r.nama}</td><td class="center">${kotor} ${unit}</td><td class="center">${bersih} ${unit}</td><td class="center">${susut > 0 ? `${susut} ${unit}` : '-'}</td></tr>`
+              if (r.qcReason) {
+                html += `<tr><td colspan="5" style="font-style:italic;color:#dc2626;font-size:11px;padding:6px 6px 8px;">↳ Alasan QC: ${r.qcReason}</td></tr>`
+              }
+            }
+            html += `<tr class="total-row"><td colspan="2">TOTAL</td><td class="center">${tKotor} kg</td><td class="center">${tBersih} kg</td><td class="center">${tKotor - tBersih > 0 ? `${tKotor - tBersih} kg` : '-'}</td></tr>`
+            html += `</tbody></table></div>`
+          }
+        }
+
+        // Summary
+        html += `<div class="struk-section"><div class="summary-row"><span class="key">Total Saldo Ditahan</span><span class="val">${fmtIDR(totalSaldoDitahan)}</span></div><div class="summary-row"><span class="key">Total Saldo Diambil</span><span class="val">${fmtIDR(totalSaldoDiambil)}</span></div><div class="summary-row"><span class="key">Total Berat Nabung</span><span class="val">${toNumber(totalBerat)} kg</span></div><div class="summary-row"><span class="key">Total Berat Sedekah</span><span class="val">${toNumber(totalSedekahBerat)} kg</span></div><div class="summary-row highlight"><span class="key">Poin Didapat</span><span class="val">${totalPoin}</span></div><div class="summary-row"><span class="key">Saldo Tertahan Akhir</span><span class="val">${fmtIDR(toNumber(balance?.saldoTertahan || 0))}</span></div><div class="summary-row"><span class="key">Poin Akhir</span><span class="val">${balance?.points || 0}</span></div></div>`
+        html += `<div class="struk-footer"><div class="thanks">Terima kasih telah bertransaksi</div></div>`
+
+        await sendStrukEmail({
+          to: user.email,
+          subject: `Kuitansi Transaksi ${kodeTransaksi}`,
+          strukHtml: html,
+        })
+      }
+    } catch (e) {
+      console.error('[Teller Wizard Struk Email] Error:', e)
+    }
   }
 
   return NextResponse.json(result, { status: 201 })
