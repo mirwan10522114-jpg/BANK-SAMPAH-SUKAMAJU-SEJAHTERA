@@ -90,7 +90,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (s: Section) => void }) 
     { key: 'totalWeight', label: 'Berat (kg)', align: 'right', format: (v) => formatNumber(toNumber(v)) },
     { key: 'totalValue', label: 'Nilai', align: 'right', format: (v) => formatRupiah(toNumber(v)) },
     { key: 'pointsAwarded', label: 'Poin', align: 'right', format: (v) => formatNumber(toNumber(v), 0) },
-    { key: 'qcStatus', label: 'QC', format: (v) => v === 'passed' ? 'Lolos' : v === 'adjusted' ? 'Disesuaikan' : v === 'pending' ? 'Menunggu' : v },
+    { key: 'qcStatus', label: 'QC', format: (v) => v === 'passed' || v === 'tidak_perlu' ? 'Lolos' : v === 'adjusted' ? 'Disesuaikan' : v === 'pending' ? 'Menunggu' : v },
   ]
   const sedekahColumns: DetailColumn[] = [
     { key: 'transactedAt', label: 'Tanggal', format: (v) => formatDateTime(v) },
@@ -99,7 +99,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (s: Section) => void }) 
     { key: 'user.memberCode', label: 'Kode Anggota', format: (v, row) => row.user?.memberCode || '-' },
     { key: 'totalWeight', label: 'Berat Bersih (kg)', align: 'right', format: (v) => formatNumber(toNumber(v)) },
     { key: 'totalWeightKotor', label: 'Berat Kotor (kg)', align: 'right', format: (v) => formatNumber(toNumber(v)) },
-    { key: 'qcStatus', label: 'QC', format: (v) => v === 'passed' ? 'Lolos' : v === 'adjusted' ? 'Disesuaikan' : v === 'pending' ? 'Menunggu' : v },
+    { key: 'qcStatus', label: 'QC', format: (v) => v === 'passed' || v === 'tidak_perlu' ? 'Lolos' : v === 'adjusted' ? 'Disesuaikan' : v === 'pending' ? 'Menunggu' : v },
   ]
   const penarikanColumns: DetailColumn[] = [
     { key: 'processedAt', label: 'Tanggal', format: (v) => formatDateTime(v) },
@@ -689,10 +689,10 @@ export function Dashboard({ onNavigate }: { onNavigate: (s: Section) => void }) 
                       </td>
                       <td className="px-3 py-2.5">
                         <Badge variant="outline" className={cn('text-[10px]',
-                          r.qcStatus === 'passed' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
+                          r.qcStatus === 'passed' || r.qcStatus === 'tidak_perlu' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
                           r.qcStatus === 'adjusted' ? 'border-amber-200 bg-amber-50 text-amber-700' :
                           'border-zinc-200 bg-zinc-50 text-zinc-600')}>
-                          {r.qcStatus === 'passed' ? 'Lolos QC' : r.qcStatus === 'adjusted' ? 'Disesuaikan' : 'Menunggu'}
+                          {r.qcStatus === 'passed' || r.qcStatus === 'tidak_perlu' ? 'Lolos QC' : r.qcStatus === 'adjusted' ? 'Disesuaikan' : 'Menunggu'}
                         </Badge>
                       </td>
                     </tr>

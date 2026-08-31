@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     }),
     db.balance.aggregate({ _sum: { saldoTertahan: true, saldoTersedia: true, points: true } }),
     db.savingTransaction.aggregate({
-      where: { transactedAt: dateRange, qcStatus: { in: ['passed', 'adjusted'] } },
+      where: { transactedAt: dateRange, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       _sum: { totalWeight: true, totalValue: true, pointsAwarded: true },
       _count: true,
     }),
