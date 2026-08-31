@@ -5,7 +5,7 @@ import {
   Recycle, LayoutDashboard, Database, Scale, HandCoins, Warehouse, Wand2, Menu, X,
   Banknote, ArrowRight, Settings, LogOut, ChevronDown, ShoppingBag, FileBarChart,
   BookOpen, Camera, Megaphone, Send, Mail, AlertTriangle, Loader2, Image as ImageIcon,
-  Search, Layers, Sparkles, FolderGit2,
+  Search, Layers, Sparkles, FolderGit2, Wallet, Calendar, CheckCircle2, Users, BellRing, Filter,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -579,10 +579,10 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
 export default AdminPanel
 
 // ============================================================
-// PengumumanTagihanView — Blast Pengumuman + Tagihan Pinjaman
+// PengumumanTagihanView — Blast Pengumuman + Tagihan Pinjaman + Reminder Simpanan Wajib
 // ============================================================
 function PengumumanTagihanView() {
-  const [tab, setTab] = useState<'pengumuman' | 'tagihan'>('pengumuman')
+  const [tab, setTab] = useState<'pengumuman' | 'tagihan' | 'simpanan_wajib'>('pengumuman')
 
   return (
     <div className="space-y-4">
@@ -590,7 +590,7 @@ function PengumumanTagihanView() {
         <h1 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
           <Megaphone className="size-5 text-emerald-600" /> Pengumuman & Tagihan
         </h1>
-        <p className="text-xs text-zinc-500 mt-1">Kirim pengumuman massal & tagihan pinjaman ke email nasabah/anggota</p>
+        <p className="text-xs text-zinc-500 mt-1">Kirim pengumuman massal, tagihan angsuran pinjaman, & pengingat simpanan wajib ke email nasabah/anggota</p>
       </div>
 
       {/* Tab Switcher */}
@@ -607,9 +607,21 @@ function PengumumanTagihanView() {
         >
           📌 Tagihan Pinjaman
         </button>
+        <button
+          onClick={() => setTab('simpanan_wajib')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === 'simpanan_wajib' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-zinc-500 hover:text-zinc-700'}`}
+        >
+          💰 Reminder Simpanan Wajib
+        </button>
       </div>
 
-      {tab === 'pengumuman' ? <PengumumanBlastForm /> : <TagihanPinjamanView />}
+      {tab === 'pengumuman' ? (
+        <PengumumanBlastForm />
+      ) : tab === 'tagihan' ? (
+        <TagihanPinjamanView />
+      ) : (
+        <ReminderSimpananWajibView />
+      )}
     </div>
   )
 }
@@ -933,6 +945,249 @@ function TagihanPinjamanView() {
                         >
                           {sending === p.id ? <Loader2 className="size-3 animate-spin" /> : <Mail className="size-3" />}
                           Tagih
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// ============================================================
+// Reminder Simpanan Wajib View
+// ============================================================
+function ReminderSimpananWajibView() {
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<'all' | 'belum_bayar' | 'sudah_bayar'>('all')
+  const now = new Date()
+  const [bulan, setBulan] = useState(now.getMonth() + 1)
+  const [tahun, setTahun] = useState(now.getFullYear())
+  const [sending, setSending] = useState<string | null>(null)
+  const [pesanKustom, setPesanKustom] = useState('')
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/koperasi/reminder-simpanan?bulan=${bulan}&tahun=${tahun}&filter=${filter}`)
+      const d = await res.json()
+      setData(d)
+    } catch {}
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { load() }, [bulan, tahun, filter])
+
+  const handleReminder = async (anggotaId: string) => {
+    setSending(anggotaId)
+    try {
+      const res = await fetch('/api/koperasi/reminder-simpanan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ anggotaId, bulan, tahun, pesanKustom }),
+      })
+      const d = await res.json()
+      if (d.success) {
+        alert(`✅ Pengingat Simpanan Wajib terkirim ke email anggota!`)
+      } else {
+        alert(d.error || 'Gagal mengirim pengingat')
+      }
+    } catch (e: any) {
+      alert('Gagal: ' + e.message)
+    } finally {
+      setSending(null)
+    }
+  }
+
+  const handleBlastSemua = async () => {
+    if (!confirm(`Kirim email pengingat Simpanan Wajib (${data?.namaBulan || ''}) ke SEMUA anggota yang belum setor?`)) return
+    setSending('all')
+    try {
+      const res = await fetch('/api/koperasi/reminder-simpanan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blastSemua: true, bulan, tahun, pesanKustom }),
+      })
+      const d = await res.json()
+      if (d.success) {
+        alert(`✅ Terkirim: ${d.sentCount} email | Gagal: ${d.failedCount}`)
+      } else {
+        alert(d.error || 'Gagal mengirim blast reminder')
+      }
+    } catch (e: any) {
+      alert('Gagal: ' + e.message)
+    } finally {
+      setSending(null)
+    }
+  }
+
+  const anggotas = data?.anggotas || []
+  const summary = data?.summary || { totalAnggota: 0, belumBayar: 0, sudahBayar: 0, totalTerkumpul: 0, potensiTerkumpul: 0 }
+  const nominalWajib = data?.nominalWajib || 0
+
+  return (
+    <div className="space-y-4">
+      {/* Filter Periode & Ringkasan */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-teal-100 bg-teal-50/40 p-3.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-teal-900 flex items-center gap-1.5">
+            <Calendar className="size-4 text-teal-600" /> Periode Iuran:
+          </span>
+          <select
+            value={bulan}
+            onChange={(e) => setBulan(parseInt(e.target.value))}
+            className="rounded-lg border border-teal-200 bg-white px-2.5 py-1 text-xs font-semibold text-teal-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+          >
+            {['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'].map((m, idx) => (
+              <option key={idx + 1} value={idx + 1}>{m}</option>
+            ))}
+          </select>
+          <select
+            value={tahun}
+            onChange={(e) => setTahun(parseInt(e.target.value))}
+            className="rounded-lg border border-teal-200 bg-white px-2.5 py-1 text-xs font-semibold text-teal-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+          >
+            {[2024, 2025, 2026, 2027, 2028].map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+          <span className="text-xs text-zinc-500 ml-1">
+            (Iuran Wajib: <strong className="text-teal-800">{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(nominalWajib)}/bln</strong>)
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleBlastSemua}
+            disabled={sending === 'all' || summary.belumBayar === 0}
+            className="bg-teal-600 hover:bg-teal-700 text-white font-semibold shadow-sm"
+            size="sm"
+          >
+            {sending === 'all' ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <BellRing className="size-4 mr-1.5" />}
+            Blast Reminder ({summary.belumBayar} Belum Setor)
+          </Button>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Card className="bg-gradient-to-br from-zinc-50 to-zinc-100 border-zinc-200">
+          <CardContent className="p-4">
+            <p className="text-[10px] text-zinc-600 font-medium">Total Anggota Koperasi</p>
+            <p className="mt-1 text-xl font-bold text-zinc-800">{summary.totalAnggota} <span className="text-xs font-normal text-zinc-500">orang</span></p>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-rose-50 to-red-50 border-rose-200">
+          <CardContent className="p-4">
+            <p className="text-[10px] text-rose-700 font-medium">Belum Setor ({data?.namaBulan})</p>
+            <p className="mt-1 text-xl font-bold text-rose-700">{summary.belumBayar} <span className="text-xs font-normal text-rose-500">orang</span></p>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
+          <CardContent className="p-4">
+            <p className="text-[10px] text-emerald-700 font-medium">Sudah Lunas ({data?.namaBulan})</p>
+            <p className="mt-1 text-xl font-bold text-emerald-700">{summary.sudahBayar} <span className="text-xs font-normal text-emerald-500">orang</span></p>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-teal-50 to-cyan-50 border-teal-200">
+          <CardContent className="p-4">
+            <p className="text-[10px] text-teal-700 font-medium">Terkumpul Bulan Ini</p>
+            <p className="mt-1 text-xl font-bold text-teal-800">
+              {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(summary.totalTerkumpul)}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-zinc-700">Filter Status:</span>
+          {([
+            { v: 'all', l: 'Semua' },
+            { v: 'belum_bayar', l: `Belum Setor (${summary.belumBayar})` },
+            { v: 'sudah_bayar', l: `Sudah Lunas (${summary.sudahBayar})` },
+          ] as const).map((f) => (
+            <button
+              key={f.v}
+              onClick={() => setFilter(f.v)}
+              className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${filter === f.v ? 'bg-teal-600 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
+            >
+              {f.l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Table */}
+      <Card className="border-zinc-200">
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="py-12 text-center"><Loader2 className="size-6 mx-auto animate-spin text-teal-600" /></div>
+          ) : anggotas.length === 0 ? (
+            <div className="py-10 text-center text-sm text-zinc-400">
+              <Users className="size-10 mx-auto mb-2 opacity-30" />
+              Tidak ada data anggota
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-zinc-50 border-b">
+                  <tr>
+                    <th className="text-left p-3 text-xs font-semibold text-zinc-600">No. Anggota</th>
+                    <th className="text-left p-3 text-xs font-semibold text-zinc-600">Nama Anggota</th>
+                    <th className="text-left p-3 text-xs font-semibold text-zinc-600">Kontak</th>
+                    <th className="text-right p-3 text-xs font-semibold text-zinc-600">Setor {data?.namaBulan}</th>
+                    <th className="text-right p-3 text-xs font-semibold text-zinc-600">Total Saldo Wajib</th>
+                    <th className="text-center p-3 text-xs font-semibold text-zinc-600">Status</th>
+                    <th className="text-center p-3 text-xs font-semibold text-zinc-600">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {anggotas.map((a: any, i: number) => (
+                    <tr key={i} className="border-b hover:bg-zinc-50">
+                      <td className="p-3 font-mono text-xs font-medium text-zinc-700">{a.nomorAnggota}</td>
+                      <td className="p-3 text-xs font-semibold text-zinc-900">{a.nama}</td>
+                      <td className="p-3 text-xs text-zinc-500">
+                        <div>{a.email || '-'}</div>
+                        {a.phone && <div className="text-[11px] text-zinc-400">{a.phone}</div>}
+                      </td>
+                      <td className="p-3 text-right text-xs font-semibold text-teal-700">
+                        {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(a.totalSetorBulanIni)}
+                        {a.kekurangan > 0 && (
+                          <div className="text-[10px] text-rose-500 font-normal">Kurang: {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(a.kekurangan)}</div>
+                        )}
+                      </td>
+                      <td className="p-3 text-right text-xs font-medium text-zinc-700">
+                        {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(a.saldoWajibTotal)}
+                      </td>
+                      <td className="p-3 text-center">
+                        <span className={`px-2.5 py-0.5 text-xs rounded-full font-bold ${
+                          a.status === 'sudah_bayar'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-rose-100 text-rose-700'
+                        }`}>
+                          {a.statusLabel}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        <Button
+                          onClick={() => handleReminder(a.id)}
+                          disabled={sending === a.id || !a.email}
+                          size="sm"
+                          className={`h-7 text-[10px] ${
+                            a.status === 'belum_bayar'
+                              ? 'bg-teal-600 hover:bg-teal-700 text-white font-medium'
+                              : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
+                          }`}
+                        >
+                          {sending === a.id ? <Loader2 className="size-3 animate-spin mr-1" /> : <Mail className="size-3 mr-1" />}
+                          {a.status === 'belum_bayar' ? 'Ingatkan' : 'Kirim Lagi'}
                         </Button>
                       </td>
                     </tr>

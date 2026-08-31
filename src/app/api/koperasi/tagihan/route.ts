@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       if (!p) return NextResponse.json({ error: 'Pinjaman tidak ditemukan' }, { status: 404 })
       pinjamans = [p]
     } else if (tagihSemua) {
-      // Tagih semua pinjaman berjalan yang punya angsuran jatuh tempo
+      // Tagih semua pinjaman berjalan yang punya sisa pinjaman
       pinjamans = await db.koperasiPinjaman.findMany({
         where: { status: 'berjalan' },
         include: {
@@ -55,20 +55,17 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // Cari angsuran yang belum dibayar (jatuh tempo)
-      const unpaidAngsurans = p.angsurans.filter((a: any) => !a.tanggalBayar)
-      if (unpaidAngsurans.length === 0) {
-        results.push({ nomorPinjaman: p.nomorPinjaman, status: 'skip', error: 'Tidak ada angsuran jatuh tempo' })
+      const paidCount = p.angsurans?.length || 0
+      const nextAngsuranKe = paidCount + 1
+      if (nextAngsuranKe > p.tenorBulan || toNumber(p.sisaPinjaman) <= 0) {
+        results.push({ nomorPinjaman: p.nomorPinjaman, status: 'skip', error: 'Pinjaman sudah lunas' })
         continue
       }
 
-      // Cek angsuran pertama yang jatuh tempo (paling mendesak)
-      const nextAngsuran = unpaidAngsurans[0]
       const today = new Date()
-      // Estimasi jatuh tempo: tanggal pengajuan + (angsuranKe × 30 hari)
-      const pengajuanDate = new Date(p.tanggalPengajuan)
-      const jatuhTempo = new Date(pengajuanDate)
-      jatuhTempo.setDate(jatuhTempo.getDate() + (nextAngsuran.angsuranKe * 30))
+      const baseDate = new Date(p.tanggalPencairan || p.tanggalPengajuan)
+      const jatuhTempo = new Date(baseDate)
+      jatuhTempo.setMonth(jatuhTempo.getMonth() + nextAngsuranKe)
       const selisihHari = Math.ceil((jatuhTempo.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 
       let statusTagihan = 'normal'
@@ -107,7 +104,7 @@ export async function POST(req: NextRequest) {
           </div>
           <p style="margin:0 0 16px 0;font-size:14px;color:#374151;">Halo <strong>${agt.user.name}</strong>,</p>
           <p style="margin:0 0 16px 0;font-size:14px;color:#6b7280;line-height:1.6;">
-            Ini adalah pengingat untuk pembayaran angsuran pinjaman Anda. Mohon segera lakukan pembayaran sebelum jatuh tempo.
+            Ini adalah pengingat resmi untuk pembayaran angsuran pinjaman koperasi Anda. Mohon segera lakukan pembayaran sebelum jatuh tempo.
           </p>
           <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
             <tr style="background-color:#f9fafb;">
@@ -128,7 +125,7 @@ export async function POST(req: NextRequest) {
             </tr>
             <tr style="background-color:#f9fafb;">
               <td style="padding:10px 16px;font-size:13px;color:#6b7280;"><strong>Angsuran Ke:</strong></td>
-              <td style="padding:10px 16px;font-size:13px;color:#374151;">${nextAngsuran.angsuranKe} dari ${p.tenorBulan}</td>
+              <td style="padding:10px 16px;font-size:13px;color:#374151;font-weight:bold;">${nextAngsuranKe} dari ${p.tenorBulan}</td>
             </tr>
             <tr>
               <td style="padding:10px 16px;font-size:13px;color:#6b7280;"><strong>Jatuh Tempo:</strong></td>
@@ -142,13 +139,11 @@ export async function POST(req: NextRequest) {
           <div style="background:#fef3c7;border:1px solid #f59e0b;padding:12px 16px;border-radius:6px;margin:16px 0;">
             <p style="margin:0;font-size:12px;color:#92400e;">
               <strong>📌 Cara Pembayaran:</strong><br>
-              Datang ke kantor Koperasi Sukamaju Sejahtera atau hubungi admin untuk pembayaran angsuran.
-              Pembayaran dapat dilakukan tunai atau transfer.
+              Datang ke kantor Koperasi / Teller Bank Sampah Sukamaju Sejahtera untuk melakukan pembayaran angsuran.
             </p>
           </div>
           <p style="margin:20px 0 0 0;font-size:12px;color:#9ca3af;text-align:center;">
-            Email ini dikirim otomatis. Mohon tidak membalas email ini.<br>
-            Jika sudah membayar, abaikan email ini.
+            Email ini dikirim otomatis oleh sistem Koperasi Sukamaju Sejahtera.
           </p>
         </td></tr>
       </table>
@@ -195,18 +190,18 @@ export async function GET(req: NextRequest) {
       anggota: { include: { user: { select: { name: true, email: true, phone: true } } } },
       angsurans: { orderBy: { angsuranKe: 'asc' } },
     },
-    orderBy: { tanggalPengajuan: 'desc' },
+    orderBy: { createdAt: 'desc' },
   })
 
   const today = new Date()
   const results = pinjamans.map((p) => {
-    const unpaid = p.angsurans.filter((a) => !a.tanggalBayar)
-    const nextAngsuran = unpaid[0]
-    if (!nextAngsuran) return null
+    const paidCount = p.angsurans?.length || 0
+    const nextAngsuranKe = paidCount + 1
+    if (nextAngsuranKe > p.tenorBulan || toNumber(p.sisaPinjaman) <= 0) return null
 
-    const pengajuanDate = new Date(p.tanggalPengajuan)
-    const jatuhTempo = new Date(pengajuanDate)
-    jatuhTempo.setDate(jatuhTempo.getDate() + (nextAngsuran.angsuranKe * 30))
+    const baseDate = new Date(p.tanggalPencairan || p.tanggalPengajuan)
+    const jatuhTempo = new Date(baseDate)
+    jatuhTempo.setMonth(jatuhTempo.getMonth() + nextAngsuranKe)
     const selisihHari = Math.ceil((jatuhTempo.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 
     let status = 'normal'
@@ -216,20 +211,21 @@ export async function GET(req: NextRequest) {
       statusLabel = `Terlambat ${Math.abs(selisihHari)} hari`
     } else if (selisihHari <= 7) {
       status = 'mendekati'
-      statusLabel = `${selisihHari} hari lagi`
+      statusLabel = `Jatuh tempo dalam ${selisihHari} hari`
     }
 
     return {
       id: p.id,
       nomorPinjaman: p.nomorPinjaman,
-      nama: p.anggota?.user?.name || '-',
+      nama: p.anggota?.nama || p.anggota?.user?.name || '-',
+      nomorAnggota: p.anggota?.nomorAnggota || '-',
       email: p.anggota?.user?.email || '',
-      phone: p.anggota?.user?.phone || '',
+      phone: p.anggota?.user?.phone || p.anggota?.noHp || '',
       jumlahPinjaman: toNumber(p.jumlahPinjaman),
       angsuranPerBulan: toNumber(p.angsuranPerBulan),
       sisaPinjaman: toNumber(p.sisaPinjaman),
       tenorBulan: p.tenorBulan,
-      angsuranKe: nextAngsuran.angsuranKe,
+      angsuranKe: nextAngsuranKe,
       jatuhTempo: jatuhTempo.toISOString(),
       selisihHari,
       status,
@@ -240,7 +236,7 @@ export async function GET(req: NextRequest) {
   // Filter
   let filtered = results
   if (filter === 'jatuh_tempo') {
-    filtered = results.filter((r: any) => r.status === 'mendekati' || r.status === 'normal')
+    filtered = results.filter((r: any) => r.status === 'mendekati' || r.status === 'terlambat')
   } else if (filter === 'terlambat') {
     filtered = results.filter((r: any) => r.status === 'terlambat')
   }
