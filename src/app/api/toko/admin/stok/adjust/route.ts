@@ -9,20 +9,22 @@ export async function POST(req: NextRequest) {
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { productId, quantity, reason, notes } = body as {
-    productId: string
-    quantity: number
-    reason: 'masuk' | 'keluar' | 'penyesuaian'
-    notes?: string
-  }
+  const productId = body.productId || body.id
+  let quantity = body.stokAktual !== undefined ? Number(body.stokAktual) : (body.quantity !== undefined ? Number(body.quantity) : (body.stok !== undefined ? Number(body.stok) : 0))
+  let reason = body.reason || 'penyesuaian'
+  const notes = body.notes || body.alasan || 'Penyesuaian stok'
 
-  if (!productId) return NextResponse.json({ error: 'Produk wajib' }, { status: 400 })
-  if (!quantity || quantity <= 0) return NextResponse.json({ error: 'Jumlah harus > 0' }, { status: 400 })
+  if (!productId) return NextResponse.json({ error: 'Produk wajib diisi' }, { status: 400 })
+  if (quantity < 0) return NextResponse.json({ error: 'Jumlah tidak boleh negatif' }, { status: 400 })
   if (!['masuk', 'keluar', 'penyesuaian'].includes(reason)) {
-    return NextResponse.json({ error: 'Reason harus: masuk, keluar, atau penyesuaian' }, { status: 400 })
+    reason = 'penyesuaian'
   }
 
-  const product = await db.product.findUnique({ where: { id: productId } })
+  const product = await db.product.findFirst({
+    where: {
+      OR: [{ id: productId }, { slug: productId }, { name: productId }],
+    },
+  })
   if (!product) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
 
   if (reason === 'masuk') {
@@ -91,11 +93,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const finalProduct = await db.product.findUnique({ where: { id: productId } })
+  const finalProduct = await db.product.findUnique({ where: { id: product.id } })
 
   return NextResponse.json({
     message: `Stok disesuaikan dari ${currentStock} ke ${quantity}`,
     previousStock: currentStock,
     newStock: toNumber(finalProduct!.stock),
+    stok: toNumber(finalProduct!.stock),
   })
 }

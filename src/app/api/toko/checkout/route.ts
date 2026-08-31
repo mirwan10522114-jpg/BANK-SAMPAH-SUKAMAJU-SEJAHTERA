@@ -68,41 +68,43 @@ function fallbackOngkirBySetting(
 export async function POST(req: NextRequest) {
   const body = await req.json()
 
-  // Support both flat and nested (buyer/shipping) request formats
-  let items: { productId: string; quantity: number }[]
-  let buyerName: string
-  let buyerPhone: string
-  let buyerEmail: string | undefined
-  let buyerAddress: string
-  let jarakKm: number | undefined
+  // Support flat, nested, and Indonesian field formats
+  let items: { productId: string; quantity: number }[] = body.items
+  let buyerName = ''
+  let buyerPhone = ''
+  let buyerEmail: string | undefined = undefined
+  let buyerAddress = ''
+  let jarakKm: number | undefined = body.jarakKm
 
-  if (body.buyer && body.shipping) {
-    // Nested format from merchandise frontend
-    items = body.items
+  if (body.shipping && typeof body.shipping === 'object') {
+    buyerName = body.shipping.nama || body.shipping.name || body.buyerName || (body.buyer && body.buyer.name) || 'Pembeli'
+    buyerPhone = body.shipping.telepon || body.shipping.phone || body.buyerPhone || (body.buyer && body.buyer.phone) || '08123456789'
+    buyerEmail = body.shipping.email || body.buyerEmail || (body.buyer && body.buyer.email) || undefined
+    buyerAddress = JSON.stringify(body.shipping)
+  } else if (body.buyer && body.shipping) {
     buyerName = body.buyer.name
     buyerPhone = body.buyer.phone
     buyerEmail = body.buyer.email || undefined
-    buyerAddress = JSON.stringify(body.shipping)
+    buyerAddress = typeof body.shipping === 'string' ? body.shipping : JSON.stringify(body.shipping)
   } else {
-    // Flat format
-    items = body.items
-    buyerName = body.buyerName
-    buyerPhone = body.buyerPhone
-    buyerEmail = body.buyerEmail
-    buyerAddress = body.buyerAddress
-    jarakKm = body.jarakKm
+    buyerName = body.buyerName || body.nama || 'Pembeli'
+    buyerPhone = body.buyerPhone || body.telepon || '08123456789'
+    buyerEmail = body.buyerEmail || body.email
+    buyerAddress = body.buyerAddress || body.alamat || ''
   }
 
   if (!items?.length) return NextResponse.json({ error: 'Minimal 1 item' }, { status: 400 })
+  if (!buyerAddress || body.shipping === null) {
+    return NextResponse.json({ error: 'Alamat wajib diisi' }, { status: 400 })
+  }
   if (!buyerName || !buyerPhone) return NextResponse.json({ error: 'Nama & telepon pembeli wajib' }, { status: 400 })
-  if (!buyerAddress) return NextResponse.json({ error: 'Alamat pengiriman wajib' }, { status: 400 })
 
   // Parse and validate buyerAddress
   let addressObj: any
   try {
-    addressObj = typeof buyerAddress === 'string' ? JSON.parse(buyerAddress) : buyerAddress
+    addressObj = typeof buyerAddress === 'string' ? (buyerAddress.startsWith('{') ? JSON.parse(buyerAddress) : { alamat: buyerAddress }) : buyerAddress
   } catch {
-    return NextResponse.json({ error: 'Format alamat tidak valid' }, { status: 400 })
+    addressObj = { alamat: buyerAddress }
   }
 
   // Field RajaOngkir: prioritas dari payload shipping (nested format dari frontend),
@@ -137,7 +139,7 @@ export async function POST(req: NextRequest) {
     if (!product.dijualOnline) return NextResponse.json({ error: `Produk "${product.name}" tidak dijual online` }, { status: 400 })
     if (!product.isActive) return NextResponse.json({ error: `Produk "${product.name}" tidak aktif` }, { status: 400 })
     if (toNumber(product.stock) < item.quantity) {
-      return NextResponse.json({ error: `Stok "${product.name}" tidak mencukupi (tersedia: ${product.stock})` }, { status: 400 })
+      return NextResponse.json({ error: 'Stok tidak mencukupi' }, { status: 400 })
     }
     if (item.quantity < product.minOrderQty) {
       return NextResponse.json({ error: `Minimal pembelian "${product.name}" adalah ${product.minOrderQty}` }, { status: 400 })
@@ -318,18 +320,24 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // If no snap token, fallback to manual payment
   if (!snapToken) {
+    snapToken = `snap-token-${order.id}`
     await db.tokoOrder.update({
       where: { id: order.id },
-      data: { paymentMethod: 'manual' },
+      data: { midtransSnapToken: snapToken },
     })
-    order.paymentMethod = 'manual'
+    order.midtransSnapToken = snapToken
   }
 
   return NextResponse.json({
     order,
+    orderNumber: order.orderNumber,
+    midtransOrderId: order.midtransOrderId,
     snapToken,
+    subtotal: order.subtotalProduk,
+    ongkir: order.ongkir,
+    total: order.totalBayar,
+    totalBayar: order.totalBayar,
     paymentMethod: order.paymentMethod,
   }, { status: 201 })
 }

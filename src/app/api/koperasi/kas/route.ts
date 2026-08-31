@@ -40,5 +40,5 @@ export async function GET(req: NextRequest) {
     by: ['sumber', 'tipe'],
     _sum: { jumlah: true },
   })
-  return NextResponse.json({ list, saldo, totalMasuk, totalKeluar, bySumber, periode: hasPeriod ? { dari, sampai } : null })
+  return NextResponse.json({ list, saldo, saldoKas: saldo, totalMasuk, totalKeluar, bySumber, periode: hasPeriod ? { dari, sampai } : null })
 }

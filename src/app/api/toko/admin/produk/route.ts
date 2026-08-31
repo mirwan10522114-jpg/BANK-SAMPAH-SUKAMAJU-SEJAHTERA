@@ -84,52 +84,33 @@ export async function POST(req: NextRequest) {
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const {
-    name,
-    slug,
-    description,
-    image,
-    images,
-    unit,
-    price,
-    stock,
-    productCategoryId,
-    weightGram,
-    lengthCm,
-    widthCm,
-    heightCm,
-    dijualOnline,
-    dijualOffline,
-    minOrderQty,
-    maxOrderQty,
-    pointsCost,
-    dijualDenganPoin,
-  } = body as {
-    name: string
-    slug?: string
-    description?: string
-    image?: string
-    images?: string
-    unit?: string
-    price?: number
-    stock?: number
-    productCategoryId?: string
-    weightGram?: number
-    lengthCm?: number
-    widthCm?: number
-    heightCm?: number
-    dijualOnline?: boolean
-    dijualOffline?: boolean
-    minOrderQty?: number
-    maxOrderQty?: number
-    pointsCost?: number
-    dijualDenganPoin?: boolean
+  const name = body.name || body.nama
+  const price = body.price !== undefined ? body.price : (body.hargaJual !== undefined ? body.hargaJual : body.harga)
+  const stock = body.stock !== undefined ? body.stock : (body.stok !== undefined ? body.stok : 0)
+  const unit = body.unit || body.satuan || 'pcs'
+  const productCategoryId = body.productCategoryId || body.kategoriId || null
+  const weightGram = body.weightGram !== undefined ? body.weightGram : (body.beratGram !== undefined ? body.beratGram : 0)
+  const lengthCm = body.lengthCm || 0
+  const widthCm = body.widthCm || 0
+  const heightCm = body.heightCm || 0
+  const description = body.description || body.deskripsi || null
+  const image = body.image || body.gambar || null
+  const images = body.images || '[]'
+  const dijualOnline = body.dijualOnline !== undefined ? body.dijualOnline : true
+  const dijualOffline = body.dijualOffline !== undefined ? body.dijualOffline : true
+  const minOrderQty = body.minOrderQty || 1
+  const maxOrderQty = body.maxOrderQty || 0
+  const pointsCost = body.pointsCost || 0
+  const dijualDenganPoin = body.dijualDenganPoin || false
+  const isActive = body.isActive !== undefined ? body.isActive : (body.aktif !== undefined ? body.aktif : (body.is_active !== undefined ? body.is_active : true))
+
+  if (!name || !name.trim()) return NextResponse.json({ error: 'Nama produk wajib diisi' }, { status: 400 })
+  if (price === undefined || price === null || Number(price) <= 0) {
+    return NextResponse.json({ error: 'Harga jual wajib diisi' }, { status: 400 })
   }
 
-  if (!name) return NextResponse.json({ error: 'Nama produk wajib' }, { status: 400 })
-
   // Generate slug if not provided
-  const productSlug = slug || name
+  const productSlug = body.slug || name
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')
     .replace(/\s+/g, '-')
@@ -148,25 +129,26 @@ export async function POST(req: NextRequest) {
 
   const product = await db.product.create({
     data: {
-      name,
+      name: name.trim(),
       slug: productSlug,
-      description: description || null,
-      image: image || null,
-      images: images || '[]',
-      unit: unit || 'pcs',
-      price: price || 0,
-      stock: stock || 0,
-      productCategoryId: productCategoryId || null,
-      weightGram: weightGram || 0,
-      lengthCm: lengthCm || 0,
-      widthCm: widthCm || 0,
-      heightCm: heightCm || 0,
-      dijualOnline: dijualOnline || false,
-      dijualOffline: dijualOffline !== false,
-      minOrderQty: minOrderQty || 1,
-      maxOrderQty: maxOrderQty || 0,
-      pointsCost: pointsCost || 0,
-      dijualDenganPoin: dijualDenganPoin || false,
+      description,
+      image,
+      images,
+      unit,
+      price: Number(price),
+      stock: Number(stock),
+      productCategoryId,
+      weightGram,
+      lengthCm,
+      widthCm,
+      heightCm,
+      dijualOnline,
+      dijualOffline,
+      minOrderQty,
+      maxOrderQty,
+      pointsCost,
+      dijualDenganPoin,
+      isActive,
     },
     include: { category: true },
   })

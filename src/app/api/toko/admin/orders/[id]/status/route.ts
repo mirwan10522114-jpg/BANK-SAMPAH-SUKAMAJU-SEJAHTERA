@@ -18,26 +18,36 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params
+  const { id: rawId } = await params
+  const id = decodeURIComponent(rawId)
   const actor = await getActingUser(req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { status, kurirNama, noResi, keterangan } = body as {
-    status: string
-    kurirNama?: string
-    noResi?: string
-    keterangan?: string
-  }
+  const status = body.status
+  const kurirNama = body.kurirNama || body.kurir || 'Kurir Toko'
+  const noResi = body.noResi || body.resi || body.nomorResi
+  const keterangan = body.keterangan || body.alasan || ''
 
   if (!status) return NextResponse.json({ error: 'Status wajib diisi' }, { status: 400 })
 
-  const order = await db.tokoOrder.findUnique({
-    where: { id },
+  const order = await db.tokoOrder.findFirst({
+    where: {
+      OR: [
+        { id },
+        { id: rawId },
+        { orderNumber: id },
+        { orderNumber: rawId },
+      ],
+    },
     include: { items: true },
   })
 
   if (!order) return NextResponse.json({ error: 'Pesanan tidak ditemukan' }, { status: 404 })
+
+  if (order.orderStatus === 'diterima') {
+    return NextResponse.json({ error: 'Order sudah selesai' }, { status: 400 })
+  }
 
   // Validate transition
   const allowed = VALID_TRANSITIONS[order.orderStatus] || []
@@ -47,17 +57,11 @@ export async function PUT(
     }, { status: 400 })
   }
 
-  // Validate required fields for specific transitions
-  if (status === 'dikirim') {
-    if (!kurirNama) return NextResponse.json({ error: 'Nama kurir wajib diisi' }, { status: 400 })
-    if (!noResi) return NextResponse.json({ error: 'Nomor resi wajib diisi' }, { status: 400 })
-  }
-
   // Build update data
   const updateData: any = { orderStatus: status }
   if (status === 'dikirim') {
     updateData.kurirNama = kurirNama
-    updateData.noResi = noResi
+    if (noResi) updateData.noResi = noResi
     updateData.shippedAt = new Date()
   }
   if (status === 'diterima') {
@@ -68,11 +72,9 @@ export async function PUT(
       updateData.paymentStatus = 'dibatalkan'
     }
     // Release reserved stock
-    if (order.paymentStatus === 'menunggu') {
-      for (const item of order.items) {
-        const qty = toNumber(item.quantity)
-        await addProductStock(item.productId, qty, 'online_release', 'toko_order', order.id, actor.id, `Pembatalan admin: ${keterangan || ''}`)
-      }
+    for (const item of order.items) {
+      const qty = toNumber(item.quantity)
+      await addProductStock(item.productId, qty, 'online_release', 'toko_order', order.id, actor.id, `Pembatalan admin: ${keterangan || ''}`)
     }
   }
 

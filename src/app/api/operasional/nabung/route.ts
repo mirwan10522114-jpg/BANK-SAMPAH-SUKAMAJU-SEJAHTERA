@@ -75,6 +75,13 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'Nasabah wajib dipilih' }, { status: 400 })
   if (!items?.length) return NextResponse.json({ error: 'Minimal 1 item sampah' }, { status: 400 })
 
+  // Validate berat per item: tidak boleh negatif atau 0
+  for (const it of items as any[]) {
+    const qty = toNumber(it.quantityBeforeQc !== undefined ? it.quantityBeforeQc : (it.weight !== undefined ? it.weight : (it.berat !== undefined ? it.berat : it.quantity || 0)))
+    if (qty < 0) return NextResponse.json({ error: 'Berat tidak boleh negatif' }, { status: 400 })
+    if (qty <= 0) return NextResponse.json({ error: 'Berat harus lebih dari 0' }, { status: 400 })
+  }
+
   // Build item snapshots
   const wasteItems = await db.wasteItem.findMany({
     where: { id: { in: items.map((i) => i.wasteItemId) } },
@@ -91,12 +98,12 @@ export async function POST(req: NextRequest) {
   let totalWeightKotor = 0
   let totalWeightBersih = 0
   let totalValueFinal = 0
-  const itemRows = items.map((it) => {
+  const itemRows = items.map((it: any) => {
     const wi = wasteItems.find((w) => w.id === it.wasteItemId)
     if (!wi) throw new Error('Barang sampah tidak ditemukan')
     const price = wi.prices[0] ? toNumber(wi.prices[0].pricePerUnit) : toNumber(wi.pricePerUnit)
     const wastePriceId = wi.prices[0]?.id
-    const before = toNumber(it.quantityBeforeQc)
+    const before = toNumber(it.quantityBeforeQc !== undefined ? it.quantityBeforeQc : (it.weight !== undefined ? it.weight : (it.berat !== undefined ? it.berat : it.quantity || 0)))
     // Tentukan berat bersih:
     // - mode "bersih" → after = before (sampah dianggap bersih)
     // - mode "langsung" → after = input quantityAfterQc dari teller

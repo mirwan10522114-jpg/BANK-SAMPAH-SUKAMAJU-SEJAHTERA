@@ -14,15 +14,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!ps) return NextResponse.json({ error: 'Pengajuan tidak ditemukan' }, { status: 404 })
 
   const data: any = { status }
-  if (status === 'disetujui') {
+  if (status === 'disetujui' || status === 'dicairkan') {
     data.tanggalPersetujuan = new Date()
     data.namaPengurus = namaPengurus || actor?.name
-  } else if (status === 'dicairkan') {
-    data.tanggalPencairan = new Date()
-    data.namaPengurus = namaPengurus || actor?.name
+    if (status === 'dicairkan') data.tanggalPencairan = new Date()
     // execute the actual sukarela withdrawal + kas keluar
     try {
-      await tarikSimpananSukarela(ps.koperasiAnggotaId, toNumber(ps.jumlah), actor?.id, `Pencairan pengajuan ${ps.nomorPengajuan}`)
+      await tarikSimpananSukarela(ps.koperasiAnggotaId, toNumber(ps.jumlah), actor?.id, `Penarikan sukarela ${ps.nomorPengajuan}`)
     } catch (e: any) {
       return NextResponse.json({ error: `Gagal mencairkan: ${e.message}` }, { status: 400 })
     }

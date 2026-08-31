@@ -67,6 +67,7 @@ import {
 import { api } from '@/lib/api'
 import { formatNumber, formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { WhatsAppBubble } from '@/components/ui/whatsapp-bubble'
 
 // =====================================================================
 // Theme palette
@@ -602,6 +603,9 @@ export function LandingPage({
           </div>
         </div>
       </footer>
+
+      {/* WhatsApp Admin Floating Chat Bubble */}
+      <WhatsAppBubble />
     </div>
   )
 }

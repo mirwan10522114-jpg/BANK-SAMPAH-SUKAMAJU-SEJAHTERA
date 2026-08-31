@@ -48,15 +48,18 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const actor = await getActingUser(req)
-  const { anggotaId, jenisSimpanan, tipe, jumlah, keterangan } = body as {
-    anggotaId: string
-    jenisSimpanan: 'pokok' | 'wajib' | 'sukarela'
-    tipe: 'setor' | 'tarik'
-    jumlah: number
-    keterangan?: string
-  }
+  const anggotaId = body.anggotaId
+  const jenisSimpanan = (body.jenisSimpanan || body.jenis) as 'pokok' | 'wajib' | 'sukarela'
+  const tipe = (body.tipe || 'setor') as 'setor' | 'tarik'
+  const jumlah = Number(body.jumlah || 0)
+  const keterangan = body.keterangan
+
   if (!anggotaId) return NextResponse.json({ error: 'Anggota wajib dipilih' }, { status: 400 })
+  if (!['pokok', 'wajib', 'sukarela'].includes(jenisSimpanan)) {
+    return NextResponse.json({ error: 'Jenis simpanan tidak valid' }, { status: 400 })
+  }
   if (jumlah <= 0) return NextResponse.json({ error: 'Jumlah harus > 0' }, { status: 400 })
+
   try {
     if (tipe === 'setor') {
       const tx = await setorSimpanan(anggotaId, jenisSimpanan, jumlah, actor?.id, keterangan)

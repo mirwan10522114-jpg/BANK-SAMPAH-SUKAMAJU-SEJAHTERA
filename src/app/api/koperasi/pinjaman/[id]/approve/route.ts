@@ -16,18 +16,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   try {
+    const body = await req.json().catch(() => ({}))
+    const targetStatus = body.status === 'ditolak' ? 'ditolak' : 'disetujui'
+
     const pinjaman = await db.koperasiPinjaman.findUnique({ where: { id } })
     if (!pinjaman) return NextResponse.json({ error: 'Pinjaman tidak ditemukan' }, { status: 404 })
     if (pinjaman.status !== 'diajukan') {
-      return NextResponse.json({ error: `Pinjaman berstatus ${pinjaman.status}, tidak dapat disetujui` }, { status: 400 })
+      return NextResponse.json({ error: `Pinjaman berstatus ${pinjaman.status}, tidak dapat diubah statusnya` }, { status: 400 })
     }
 
     const updated = await db.koperasiPinjaman.update({
       where: { id },
-      data: { status: 'disetujui' },
+      data: {
+        status: targetStatus,
+        keterangan: body.alasan ? `${pinjaman.keterangan || ''} (Ditolak: ${body.alasan})`.trim() : pinjaman.keterangan,
+      },
     })
     return NextResponse.json(updated)
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 400 })
   }
+
 }

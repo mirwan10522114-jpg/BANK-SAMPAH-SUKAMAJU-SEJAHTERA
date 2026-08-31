@@ -65,20 +65,18 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const actor = await getActingUser(req)
-  const { userId, amount, method, notes, bankInfo } = body as {
-    userId: string
-    amount: number
-    method: string
-    notes: string
-    bankInfo?: { bankName?: string; accountNumber?: string; accountName?: string }
-  }
+  const userId = body.userId
+  const amount = body.amount !== undefined ? Number(body.amount) : (body.jumlah !== undefined ? Number(body.jumlah) : 0)
+  const method = body.method || body.metode || 'cash'
+  const notes = body.notes || body.keterangan || ''
+  const bankInfo = body.bankInfo
 
   if (!userId) return NextResponse.json({ error: 'Nasabah wajib dipilih' }, { status: 400 })
   if (!amount || amount <= 0) return NextResponse.json({ error: 'Nominal harus > 0' }, { status: 400 })
   if (!method || method.trim() === '') return NextResponse.json({ error: 'Metode pencairan wajib dipilih' }, { status: 400 })
 
   try {
-    const result = await executeWithdrawal(userId, amount, method || 'cash', notes || '', actor?.id, bankInfo)
+    const result = await executeWithdrawal(userId, amount, method, notes, actor?.id, bankInfo)
     return NextResponse.json(result, { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 400 })

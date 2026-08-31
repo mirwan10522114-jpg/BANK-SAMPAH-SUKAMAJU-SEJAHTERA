@@ -27,17 +27,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const body = await req.json()
   const actor = await getActingUser(req)
-  const { items: editItems, qcNotes, rejectAll, rejectReason } = body as {
-    items: { id: string; quantityAfterQc: number; qcReason?: string | null }[]
+  let editItems = body.items
+  const { qcNotes, rejectAll, rejectReason } = body as {
     qcNotes?: string | null
     rejectAll?: boolean
     rejectReason?: string | null
-  }
-
-  if (!editItems || !Array.isArray(editItems) || editItems.length === 0) {
-    if (!rejectAll) {
-      return NextResponse.json({ error: 'Item QC wajib diisi' }, { status: 400 })
-    }
   }
 
   // Fetch existing transaction
@@ -47,6 +41,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   })
   if (!existing) {
     return NextResponse.json({ error: 'Transaksi tidak ditemukan' }, { status: 404 })
+  }
+
+  // If status="passed", auto-fill editItems with quantityBeforeQc
+  if (!editItems && (body.status === 'passed' || body.qcStatus === 'passed' || body.status === 'selesai')) {
+    editItems = existing.items.map((it) => ({
+      id: it.id,
+      quantityAfterQc: toNumber(it.quantityBeforeQc),
+    }))
+  }
+
+  if (!editItems || !Array.isArray(editItems) || editItems.length === 0) {
+    if (!rejectAll) {
+      return NextResponse.json({ error: 'Item QC wajib diisi' }, { status: 400 })
+    }
   }
 
   // Cegah double-finalize: kalau sudah "selesai", tolak PATCH
@@ -69,7 +77,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         qcReason: rejectReason || 'Ditolak total saat QC',
         // Update semua item: berat bersih = 0
         items: {
-          updateMany: editItems?.map((ei) => ({
+          updateMany: editItems?.map((ei: any) => ({
             where: { id: ei.id },
             data: {
               quantityAfterQc: 0,
@@ -92,20 +100,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       })
     }
 
-    // TIDAK ADA penambahan saldo (karena ditolak)
-    // TIDAK ADA penambahan inventory (karena tidak diterima)
-
-    // Kirim email notifikasi penolakan
-    try {
-      const { sendStrukEmail } = await import('@/lib/email')
-      if (existing.user?.email) {
-        let html = `<div class="struk-header"><div class="icon">❌</div><h2>Bank Sampah</h2><div class="sub">Sukamaju Sejahtera</div><div class="badge">TRANSAKSI DITOLAK</div></div>`
-        html += `<div class="struk-section"><div class="info-row"><span class="key">Tanggal</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${existing.user.name}</span></div></div>`
-        html += `<div class="struk-section"><p>Setoran sampah Anda ditolak saat QC.</p><p><strong>Alasan:</strong> ${rejectReason || qcNotes || 'Tidak memenuhi standar'}</p></div>`
-        await sendStrukEmail({ to: existing.user.email, subject: `Setoran Ditolak QC`, strukHtml: html })
-      }
-    } catch {}
-
     return NextResponse.json({ ...updated, _meta: { rejected: true, saldoCredited: false } })
   }
 
@@ -114,12 +108,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // ============================================================
   // Build map of QC updates
   const editMap = new Map<string, { quantityAfterQc: number; qcReason: string | null }>()
-  for (const ei of editItems) {
-    const qty = toNumber(ei.quantityAfterQc)
+  for (const ei of editItems as any[]) {
+    const qty = toNumber(ei.quantityAfterQc !== undefined ? ei.quantityAfterQc : (ei.weight !== undefined ? ei.weight : (ei.berat !== undefined ? ei.berat : (ei.quantity !== undefined ? ei.quantity : 0))))
     if (qty < 0) {
       return NextResponse.json({ error: 'Berat bersih tidak boleh negatif' }, { status: 400 })
     }
-    editMap.set(ei.id, { quantityAfterQc: qty, qcReason: ei.qcReason ?? null })
+    const targetId = ei.id || existing.items.find((it) => it.wasteItemId === ei.wasteItemId || it.id === ei.id)?.id || existing.items[0]?.id
+    if (targetId) {
+      editMap.set(targetId, { quantityAfterQc: qty, qcReason: ei.qcReason ?? null })
+    }
   }
 
   // Hitung ulang total berat bersih, nilai, per item

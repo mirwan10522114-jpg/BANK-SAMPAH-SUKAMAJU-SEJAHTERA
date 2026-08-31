@@ -131,72 +131,58 @@ export async function POST(req: NextRequest) {
   let totalWeight = 0
   let totalValue = 0
   let totalBeliNasabah = 0
-  const itemRows = items.map((it) => {
-    const wi = wasteItems.find((w) => w.id === it.wasteItemId)!
-    if (!wi) throw new Error(`Barang sampah tidak ditemukan: ${it.wasteItemId}`)
-    const price = toNumber(it.pricePerUnit)
-    const qty = toNumber(it.quantity)
-    const source = it.source || 'nabung'
-
-    // Validate price
-    if (price < 0) {
-      throw new Error(`Harga tidak valid untuk ${wi.name}. Harga tidak boleh bernilai negatif.`)
-    }
-
-    // Validate quantity
-    if (qty <= 0) {
-      throw new Error(`Qty tidak valid untuk ${wi.name}. Qty harus lebih dari 0.`)
-    }
-
-    // Validate stock availability for the chosen source
-    const inv = inventories.find((i) => i.wasteItemId === it.wasteItemId && i.source === source)
-    const availableStock = inv ? toNumber(inv.stock) : 0
-    if (availableStock < qty) {
-      throw new Error(`Stok ${wi.name} (sumber: ${source}) tidak cukup. Tersedia: ${availableStock} kg, diminta: ${qty} kg`)
-    }
-
-    // Harga beli nasabah: 0 untuk sedekah (donasi), harga acuan untuk nabung
-    const hargaAcuan = wi.prices?.[0] ? toNumber(wi.prices[0].pricePerUnit) : toNumber(wi.pricePerUnit)
-    const hargaBeliNasabah = source === 'sedekah' ? 0 : hargaAcuan
-
-    const subtotal = price * qty
-    const subtotalBeli = hargaBeliNasabah * qty
-
-    totalWeight += qty
-    totalValue += subtotal
-    totalBeliNasabah += subtotalBeli
-
-    return {
-      wasteItemId: wi.id,
-      itemCodeSnapshot: wi.code,
-      itemNameSnapshot: wi.name,
-      categoryNameSnapshot: wi.category.name,
-      unitSnapshot: wi.unit,
-      pricePerUnit: price,
-      quantity: qty,
-      subtotal,
-      // Store source & harga beli for margin tracking (optional fields if schema supports)
-      // Note: SalesTransactionItem doesn't have source/hargaBeliNasabah columns,
-      // so we track margin via the GET endpoint which re-computes from WastePrice.
-    }
-  })
-
-  // Validate all stock first (throw if any insufficient)
+  let itemRows: any[]
   try {
-    // Re-check all items before creating
-    for (const it of items) {
+    itemRows = items.map((it) => {
+      const wi = wasteItems.find((w) => w.id === it.wasteItemId)!
+      if (!wi) throw new Error(`Barang sampah tidak ditemukan: ${it.wasteItemId}`)
+      const price = toNumber(it.pricePerUnit)
+      const qty = toNumber(it.quantity)
       const source = it.source || 'nabung'
+
+      // Validate price
+      if (price < 0) {
+        throw new Error(`Harga tidak valid untuk ${wi.name}. Harga tidak boleh bernilai negatif.`)
+      }
+
+      // Validate quantity
+      if (qty <= 0) {
+        throw new Error(`Qty tidak valid untuk ${wi.name}. Qty harus lebih dari 0.`)
+      }
+
+      // Validate stock availability for the chosen source
       const inv = inventories.find((i) => i.wasteItemId === it.wasteItemId && i.source === source)
       const availableStock = inv ? toNumber(inv.stock) : 0
-      if (availableStock < toNumber(it.quantity)) {
-        return NextResponse.json({
-          error: `Stok tidak cukup. ${wasteItems.find(w => w.id === it.wasteItemId)?.name} (sumber: ${source}): tersedia ${availableStock} kg, diminta ${toNumber(it.quantity)} kg`
-        }, { status: 400 })
+      if (availableStock < qty) {
+        throw new Error(`Stok ${wi.name} (sumber: ${source}) tidak cukup. Tersedia: ${availableStock} kg, diminta: ${qty} kg`)
       }
-    }
+
+      // Harga beli nasabah: 0 untuk sedekah (donasi), harga acuan untuk nabung
+      const hargaAcuan = wi.prices?.[0] ? toNumber(wi.prices[0].pricePerUnit) : toNumber(wi.pricePerUnit)
+      const hargaBeliNasabah = source === 'sedekah' ? 0 : hargaAcuan
+
+      const subtotal = price * qty
+      const subtotalBeli = hargaBeliNasabah * qty
+
+      totalWeight += qty
+      totalValue += subtotal
+      totalBeliNasabah += subtotalBeli
+
+      return {
+        wasteItemId: wi.id,
+        itemCodeSnapshot: wi.code,
+        itemNameSnapshot: wi.name,
+        categoryNameSnapshot: wi.category.name,
+        unitSnapshot: wi.unit,
+        pricePerUnit: price,
+        quantity: qty,
+        subtotal,
+      }
+    })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 400 })
   }
+
 
   const invoiceNumber = await generateTxNo('INV')
   const tx = await db.salesTransaction.create({

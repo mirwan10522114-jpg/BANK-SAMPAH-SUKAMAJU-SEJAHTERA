@@ -82,45 +82,24 @@ export async function PUT(
   if (!product) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
 
   const body = await req.json()
-  const {
-    name,
-    description,
-    image,
-    images,
-    unit,
-    price,
-    productCategoryId,
-    weightGram,
-    lengthCm,
-    widthCm,
-    heightCm,
-    dijualOnline,
-    dijualOffline,
-    minOrderQty,
-    maxOrderQty,
-    isActive,
-    pointsCost,
-    dijualDenganPoin,
-  } = body as {
-    name?: string
-    description?: string
-    image?: string
-    images?: string
-    unit?: string
-    price?: number
-    productCategoryId?: string | null
-    weightGram?: number
-    lengthCm?: number
-    widthCm?: number
-    heightCm?: number
-    dijualOnline?: boolean
-    dijualOffline?: boolean
-    minOrderQty?: number
-    maxOrderQty?: number
-    isActive?: boolean
-    pointsCost?: number
-    dijualDenganPoin?: boolean
-  }
+  const name = body.name !== undefined ? body.name : body.nama
+  const description = body.description !== undefined ? body.description : body.deskripsi
+  const image = body.image !== undefined ? body.image : body.gambar
+  const images = body.images
+  const unit = body.unit !== undefined ? body.unit : body.satuan
+  const price = body.price !== undefined ? body.price : (body.hargaJual !== undefined ? body.hargaJual : body.harga)
+  const productCategoryId = body.productCategoryId !== undefined ? body.productCategoryId : body.kategoriId
+  const weightGram = body.weightGram !== undefined ? body.weightGram : body.beratGram
+  const lengthCm = body.lengthCm
+  const widthCm = body.widthCm
+  const heightCm = body.heightCm
+  const dijualOnline = body.dijualOnline
+  const dijualOffline = body.dijualOffline
+  const minOrderQty = body.minOrderQty
+  const maxOrderQty = body.maxOrderQty
+  const isActive = body.isActive !== undefined ? body.isActive : (body.aktif !== undefined ? body.aktif : body.is_active)
+  const pointsCost = body.pointsCost
+  const dijualDenganPoin = body.dijualDenganPoin
 
   const updateData: any = {}
   if (name !== undefined) updateData.name = name
@@ -128,19 +107,19 @@ export async function PUT(
   if (image !== undefined) updateData.image = image || null
   if (images !== undefined) updateData.images = images || '[]'
   if (unit !== undefined) updateData.unit = unit
-  if (price !== undefined) updateData.price = price
+  if (price !== undefined) updateData.price = Number(price)
   if (productCategoryId !== undefined) updateData.productCategoryId = productCategoryId
-  if (weightGram !== undefined) updateData.weightGram = weightGram
-  if (lengthCm !== undefined) updateData.lengthCm = lengthCm
-  if (widthCm !== undefined) updateData.widthCm = widthCm
-  if (heightCm !== undefined) updateData.heightCm = heightCm
-  if (dijualOnline !== undefined) updateData.dijualOnline = dijualOnline
-  if (dijualOffline !== undefined) updateData.dijualOffline = dijualOffline
-  if (minOrderQty !== undefined) updateData.minOrderQty = minOrderQty
-  if (maxOrderQty !== undefined) updateData.maxOrderQty = maxOrderQty
-  if (isActive !== undefined) updateData.isActive = isActive
-  if (pointsCost !== undefined) updateData.pointsCost = pointsCost
-  if (dijualDenganPoin !== undefined) updateData.dijualDenganPoin = dijualDenganPoin
+  if (weightGram !== undefined) updateData.weightGram = Number(weightGram)
+  if (lengthCm !== undefined) updateData.lengthCm = Number(lengthCm)
+  if (widthCm !== undefined) updateData.widthCm = Number(widthCm)
+  if (heightCm !== undefined) updateData.heightCm = Number(heightCm)
+  if (dijualOnline !== undefined) updateData.dijualOnline = Boolean(dijualOnline)
+  if (dijualOffline !== undefined) updateData.dijualOffline = Boolean(dijualOffline)
+  if (minOrderQty !== undefined) updateData.minOrderQty = Number(minOrderQty)
+  if (maxOrderQty !== undefined) updateData.maxOrderQty = Number(maxOrderQty)
+  if (isActive !== undefined) updateData.isActive = Boolean(isActive)
+  if (pointsCost !== undefined) updateData.pointsCost = Number(pointsCost)
+  if (dijualDenganPoin !== undefined) updateData.dijualDenganPoin = Boolean(dijualDenganPoin)
 
   // Validate category if provided
   if (productCategoryId && productCategoryId !== product.productCategoryId) {
@@ -157,7 +136,7 @@ export async function PUT(
   return NextResponse.json(updated)
 }
 
-// DELETE: Soft delete (isActive=false) if has sales, hard delete if none
+// DELETE: Soft delete (isActive=false)
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -168,31 +147,18 @@ export async function DELETE(
 
   const product = await db.product.findUnique({
     where: { id },
-    include: {
-      _count: {
-        select: {
-          saleItems: true,
-          tokoOrderItems: true,
-          redemptions: true,
-        },
-      },
-    },
   })
 
   if (!product) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
 
-  const hasSales = product._count.saleItems > 0 || product._count.tokoOrderItems > 0 || product._count.redemptions > 0
-
-  if (hasSales) {
-    // Soft delete
-    const updated = await db.product.update({
-      where: { id },
-      data: { isActive: false, dijualOnline: false, dijualOffline: false },
-    })
-    return NextResponse.json({ message: 'Produk dinonaktifkan (soft delete)', product: updated })
-  }
-
-  // Hard delete
-  await db.product.delete({ where: { id } })
-  return NextResponse.json({ message: 'Produk dihapus permanen' })
+  const updated = await db.product.update({
+    where: { id },
+    data: { isActive: false, dijualOnline: false, dijualOffline: false },
+  })
+  return NextResponse.json({
+    message: 'Produk dinonaktifkan (soft delete)',
+    product: updated,
+    is_active: false,
+    isActive: false,
+  })
 }

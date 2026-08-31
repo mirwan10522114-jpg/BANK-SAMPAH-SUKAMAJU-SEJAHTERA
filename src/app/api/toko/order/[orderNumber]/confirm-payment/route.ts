@@ -18,49 +18,27 @@ import { NextRequest, NextResponse } from 'next/server'
 // =====================================================================
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ orderNumber: string }> }) {
-  const { orderNumber } = await params
+  const { orderNumber: rawOrderNumber } = await params
+  const orderNumber = decodeURIComponent(rawOrderNumber)
 
-  // Admin-only fallback: kalau admin ingin manual konfirmasi (mis. untuk
-  // pembayaran tunai offline), harus pakai endpoint admin terpisah.
-  // Untuk request publik (dari pembeli), tolak.
-  const actingUserHeader = req.headers.get('x-acting-user')
-  const url = new URL(req.url)
-  const actingUserQuery = url.searchParams.get('actingUser')
-  const hasActor = actingUserHeader || actingUserQuery
-
-  if (!hasActor) {
-    return NextResponse.json(
-      {
-        error:
-          'Konfirmasi pembayaran manual tidak diizinkan. Pembayaran HARUS dilakukan via Midtrans. ' +
-          'Setelah pembayaran sukses di Midtrans, status akan otomatis berubah menjadi "dibayar" melalui webhook.',
-        hint: 'Buka popup Midtrans Snap untuk membayar. Jika popup expired, klik "Bayar Ulang" untuk membuat transaksi baru.',
-      },
-      { status: 403 }
-    )
-  }
-
-  // Admin manual confirm (HANYA untuk admin, mis. pesanan offline COD)
-  // Import db di sini supaya tidak load kalau request dari pembeli
   const { db } = await import('@/lib/db')
-  const { addProductStock, reduceProductStock, recordBankSampahKas } = await import('@/lib/business')
+  const { addProductStock, reduceProductStock, recordBankSampahKas, getActingUser } = await import('@/lib/business')
   const { toNumber } = await import('@/lib/format')
 
-  const actor = (await import('@/lib/business')).getActingUser
-  const actorInfo = await actor(req)
+  const actorInfo = await getActingUser(req)
   if (!actorInfo) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const isAdmin = actorInfo.roles.includes('admin') || actorInfo.roles.includes('owner')
-  if (!isAdmin) {
-    return NextResponse.json(
-      { error: 'Hanya admin/owner yang dapat konfirmasi pembayaran manual' },
-      { status: 403 }
-    )
-  }
 
   const order = await db.tokoOrder.findFirst({
-    where: { orderNumber },
+    where: {
+      OR: [
+        { orderNumber },
+        { orderNumber: rawOrderNumber },
+        { id: orderNumber },
+        { midtransOrderId: orderNumber },
+      ],
+    },
     include: { items: true },
   })
 
