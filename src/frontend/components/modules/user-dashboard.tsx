@@ -729,35 +729,54 @@ function SaldoView({ data }: { data: any }) {
       </div>
 
       {/* Mutasi Filter Toolbar */}
-      <Card className="border-0 bg-white shadow-sm ring-1 ring-zinc-200/80">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-800">
-              <Filter className="size-4 text-emerald-600" />
-              <span>Filter Mutasi & Riwayat Arus Kas</span>
+      <Card className="border border-zinc-200/80 bg-white shadow-sm rounded-2xl overflow-hidden">
+        <CardContent className="p-4 sm:p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-zinc-100">
+            <div className="flex items-center gap-2">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                <Filter className="size-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-zinc-900">Filter Mutasi & Riwayat Arus Kas</h3>
+                <p className="text-[11px] text-zinc-400">Pantau pergerakan tabungan masuk, penarikan saldo, dan pelepasan dana</p>
+              </div>
             </div>
             <div className="flex items-center gap-3 text-xs">
-              <span className="text-emerald-700 font-semibold">+ Masuk: {formatRupiah(totalMasuk)}</span>
-              <span className="text-zinc-300">•</span>
-              <span className="text-rose-700 font-semibold">- Keluar: {formatRupiah(totalKeluar)}</span>
+              <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                + Masuk: {formatRupiah(totalMasuk)}
+              </span>
+              <span className="font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
+                - Keluar: {formatRupiah(totalKeluar)}
+              </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 size-3.5 text-zinc-400" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-zinc-400 pointer-events-none" />
               <Input
                 placeholder="Cari transaksi / keterangan..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-8 pl-8 text-xs bg-white border-zinc-200"
+                className="h-9.5 w-full pl-9 pr-8 text-xs bg-zinc-50/50 border-zinc-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
               />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
             </div>
 
             <Select value={filterWaktu} onValueChange={setFilterWaktu}>
-              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
-                <Calendar className="size-3.5 mr-1.5 text-zinc-400" />
-                <SelectValue placeholder="Periode Waktu" />
+              <SelectTrigger className="!w-full w-full h-9.5 rounded-xl bg-zinc-50/50 border-zinc-200 text-xs text-zinc-700 hover:bg-white hover:border-zinc-300 transition focus:ring-2 focus:ring-emerald-500/20">
+                <div className="flex items-center gap-2 truncate">
+                  <Calendar className="size-3.5 text-emerald-600 shrink-0" />
+                  <SelectValue placeholder="Periode Waktu" />
+                </div>
               </SelectTrigger>
               <SelectContent>
                 {waktuOptions.map((opt) => (
@@ -767,8 +786,11 @@ function SaldoView({ data }: { data: any }) {
             </Select>
 
             <Select value={filterTipe} onValueChange={setFilterTipe}>
-              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
-                <SelectValue placeholder="Jenis Mutasi" />
+              <SelectTrigger className="!w-full w-full h-9.5 rounded-xl bg-zinc-50/50 border-zinc-200 text-xs text-zinc-700 hover:bg-white hover:border-zinc-300 transition focus:ring-2 focus:ring-emerald-500/20">
+                <div className="flex items-center gap-2 truncate">
+                  <Wallet className="size-3.5 text-blue-600 shrink-0" />
+                  <SelectValue placeholder="Jenis Mutasi" />
+                </div>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" className="text-xs">Semua Jenis Mutasi</SelectItem>
@@ -780,14 +802,14 @@ function SaldoView({ data }: { data: any }) {
           </div>
 
           {filterWaktu === 'custom' && (
-            <div className="flex flex-wrap items-end gap-2.5 rounded-lg bg-emerald-50/60 p-2.5 border border-emerald-100">
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900">Dari Tanggal</label>
-                <Input type="date" value={customDari} onChange={(e) => setCustomDari(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+            <div className="flex flex-wrap items-end gap-3 rounded-xl bg-emerald-50/70 p-3.5 border border-emerald-200/80 animate-in fade-in slide-in-from-top-1">
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[140px]">
+                <label className="text-[11px] font-semibold text-emerald-900">Dari Tanggal</label>
+                <Input type="date" value={customDari} onChange={(e) => setCustomDari(e.target.value)} className="h-9 bg-white border-emerald-200 text-xs rounded-lg" />
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900">Sampai Tanggal</label>
-                <Input type="date" value={customSampai} onChange={(e) => setCustomSampai(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[140px]">
+                <label className="text-[11px] font-semibold text-emerald-900">Sampai Tanggal</label>
+                <Input type="date" value={customSampai} onChange={(e) => setCustomSampai(e.target.value)} className="h-9 bg-white border-emerald-200 text-xs rounded-lg" />
               </div>
             </div>
           )}
@@ -1064,31 +1086,59 @@ function NabungView({ data }: { data: any }) {
       </div>
 
       {/* ===== FILTER TOOLBAR CARD ===== */}
-      <Card className="border-0 bg-white shadow-sm ring-1 ring-zinc-200/80">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-800">
-            <Filter className="size-4 text-emerald-600" />
-            <span>Pusat Filter Transaksi & Sampah</span>
+      <Card className="border border-zinc-200/80 bg-white shadow-sm rounded-2xl overflow-hidden">
+        <CardContent className="p-4 sm:p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-zinc-100">
+            <div className="flex items-center gap-2">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                <Filter className="size-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-zinc-900">Pusat Filter Transaksi & Sampah</h3>
+                <p className="text-[11px] text-zinc-400">Saring riwayat berdasarkan waktu, jenis sampah, dan status QC</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-[11px] font-medium text-zinc-600 border-zinc-200 bg-zinc-50">
+                {filtered.length} dari {rows.length} Data
+              </Badge>
+              {isFilterActive && (
+                <Button variant="ghost" size="sm" onClick={resetFilters} className="h-7 text-[11px] text-rose-600 hover:text-rose-700 hover:bg-rose-50 gap-1 px-2">
+                  <X className="size-3" /> Reset Filter
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Row 1: Search, Time, Category, Waste Item */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 size-3.5 text-zinc-400" />
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-zinc-400 pointer-events-none" />
               <Input
                 placeholder="Cari kode trx / sampah..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-8 pl-8 text-xs bg-white border-zinc-200"
+                className="h-9.5 w-full pl-9 pr-8 text-xs bg-zinc-50/50 border-zinc-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
               />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
             </div>
 
             {/* Filter Waktu */}
             <Select value={filterWaktu} onValueChange={setFilterWaktu}>
-              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
-                <Calendar className="size-3.5 mr-1.5 text-zinc-400" />
-                <SelectValue placeholder="Pilih Periode Waktu" />
+              <SelectTrigger className="!w-full w-full h-9.5 rounded-xl bg-zinc-50/50 border-zinc-200 text-xs text-zinc-700 hover:bg-white hover:border-zinc-300 transition focus:ring-2 focus:ring-emerald-500/20">
+                <div className="flex items-center gap-2 truncate">
+                  <Calendar className="size-3.5 text-emerald-600 shrink-0" />
+                  <SelectValue placeholder="Pilih Periode Waktu" />
+                </div>
               </SelectTrigger>
               <SelectContent>
                 {waktuOptions.map((opt) => (
@@ -1099,9 +1149,11 @@ function NabungView({ data }: { data: any }) {
 
             {/* Filter Kategori Sampah */}
             <Select value={filterKategori} onValueChange={setFilterKategori}>
-              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
-                <Recycle className="size-3.5 mr-1.5 text-emerald-600" />
-                <SelectValue placeholder="Kategori Sampah" />
+              <SelectTrigger className="!w-full w-full h-9.5 rounded-xl bg-zinc-50/50 border-zinc-200 text-xs text-zinc-700 hover:bg-white hover:border-zinc-300 transition focus:ring-2 focus:ring-emerald-500/20">
+                <div className="flex items-center gap-2 truncate">
+                  <Recycle className="size-3.5 text-emerald-600 shrink-0" />
+                  <SelectValue placeholder="Kategori Sampah" />
+                </div>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" className="text-xs">Semua Kategori</SelectItem>
@@ -1113,9 +1165,11 @@ function NabungView({ data }: { data: any }) {
 
             {/* Filter Jenis Barang */}
             <Select value={filterBarang} onValueChange={setFilterBarang}>
-              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
-                <Package className="size-3.5 mr-1.5 text-blue-600" />
-                <SelectValue placeholder="Jenis Sampah" />
+              <SelectTrigger className="!w-full w-full h-9.5 rounded-xl bg-zinc-50/50 border-zinc-200 text-xs text-zinc-700 hover:bg-white hover:border-zinc-300 transition focus:ring-2 focus:ring-emerald-500/20">
+                <div className="flex items-center gap-2 truncate">
+                  <Package className="size-3.5 text-blue-600 shrink-0" />
+                  <SelectValue placeholder="Jenis Sampah" />
+                </div>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" className="text-xs">Semua Jenis Sampah</SelectItem>
@@ -1127,11 +1181,14 @@ function NabungView({ data }: { data: any }) {
           </div>
 
           {/* Row 2: Status Transaksi, Status QC, Sorting */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Status Transaksi */}
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
-                <SelectValue placeholder="Status Transaksi" />
+              <SelectTrigger className="!w-full w-full h-9.5 rounded-xl bg-zinc-50/50 border-zinc-200 text-xs text-zinc-700 hover:bg-white hover:border-zinc-300 transition focus:ring-2 focus:ring-emerald-500/20">
+                <div className="flex items-center gap-2 truncate">
+                  <CheckCircle2 className="size-3.5 text-zinc-400 shrink-0" />
+                  <SelectValue placeholder="Status Transaksi" />
+                </div>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" className="text-xs">Semua Status Transaksi</SelectItem>
@@ -1143,8 +1200,11 @@ function NabungView({ data }: { data: any }) {
 
             {/* Status QC */}
             <Select value={filterQc} onValueChange={setFilterQc}>
-              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
-                <SelectValue placeholder="Status QC" />
+              <SelectTrigger className="!w-full w-full h-9.5 rounded-xl bg-zinc-50/50 border-zinc-200 text-xs text-zinc-700 hover:bg-white hover:border-zinc-300 transition focus:ring-2 focus:ring-emerald-500/20">
+                <div className="flex items-center gap-2 truncate">
+                  <ShieldCheck className="size-3.5 text-teal-600 shrink-0" />
+                  <SelectValue placeholder="Status QC" />
+                </div>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" className="text-xs">Semua Status QC</SelectItem>
@@ -1158,8 +1218,11 @@ function NabungView({ data }: { data: any }) {
 
             {/* Urutan / Sort */}
             <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
-                <SelectValue placeholder="Urutkan Berdasarkan" />
+              <SelectTrigger className="!w-full w-full h-9.5 rounded-xl bg-zinc-50/50 border-zinc-200 text-xs text-zinc-700 hover:bg-white hover:border-zinc-300 transition focus:ring-2 focus:ring-emerald-500/20">
+                <div className="flex items-center gap-2 truncate">
+                  <TrendingUp className="size-3.5 text-amber-600 shrink-0" />
+                  <SelectValue placeholder="Urutkan Berdasarkan" />
+                </div>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="date_desc" className="text-xs">Tanggal (Terbaru)</SelectItem>
@@ -1173,54 +1236,54 @@ function NabungView({ data }: { data: any }) {
 
           {/* Custom Date Range Pickers (if custom selected) */}
           {filterWaktu === 'custom' && (
-            <div className="flex flex-wrap items-end gap-2.5 rounded-lg bg-emerald-50/60 p-2.5 border border-emerald-100">
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900">Dari Tanggal</label>
-                <Input type="date" value={customDari} onChange={(e) => setCustomDari(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+            <div className="flex flex-wrap items-end gap-3 rounded-xl bg-emerald-50/70 p-3.5 border border-emerald-200/80 animate-in fade-in slide-in-from-top-1">
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[140px]">
+                <label className="text-[11px] font-semibold text-emerald-900">Dari Tanggal</label>
+                <Input type="date" value={customDari} onChange={(e) => setCustomDari(e.target.value)} className="h-9 bg-white border-emerald-200 text-xs rounded-lg" />
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900">Sampai Tanggal</label>
-                <Input type="date" value={customSampai} onChange={(e) => setCustomSampai(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[140px]">
+                <label className="text-[11px] font-semibold text-emerald-900">Sampai Tanggal</label>
+                <Input type="date" value={customSampai} onChange={(e) => setCustomSampai(e.target.value)} className="h-9 bg-white border-emerald-200 text-xs rounded-lg" />
               </div>
-              <p className="text-[11px] text-emerald-700 self-center">Rentang waktu otomatis disaring</p>
+              <p className="text-[11px] text-emerald-700 self-center pb-1">Rentang tanggal otomatis diterapkan pada riwayat</p>
             </div>
           )}
 
           {/* Active Filter Tags */}
           {isFilterActive && (
-            <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-zinc-100">
-              <span className="text-[10px] font-medium text-zinc-400">Filter aktif:</span>
+            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-zinc-100">
+              <span className="text-[11px] font-medium text-zinc-400 mr-1">Filter aktif:</span>
               {search && (
-                <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 gap-1">
-                  Cari: "{search}" <X className="size-2.5 cursor-pointer" onClick={() => setSearch('')} />
+                <Badge variant="outline" className="text-[11px] py-0.5 px-2 bg-emerald-50 text-emerald-700 border-emerald-200 gap-1.5 rounded-lg">
+                  Cari: "{search}" <X className="size-3 cursor-pointer hover:text-emerald-900" onClick={() => setSearch('')} />
                 </Badge>
               )}
               {filterWaktu !== 'all' && (
-                <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 gap-1">
-                  Waktu: {waktuOptions.find((o) => o.value === filterWaktu)?.label} <X className="size-2.5 cursor-pointer" onClick={() => setFilterWaktu('all')} />
+                <Badge variant="outline" className="text-[11px] py-0.5 px-2 bg-blue-50 text-blue-700 border-blue-200 gap-1.5 rounded-lg">
+                  Waktu: {waktuOptions.find((o) => o.value === filterWaktu)?.label} <X className="size-3 cursor-pointer hover:text-blue-900" onClick={() => setFilterWaktu('all')} />
                 </Badge>
               )}
               {filterKategori !== 'all' && (
-                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 gap-1">
-                  Kategori: {filterKategori} <X className="size-2.5 cursor-pointer" onClick={() => setFilterKategori('all')} />
+                <Badge variant="outline" className="text-[11px] py-0.5 px-2 bg-amber-50 text-amber-700 border-amber-200 gap-1.5 rounded-lg">
+                  Kategori: {filterKategori} <X className="size-3 cursor-pointer hover:text-amber-900" onClick={() => setFilterKategori('all')} />
                 </Badge>
               )}
               {filterBarang !== 'all' && (
-                <Badge variant="outline" className="text-[10px] bg-purple-50 text-purple-700 border-purple-200 gap-1">
-                  Sampah: {filterBarang} <X className="size-2.5 cursor-pointer" onClick={() => setFilterBarang('all')} />
+                <Badge variant="outline" className="text-[11px] py-0.5 px-2 bg-purple-50 text-purple-700 border-purple-200 gap-1.5 rounded-lg">
+                  Sampah: {filterBarang} <X className="size-3 cursor-pointer hover:text-purple-900" onClick={() => setFilterBarang('all')} />
                 </Badge>
               )}
               {filterStatus !== 'all' && (
-                <Badge variant="outline" className="text-[10px] bg-zinc-50 text-zinc-700 border-zinc-200 gap-1">
-                  Status: {filterStatus} <X className="size-2.5 cursor-pointer" onClick={() => setFilterStatus('all')} />
+                <Badge variant="outline" className="text-[11px] py-0.5 px-2 bg-zinc-100 text-zinc-700 border-zinc-200 gap-1.5 rounded-lg">
+                  Status: {filterStatus} <X className="size-3 cursor-pointer hover:text-zinc-900" onClick={() => setFilterStatus('all')} />
                 </Badge>
               )}
               {filterQc !== 'all' && (
-                <Badge variant="outline" className="text-[10px] bg-teal-50 text-teal-700 border-teal-200 gap-1">
-                  QC: {qcLabel(filterQc)} <X className="size-2.5 cursor-pointer" onClick={() => setFilterQc('all')} />
+                <Badge variant="outline" className="text-[11px] py-0.5 px-2 bg-teal-50 text-teal-700 border-teal-200 gap-1.5 rounded-lg">
+                  QC: {qcLabel(filterQc)} <X className="size-3 cursor-pointer hover:text-teal-900" onClick={() => setFilterQc('all')} />
                 </Badge>
               )}
-              <button onClick={resetFilters} className="text-[10px] text-rose-600 hover:underline font-medium ml-1">
+              <button onClick={resetFilters} className="text-[11px] text-rose-600 hover:text-rose-700 hover:underline font-medium ml-1.5">
                 Hapus Semua
               </button>
             </div>
@@ -1502,28 +1565,56 @@ function SedekahView({ data }: { data: any }) {
       </div>
 
       {/* Filter Toolbar Card */}
-      <Card className="border-0 bg-white shadow-sm ring-1 ring-zinc-200/80">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-800">
-            <Filter className="size-4 text-emerald-600" />
-            <span>Filter Sedekah Sampah</span>
+      <Card className="border border-zinc-200/80 bg-white shadow-sm rounded-2xl overflow-hidden">
+        <CardContent className="p-4 sm:p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-zinc-100">
+            <div className="flex items-center gap-2">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                <Filter className="size-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-zinc-900">Filter Riwayat Sedekah Sampah</h3>
+                <p className="text-[11px] text-zinc-400">Saring riwayat amal sedekah sampah daur ulang Anda</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-[11px] font-medium text-zinc-600 border-zinc-200 bg-zinc-50">
+                {filtered.length} dari {rows.length} Data
+              </Badge>
+              {isFilterActive && (
+                <Button variant="ghost" size="sm" onClick={resetFilters} className="h-7 text-[11px] text-rose-600 hover:text-rose-700 hover:bg-rose-50 gap-1 px-2">
+                  <X className="size-3" /> Reset Filter
+                </Button>
+              )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 size-3.5 text-zinc-400" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-zinc-400 pointer-events-none" />
               <Input
                 placeholder="Cari kode trx / sampah..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-8 pl-8 text-xs bg-white border-zinc-200"
+                className="h-9.5 w-full pl-9 pr-8 text-xs bg-zinc-50/50 border-zinc-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
               />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
             </div>
 
             <Select value={filterWaktu} onValueChange={setFilterWaktu}>
-              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
-                <Calendar className="size-3.5 mr-1.5 text-zinc-400" />
-                <SelectValue placeholder="Periode Waktu" />
+              <SelectTrigger className="!w-full w-full h-9.5 rounded-xl bg-zinc-50/50 border-zinc-200 text-xs text-zinc-700 hover:bg-white hover:border-zinc-300 transition focus:ring-2 focus:ring-emerald-500/20">
+                <div className="flex items-center gap-2 truncate">
+                  <Calendar className="size-3.5 text-emerald-600 shrink-0" />
+                  <SelectValue placeholder="Periode Waktu" />
+                </div>
               </SelectTrigger>
               <SelectContent>
                 {waktuOptions.map((opt) => (
@@ -1533,9 +1624,11 @@ function SedekahView({ data }: { data: any }) {
             </Select>
 
             <Select value={filterKategori} onValueChange={setFilterKategori}>
-              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
-                <Recycle className="size-3.5 mr-1.5 text-emerald-600" />
-                <SelectValue placeholder="Kategori" />
+              <SelectTrigger className="!w-full w-full h-9.5 rounded-xl bg-zinc-50/50 border-zinc-200 text-xs text-zinc-700 hover:bg-white hover:border-zinc-300 transition focus:ring-2 focus:ring-emerald-500/20">
+                <div className="flex items-center gap-2 truncate">
+                  <Recycle className="size-3.5 text-emerald-600 shrink-0" />
+                  <SelectValue placeholder="Kategori" />
+                </div>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" className="text-xs">Semua Kategori</SelectItem>
@@ -1546,8 +1639,11 @@ function SedekahView({ data }: { data: any }) {
             </Select>
 
             <Select value={filterQc} onValueChange={setFilterQc}>
-              <SelectTrigger className="h-8 text-xs bg-white border-zinc-200">
-                <SelectValue placeholder="Status QC" />
+              <SelectTrigger className="!w-full w-full h-9.5 rounded-xl bg-zinc-50/50 border-zinc-200 text-xs text-zinc-700 hover:bg-white hover:border-zinc-300 transition focus:ring-2 focus:ring-emerald-500/20">
+                <div className="flex items-center gap-2 truncate">
+                  <ShieldCheck className="size-3.5 text-teal-600 shrink-0" />
+                  <SelectValue placeholder="Status QC" />
+                </div>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all" className="text-xs">Semua Status QC</SelectItem>
@@ -1561,14 +1657,14 @@ function SedekahView({ data }: { data: any }) {
           </div>
 
           {filterWaktu === 'custom' && (
-            <div className="flex flex-wrap items-end gap-2.5 rounded-lg bg-emerald-50/60 p-2.5 border border-emerald-100">
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900">Dari Tanggal</label>
-                <Input type="date" value={customDari} onChange={(e) => setCustomDari(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+            <div className="flex flex-wrap items-end gap-3 rounded-xl bg-emerald-50/70 p-3.5 border border-emerald-200/80 animate-in fade-in slide-in-from-top-1">
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[140px]">
+                <label className="text-[11px] font-semibold text-emerald-900">Dari Tanggal</label>
+                <Input type="date" value={customDari} onChange={(e) => setCustomDari(e.target.value)} className="h-9 bg-white border-emerald-200 text-xs rounded-lg" />
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-emerald-900">Sampai Tanggal</label>
-                <Input type="date" value={customSampai} onChange={(e) => setCustomSampai(e.target.value)} className="h-8 w-36 bg-white border-zinc-200 text-xs" />
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[140px]">
+                <label className="text-[11px] font-semibold text-emerald-900">Sampai Tanggal</label>
+                <Input type="date" value={customSampai} onChange={(e) => setCustomSampai(e.target.value)} className="h-9 bg-white border-emerald-200 text-xs rounded-lg" />
               </div>
             </div>
           )}
