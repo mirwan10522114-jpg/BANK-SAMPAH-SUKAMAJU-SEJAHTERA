@@ -125,6 +125,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Rekam Log Tindakan Harian agar Checklist Tugas Admin Otomatis Selesai
+    if (sentCount > 0) {
+      try {
+        const { recordDailyTaskLog } = await import('@/backend/lib/daily-task-log')
+        await recordDailyTaskLog({
+          taskKey: 'blast_pengumuman',
+          action: 'blast_email',
+          sentCount,
+          failedCount,
+          notes: `Blast Pengumuman: ${judul}`,
+        })
+      } catch (logErr) {
+        console.warn('[Blast Pengumuman] Gagal catat log harian:', logErr)
+      }
+    }
+
     return NextResponse.json({
       success: true,
       sentCount,

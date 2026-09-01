@@ -125,6 +125,7 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
   const [showDailyChecklist, setShowDailyChecklist] = useState(false)
   const [dailyData, setDailyData] = useState<any>(null)
   const [dailyLoading, setDailyLoading] = useState(false)
+  const [pengumumanTab, setPengumumanTab] = useState<'pengumuman' | 'tagihan' | 'simpanan_wajib'>('pengumuman')
 
   const loadDailyChecklist = async () => {
     setDailyLoading(true)
@@ -558,7 +559,12 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
             {section === 'laporan' && <LaporanLabaRugi />}
             {section === 'edukasi' && <ManajemenEdukasi />}
             {section === 'kegiatan' && <ManajemenKegiatan />}
-            {section === 'pengumuman' && <PengumumanTagihanView />}
+            {section === 'pengumuman' && (
+              <PengumumanTagihanView
+                initialTab={pengumumanTab}
+                onTabChange={(t) => setPengumumanTab(t)}
+              />
+            )}
           </div>
         </main>
       </div>
@@ -632,8 +638,9 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
         data={dailyData}
         loading={dailyLoading}
         onRefresh={loadDailyChecklist}
-        onNavigate={(sec: string) => {
+        onNavigate={(sec: string, targetTab?: string) => {
           setSection(sec as Section)
+          if (targetTab) setPengumumanTab(targetTab as any)
           setShowDailyChecklist(false)
           setSidebarOpen(false)
         }}
@@ -655,8 +662,23 @@ export default AdminPanel
 // ============================================================
 // PengumumanTagihanView — Blast Pengumuman + Tagihan Pinjaman + Reminder Simpanan Wajib
 // ============================================================
-function PengumumanTagihanView() {
-  const [tab, setTab] = useState<'pengumuman' | 'tagihan' | 'simpanan_wajib'>('pengumuman')
+function PengumumanTagihanView({
+  initialTab = 'pengumuman',
+  onTabChange,
+}: {
+  initialTab?: 'pengumuman' | 'tagihan' | 'simpanan_wajib'
+  onTabChange?: (tab: 'pengumuman' | 'tagihan' | 'simpanan_wajib') => void
+} = {}) {
+  const [tab, setTab] = useState<'pengumuman' | 'tagihan' | 'simpanan_wajib'>(initialTab)
+
+  useEffect(() => {
+    if (initialTab) setTab(initialTab)
+  }, [initialTab])
+
+  const switchTab = (t: 'pengumuman' | 'tagihan' | 'simpanan_wajib') => {
+    setTab(t)
+    onTabChange?.(t)
+  }
 
   return (
     <div className="space-y-4">
@@ -670,19 +692,19 @@ function PengumumanTagihanView() {
       {/* Tab Switcher */}
       <div className="flex gap-2 border-b">
         <button
-          onClick={() => setTab('pengumuman')}
+          onClick={() => switchTab('pengumuman')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === 'pengumuman' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-zinc-500 hover:text-zinc-700'}`}
         >
           📢 Blast Pengumuman
         </button>
         <button
-          onClick={() => setTab('tagihan')}
+          onClick={() => switchTab('tagihan')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === 'tagihan' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-zinc-500 hover:text-zinc-700'}`}
         >
           📌 Tagihan Pinjaman
         </button>
         <button
-          onClick={() => setTab('simpanan_wajib')}
+          onClick={() => switchTab('simpanan_wajib')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === 'simpanan_wajib' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-zinc-500 hover:text-zinc-700'}`}
         >
           💰 Reminder Simpanan Wajib
@@ -1464,12 +1486,37 @@ function DailyChecklistModal({
   data: any
   loading: boolean
   onRefresh: () => void
-  onNavigate: (section: string) => void
+  onNavigate: (section: string, targetTab?: string) => void
 }) {
   const [runningAction, setRunningAction] = useState<string | null>(null)
 
-  const summary = data?.summary || { totalTasks: 4, completedTasks: 0, pendingTasks: 4, progressPercent: 0, isAllDone: false }
+  const summary = data?.summary || { totalTasks: 5, completedTasks: 0, pendingTasks: 5, progressPercent: 0, isAllDone: false }
   const tasks = data?.tasks || []
+
+  const handleMarkDone = async (taskKey: string, taskTitle?: string) => {
+    setRunningAction(taskKey)
+    try {
+      const res = await fetch('/api/admin/daily-checklist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskKey,
+          action: 'manual_done',
+          notes: `Ditandai selesai manual oleh admin: ${taskTitle || taskKey}`,
+        }),
+      })
+      const d = await res.json()
+      if (d.success) {
+        onRefresh()
+      } else {
+        alert(d.error || 'Gagal menandai tugas selesai')
+      }
+    } catch (e: any) {
+      alert('Gagal: ' + e.message)
+    } finally {
+      setRunningAction(null)
+    }
+  }
 
   const handleBlastPinjaman = async () => {
     if (!confirm('Kirim email tagihan angsuran pinjaman ke SEMUA anggota yang jatuh tempo / terlambat?')) return
@@ -1592,7 +1639,7 @@ function DailyChecklistModal({
                     SELURUH TUGAS HARI INI TELAH SELESAI! <Sparkles className="size-4 text-amber-300" />
                   </h4>
                   <p className="text-xs text-emerald-50 mt-1 leading-relaxed">
-                    Kerja bagus! Seluruh tagihan pinjaman angsuran, pengingat simpanan wajib, verifikasi QC sampah, dan ketersediaan stok telah tertangani dengan baik. Operasional Bank Sampah & Koperasi Sukamaju Sejahtera berjalan prima hari ini.
+                    Kerja bagus! Seluruh tagihan pinjaman angsuran, pengingat simpanan wajib, publikasi pengumuman, verifikasi QC sampah, dan ketersediaan stok telah tertangani dengan baik. Operasional Bank Sampah & Koperasi Sukamaju Sejahtera berjalan prima hari ini.
                   </p>
                 </div>
               </div>
@@ -1604,6 +1651,7 @@ function DailyChecklistModal({
             {tasks.map((task: any) => {
               const isPinjaman = task.id === 'pinjaman_reminders'
               const isSimpanan = task.id === 'simpanan_wajib_reminder'
+              const isPengumuman = task.id === 'blast_pengumuman'
               const isQc = task.id === 'antrian_qc_verification'
               const isStok = task.id === 'stok_produk_monitoring'
 
@@ -1701,7 +1749,7 @@ function DailyChecklistModal({
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => onNavigate('pengumuman')}
+                            onClick={() => onNavigate('pengumuman', 'tagihan')}
                             className="text-xs h-8 border-zinc-300"
                           >
                             Buka Tagihan <ArrowUpRight className="size-3.5 ml-1" />
@@ -1728,12 +1776,23 @@ function DailyChecklistModal({
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => onNavigate('pengumuman')}
+                            onClick={() => onNavigate('pengumuman', 'simpanan_wajib')}
                             className="text-xs h-8 border-zinc-300"
                           >
                             Buka Simpanan <ArrowUpRight className="size-3.5 ml-1" />
                           </Button>
                         </>
+                      )}
+
+                      {isPengumuman && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onNavigate('pengumuman', 'pengumuman')}
+                          className="text-xs h-8 border-zinc-300"
+                        >
+                          Buka Pengumuman <ArrowUpRight className="size-3.5 ml-1" />
+                        </Button>
                       )}
 
                       {isQc && (
@@ -1758,6 +1817,24 @@ function DailyChecklistModal({
                           className="text-xs h-8 border-zinc-300"
                         >
                           Buka Inventaris <ArrowUpRight className="size-3.5 ml-1" />
+                        </Button>
+                      )}
+
+                      {/* Manual "Tandai Selesai" button if pending */}
+                      {!task.isDone && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleMarkDone(task.id, task.title)}
+                          disabled={runningAction === task.id}
+                          className="text-xs h-8 border-emerald-300 text-emerald-800 hover:bg-emerald-50 bg-white"
+                        >
+                          {runningAction === task.id ? (
+                            <Loader2 className="size-3 animate-spin mr-1 text-emerald-600" />
+                          ) : (
+                            <CheckCircle2 className="size-3.5 mr-1 text-emerald-600" />
+                          )}
+                          Tandai Selesai
                         </Button>
                       )}
                     </div>

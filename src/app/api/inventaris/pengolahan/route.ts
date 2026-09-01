@@ -135,5 +135,18 @@ export async function POST(req: NextRequest) {
     await addProductStock(p.id, toNumber(o.quantity), 'processing_output', 'processing_transaction', tx.id, actor?.id, `Hasil pengolahan ${tx.id.slice(-6)}`)
   }
 
+  // Rekam Log Tindakan Harian agar Checklist Stok Produk Admin Otomatis Selesai
+  try {
+    const { recordDailyTaskLog } = await import('@/backend/lib/daily-task-log')
+    await recordDailyTaskLog({
+      taskKey: 'stok_produk_monitoring',
+      action: 'pengolahan_stok',
+      sentCount: outputs.length,
+      notes: `Pengolahan ${outputs.length} varian produk olahan`,
+    })
+  } catch (logErr) {
+    console.warn('[Pengolahan Stok] Gagal catat log harian:', logErr)
+  }
+
   return NextResponse.json(tx, { status: 201 })
 }

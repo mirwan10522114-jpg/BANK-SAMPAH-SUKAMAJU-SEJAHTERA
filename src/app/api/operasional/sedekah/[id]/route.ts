@@ -197,6 +197,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
+  // Rekam Log Tindakan Harian agar Checklist Tugas QC Admin Otomatis Selesai
+  try {
+    const { recordDailyTaskLog } = await import('@/backend/lib/daily-task-log')
+    await recordDailyTaskLog({
+      taskKey: 'antrian_qc_verification',
+      action: 'qc_verified',
+      sentCount: 1,
+      notes: `Verifikasi QC Sedekah: ${kodeTransaksi || existing.id}`,
+    })
+  } catch (logErr) {
+    console.warn('[QC Sedekah] Gagal catat log harian:', logErr)
+  }
+
   return NextResponse.json({
     ...updated,
     _meta: {

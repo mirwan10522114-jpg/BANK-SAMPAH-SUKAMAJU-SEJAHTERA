@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
 
     const simpananLog = dailyLogs.find((l: any) => (l.taskKey || l.taskkey) === 'simpanan_wajib_reminder')
     const pinjamanLog = dailyLogs.find((l: any) => (l.taskKey || l.taskkey) === 'pinjaman_reminders')
+    const pengumumanLog = dailyLogs.find((l: any) => (l.taskKey || l.taskkey) === 'blast_pengumuman')
     const qcLog = dailyLogs.find((l: any) => (l.taskKey || l.taskkey) === 'antrian_qc_verification')
     const stokLog = dailyLogs.find((l: any) => (l.taskKey || l.taskkey) === 'stok_produk_monitoring')
 
@@ -204,6 +205,28 @@ export async function GET(req: NextRequest) {
         },
       },
       {
+        id: 'blast_pengumuman',
+        title: 'Publikasi & Blast Pengumuman Warga',
+        description: pengumumanLog
+          ? `✓ Pengumuman telah di-blast hari ini (${pengumumanLog.sentCount} email terkirim pada ${new Date(pengumumanLog.updatedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB). Selesai untuk hari ini!`
+          : 'Publikasi info kegiatan, edukasi lingkungan, jadwal penimbangan, atau pengumuman massal ke seluruh warga/nasabah.',
+        category: 'publikasi',
+        iconName: 'Megaphone',
+        isDone: !!pengumumanLog,
+        count: !!pengumumanLog ? 0 : 1,
+        priority: 'medium',
+        actionLabel: !!pengumumanLog ? 'Kirim Ulang Blast' : 'Buat & Blast Pengumuman',
+        targetSection: 'pengumuman',
+        targetTab: 'pengumuman',
+        details: {
+          lastBlast: pengumumanLog ? {
+            sentCount: pengumumanLog.sentCount,
+            time: new Date(pengumumanLog.updatedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            notes: pengumumanLog.notes,
+          } : null,
+        },
+      },
+      {
         id: 'antrian_qc_verification',
         title: 'Verifikasi Antrian QC Sampah (Nabung & Sedekah)',
         description: totalPendingQc === 0
@@ -292,7 +315,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'taskKey wajib diisi' }, { status: 400 })
     }
 
-    const todayDateString = new Date().toISOString().split('T')[0]
+    const todayDateString = getLocalDateString()
     const result = await recordDailyTaskLog({
       taskKey,
       dateString: todayDateString,
