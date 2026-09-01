@@ -161,14 +161,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
+  const kodeTransaksi = updated.kodeTransaksi || `SD/${id.slice(-6).toUpperCase()}`
+
   // Send struk email if transitioning from menunggu_qc
   if (isFirstQc) {
     try {
       const email = updated.user?.email
       const name = updated.user?.name || updated.donorName || 'Donatur'
       if (email) {
-        const { sendStrukEmail } = await import('@/lib/email')
-        const kodeTransaksi = updated.kodeTransaksi || `SD/${id.slice(-6).toUpperCase()}`
+        const { sendStrukEmail } = await import('@/backend/lib/email')
         let strukHtml = `<div class="struk-section"><div class="info-row"><span class="key">Kode Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal Setor</span><span class="val">${new Date(updated.transactedAt).toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Waktu Verifikasi QC</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Donatur</span><span class="val bold">${name}</span></div><div class="info-row"><span class="key">Status QC</span><span class="val bold" style="color:#047857;">${newQcStatus === 'passed' ? 'Lolos Bersih' : 'Disesuaikan'}</span></div></div>`
         strukHtml += `<div class="struk-section"><div class="label">Detail Sedekah Sampah & Hasil QC</div><table class="items-table"><thead><tr><th>Kategori</th><th>Nama</th><th class="center">Kotor</th><th class="center">Bersih</th><th class="center">Susut</th></tr></thead><tbody>`
         for (const item of updated.items) {
@@ -182,14 +183,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
         await sendStrukEmail({
           to: email,
-          recipientName: name,
-          receiptNo: kodeTransaksi,
-          transactionType: 'sedekah',
-          totalAmount: 0,
-          totalWeight: newTotalBersih,
-          pointsEarned: 0,
-          customHtmlBody: strukHtml,
-          transactionDate: updated.transactedAt,
+          subject: `✅ Struk Sedekah Sampah (Lolos QC) — ${kodeTransaksi}`,
+          strukHtml,
         })
       }
     } catch (err) {
