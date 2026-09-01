@@ -1003,41 +1003,58 @@ function TagihanPinjamanView() {
       </div>
 
       {/* Filter Bar & Tagih Action */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-zinc-200 bg-white p-3 shadow-2xs">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs font-bold text-zinc-700 mr-1">Filter Jatuh Tempo:</span>
-          {filterOptions.map((f) => (
-            <button
-              key={f.v}
-              onClick={() => setFilter(f.v as any)}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white p-3.5 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-700">
+            <Filter className="size-4 text-emerald-600" />
+            <span>Filter Jatuh Tempo:</span>
+          </div>
+
+          <div className="relative min-w-[260px] sm:min-w-[320px]">
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as any)}
               className={cn(
-                'flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold transition-all',
-                filter === f.v
-                  ? 'bg-emerald-700 text-white shadow-2xs ring-2 ring-emerald-500/30'
-                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900',
-                f.isHighlight && filter !== f.v && 'bg-rose-100 text-rose-800 hover:bg-rose-200'
+                'w-full appearance-none rounded-lg border py-2 pl-3 pr-9 text-xs font-bold transition-all focus:outline-none focus:ring-2 cursor-pointer shadow-2xs',
+                filter === 'terlambat'
+                  ? 'border-rose-300 bg-rose-50 text-rose-800 focus:ring-rose-400'
+                  : filter === 'h0' || filter === 'h3'
+                  ? 'border-orange-300 bg-orange-50 text-orange-800 focus:ring-orange-400'
+                  : 'border-zinc-300 bg-zinc-50 text-zinc-800 focus:border-emerald-600 focus:ring-emerald-500'
               )}
             >
-              <span>{f.l}</span>
-              <span className={cn(
-                'rounded-full px-1.5 py-0.2 text-[10px] font-black',
-                filter === f.v ? 'bg-white/30 text-white' : 'bg-zinc-200 text-zinc-700'
-              )}>
-                {f.count}
-              </span>
-            </button>
-          ))}
+              {filterOptions.map((f) => (
+                <option key={f.v} value={f.v}>
+                  {f.l} ({f.count})
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
+          </div>
+
+          {filter !== 'all' && (
+            <span className={cn(
+              'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold shadow-2xs',
+              filter === 'terlambat'
+                ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                : filter === 'h0' || filter === 'h3'
+                ? 'bg-orange-100 text-orange-800 border border-orange-200'
+                : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+            )}>
+              Aktif: {filterOptions.find(f => f.v === filter)?.count} pinjaman
+            </span>
+          )}
         </div>
 
         <div>
           <Button
             onClick={handleTagihSemua}
             disabled={sending === 'all' || pinjamans.length === 0}
-            className="bg-rose-600 hover:bg-rose-700 text-white shadow-xs font-bold text-xs h-9"
+            className="bg-rose-600 hover:bg-rose-700 text-white shadow-xs font-bold text-xs h-9 w-full sm:w-auto"
             size="sm"
           >
             {sending === 'all' ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Mail className="size-4 mr-1.5" />}
-            Tagih Semua Sesuai Filter ({pinjamans.length})
+            Tagih Sesuai Filter ({pinjamans.length})
           </Button>
         </div>
       </div>
