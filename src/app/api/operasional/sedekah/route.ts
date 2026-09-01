@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
       }
       if (email) {
         let strukHtml = `<div class="struk-header"><div class="icon">🤲</div><h2>Bank Sampah</h2><div class="sub">Sukamaju Sejahtera</div><div class="badge">STRUK SEDEKAH SAMPAH</div></div>`
-        strukHtml += `<div class="struk-section"><div class="info-row"><span class="key">Kode Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal</span><span class="val">${new Date(tx.transactedAt).toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Donatur</span><span class="val bold">${name}</span></div><div class="info-row"><span class="key">Status QC</span><span class="val capitalize">${qcStatus === 'passed' ? 'Lulus' : (qcStatus === 'adjusted' ? 'Disesuaikan' : (qcStatus === 'tidak_perlu' ? 'Sampah Bersih' : qcStatus))}</span></div></div>`
+        strukHtml += `<div class="struk-section"><h3 style="margin:0 0 12px 0; color:#064e3b; font-size:15px; text-transform:uppercase; text-align:center;">Sedekah Sampah</h3><div class="info-row"><span class="key">Kode Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal</span><span class="val">${new Date(tx.transactedAt).toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Donatur</span><span class="val bold">${name}</span></div><div class="info-row"><span class="key">Status QC</span><span class="val capitalize">${qcStatus === 'passed' ? 'Lulus' : (qcStatus === 'adjusted' ? 'Disesuaikan' : (qcStatus === 'tidak_perlu' ? 'Sampah Bersih' : qcStatus))}</span></div></div>`
         // Detail item dengan info QC
         strukHtml += `<div class="struk-section"><div class="label">Detail Jenis Sampah & QC</div><table class="items-table"><thead><tr><th>Kategori</th><th>Nama</th><th class="center">Kotor</th><th class="center">Bersih</th><th class="center">Susut</th></tr></thead><tbody>`
         for (const r of itemRows) {
@@ -183,14 +183,8 @@ export async function POST(req: NextRequest) {
         strukHtml += `<div class="struk-footer"><div class="thanks">Terima kasih atas sedekah sampah Anda</div></div>`
         await sendStrukEmail({
           to: email,
-          recipientName: name,
-          receiptNo: kodeTransaksi,
-          transactionType: 'sedekah',
-          totalAmount: 0,
-          totalWeight: toNumber(tx.totalWeight),
-          pointsEarned: 0,
-          customHtmlBody: strukHtml,
-          transactionDate: tx.transactedAt,
+          subject: `Sedekah Sampah: ${kodeTransaksi}`,
+          strukHtml: strukHtml
         })
       }
     } catch (e) {

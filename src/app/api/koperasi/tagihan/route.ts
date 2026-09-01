@@ -167,7 +167,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Catat ke AdminDailyTaskLog agar checklist harian menandai tugas selesai untuk hari ini
-    const todayDateString = now.toISOString().split('T')[0]
+    const todayDateString = new Date().toISOString().split('T')[0]
     const { recordDailyTaskLog } = await import('@/backend/lib/daily-task-log')
     await recordDailyTaskLog({
       taskKey: 'pinjaman_reminders',
@@ -256,7 +256,7 @@ export async function GET(req: NextRequest) {
       nama: p.anggota?.nama || p.anggota?.user?.name || '-',
       nomorAnggota: p.anggota?.nomorAnggota || '-',
       email: p.anggota?.user?.email || '',
-      phone: p.anggota?.user?.phone || p.anggota?.noHp || '',
+      phone: p.anggota?.user?.phone || p.anggota?.user?.phone || '',
       jumlahPinjaman: toNumber(p.jumlahPinjaman),
       angsuranPerBulan: toNumber(p.angsuranPerBulan),
       sisaPinjaman: toNumber(p.sisaPinjaman),

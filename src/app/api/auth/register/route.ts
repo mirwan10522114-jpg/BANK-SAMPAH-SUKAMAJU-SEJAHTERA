@@ -136,6 +136,33 @@ export async function POST(req: NextRequest) {
     }, { status: 201 })
   }
 
+  // ============================================================
+  // Notifikasi Admin Pendaftar Baru (In-App)
+  // ============================================================
+  try {
+    const admins = await db.user.findMany({
+      where: {
+        roles: {
+          contains: '"admin"'
+        }
+      },
+      select: { id: true }
+    })
+    
+    if (admins.length > 0) {
+      await db.notification.createMany({
+        data: admins.map((a) => ({
+          userId: a.id,
+          title: 'Pendaftar Baru',
+          message: `Pengguna baru mendaftar: ${user.name} (${user.email}) sebagai ${roles.join(', ')}.`,
+          type: 'info',
+        }))
+      })
+    }
+  } catch (error) {
+    console.error('[Admin Notification DB] Failed:', error)
+  }
+
   // Email berhasil dikirim — JANGAN return OTP ke frontend (keamanan)
   return NextResponse.json({
     userId: user.id,

@@ -255,7 +255,7 @@ const fadeSlide = {
   initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: -12 },
-  transition: { duration: 0.25, ease: 'easeOut' },
+  transition: { duration: 0.2, ease: 'easeInOut' as any },
 }
 
 const staggerContainer = {
@@ -791,7 +791,7 @@ function ProductCard({
         />
         {product.category && (
           <Badge className="absolute left-2 top-2 rounded-full bg-[#2d5016]/80 text-[10px] font-semibold text-white backdrop-blur-sm">
-            {typeof product.category === 'object' ? product.category.name : product.category}
+            {product.category}
           </Badge>
         )}
         {product.weightGram > 0 && (
@@ -969,9 +969,7 @@ function DetailView({
   if (!product) return null
 
   const images = product.images?.length > 0
-  ? product.images
-  : product.image
-    ? [product.image]
+    ? product.images
     : [getProductPlaceholder(product.name, 0)]
   const isOutOfStock = product.stock <= 0
 
@@ -1033,7 +1031,7 @@ function DetailView({
           {product.category && (
             <Badge className="mb-2 w-fit rounded-full bg-[#4caf50]/15 text-[#2d5016] text-xs font-semibold">
               <Tag className="mr-1 size-3" />
-              {typeof product.category === 'object' ? product.category.name : product.category}
+              {product.category}
             </Badge>
           )}
 

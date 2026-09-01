@@ -11,6 +11,7 @@ import {
   bayarAngsuran,
   generateTxNo,
   calcAngsuranSchedule,
+  recordKasTx,
 } from '@/lib/business'
 import { toNumber } from '@/lib/format'
 
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
       skipQc?: boolean // TELLER menandai sampah bersih → langsung finalize, saldo masuk
       // sedekah sampah
       sedekahItems?: { wasteItemId: string; quantityBeforeQc: number; quantityAfterQc?: number; qcReason?: string }[]
+      qcMode?: 'bersih' | 'langsung' | 'nanti'
       // setor simpanan
       jenisSimpanan?: 'pokok' | 'wajib' | 'sukarela'
       jumlah?: number
@@ -365,11 +367,23 @@ export async function POST(req: NextRequest) {
         const ddmmyyyy = `${String(new Date().getDate()).padStart(2, '0')}${String(new Date().getMonth() + 1).padStart(2, '0')}${new Date().getFullYear()}`
         const kodeTransaksi = `KWT / ${ddmmyyyy} / ${receiptNo.slice(-5)}`
 
+        const okSteps = result.steps.filter((s: any) => s.status === 'ok')
+        const titleList = okSteps.map((s: any) => {
+          if (s.type === 'nabung') return 'Nabung Sampah'
+          if (s.type === 'sedekah_sampah') return 'Sedekah Sampah'
+          if (s.type === 'setor_simpanan') return 'Setor Simpanan'
+          if (s.type === 'tarik_sukarela') return 'Penarikan Sukarela'
+          if (s.type === 'pengajuan_pinjaman') return 'Pengajuan Pinjaman'
+          if (s.type === 'bayar_angsuran') return 'Bayar Angsuran'
+          return s.type.replace(/_/g, ' ')
+        })
+        const uniqueTitles = Array.from(new Set(titleList))
+        const txTitle = uniqueTitles.length > 0 ? uniqueTitles.join(' & ') : 'Multi Transaksi'
+
         let html = `<div class="struk-header"><div class="icon">🧾</div><h2>Bank Sampah</h2><div class="sub">Sukamaju Sejahtera</div><div class="desc">Teller Wizard — Multi Transaksi</div><div class="badge">KUITANSI TRANSAKSI</div></div>`
-        html += `<div class="struk-section"><div class="info-row"><span class="key">No. Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${user.name}</span></div><div class="info-row"><span class="key">Kode</span><span class="val mono">${user.memberCode || '-'}</span></div><div class="info-row"><span class="key">Teller</span><span class="val">${actor?.name || '-'}</span></div></div>`
+        html += `<div class="struk-section"><h3 style="margin:0 0 12px 0; color:#064e3b; font-size:15px; text-transform:uppercase; text-align:center;">${txTitle}</h3><div class="info-row"><span class="key">No. Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${user.name}</span></div><div class="info-row"><span class="key">Kode</span><span class="val mono">${user.memberCode || '-'}</span></div><div class="info-row"><span class="key">Teller</span><span class="val">${actor?.name || '-'}</span></div></div>`
 
         // Detail per operasi dengan kode transaksi
-        const okSteps = result.steps.filter((s: any) => s.status === 'ok')
         if (okSteps.length > 0) {
           // Header tabel ringkasan operasi
           html += `<div class="struk-section"><div class="label">Rincian Operasi & Kode Transaksi</div><table class="items-table"><thead><tr><th>Operasi</th><th>Kode Transaksi</th><th class="right">Jumlah/Detail</th></tr></thead><tbody>`

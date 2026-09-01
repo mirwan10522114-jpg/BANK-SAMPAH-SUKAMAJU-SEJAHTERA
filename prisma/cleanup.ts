@@ -1,6 +1,6 @@
 // Cleanup script: empty all tables EXCEPT WasteCategory, WasteItem, WastePrice
 // Then re-seed minimal infrastructure (admin user, koperasi settings, point rule, member code counter)
-import { db } from '../src/lib/db'
+import { db } from '../src/backend/lib/db'
 
 async function main() {
   console.log('🧹 Emptying all tables EXCEPT WasteCategory, WasteItem, WastePrice...')

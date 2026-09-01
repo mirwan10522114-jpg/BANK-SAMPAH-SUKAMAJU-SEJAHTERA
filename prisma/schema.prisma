@@ -73,6 +73,20 @@ model User {
   bankSampahKasCreated  BankSampahKas[]          @relation("BankSampahKasCreatedBy")
   createdTokoOrder      TokoOrder[]              @relation("TokoOrderCreatedBy")
   createdTokoStatus     TokoOrderStatusHistory[]  @relation("TokoStatusCreatedBy")
+  notifications         Notification[]           @relation("NotificationUser")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String   @db.Text
+  isRead    Boolean  @default(false)
+  type      String   @default("info")
+  link      String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation("NotificationUser", fields: [userId], references: [id])
 }
 
 model MemberCodeCounter {

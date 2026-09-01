@@ -250,7 +250,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const latestBalance = await db.balance.findUnique({ where: { userId } })
       
       let html = `<div class="struk-header"><div class="icon">✅</div><h2>Bank Sampah</h2><div class="sub">Sukamaju Sejahtera</div><div class="desc">Verifikasi Mutu & Timbang Bersih (QC)</div><div class="badge">STRUK TABUNGAN — QC SELESAI</div></div>`
-      html += `<div class="struk-section"><div class="info-row"><span class="key">No. Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal Setor</span><span class="val">${new Date(existing.transactedAt).toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Waktu Verifikasi QC</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${existing.user.name}</span></div><div class="info-row"><span class="key">Kode Member</span><span class="val mono">${existing.user.memberCode || '-'}</span></div><div class="info-row"><span class="key">Petugas QC</span><span class="val">${actor?.name || 'Petugas QC'}</span></div><div class="info-row"><span class="key">Hasil QC</span><span class="val bold" style="color:#047857;">${newQcStatus === 'passed' ? 'Lolos Bersih' : 'Disesuaikan'}</span></div></div>`
+      html += `<div class="struk-section"><h3 style="margin:0 0 12px 0; color:#064e3b; font-size:15px; text-transform:uppercase; text-align:center;">Verifikasi QC Tabungan</h3><div class="info-row"><span class="key">No. Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal Setor</span><span class="val">${new Date(existing.transactedAt).toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Waktu Verifikasi QC</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${existing.user.name}</span></div><div class="info-row"><span class="key">Kode Member</span><span class="val mono">${existing.user.memberCode || '-'}</span></div><div class="info-row"><span class="key">Petugas QC</span><span class="val">${actor?.name || 'Petugas QC'}</span></div><div class="info-row"><span class="key">Hasil QC</span><span class="val bold" style="color:#047857;">${newQcStatus === 'passed' ? 'Lolos Bersih' : 'Disesuaikan'}</span></div></div>`
       
       if (qcNotes) {
         html += `<div class="struk-section"><div class="info-row"><span class="key">Catatan QC</span><span class="val" style="color:#b45309;font-style:italic;">${qcNotes}</span></div></div>`
@@ -289,7 +289,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       taskKey: 'antrian_qc_verification',
       action: 'qc_verified',
       sentCount: 1,
-      notes: `Verifikasi QC Nabung: ${kodeTransaksi || existing.id}`,
+      notes: `Verifikasi QC Nabung: ${existing.id}`,
     })
   } catch (logErr) {
     console.warn('[QC Nabung] Gagal catat log harian:', logErr)

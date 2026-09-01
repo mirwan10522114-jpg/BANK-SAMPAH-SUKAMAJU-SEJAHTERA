@@ -169,6 +169,7 @@ export async function GET(req: NextRequest) {
         const updatedOrder = await db.tokoOrder.findFirst({
           where: { OR: [{ orderNumber: orderId }, { midtransOrderId: orderId }] },
           select: {
+            id: true,
             orderNumber: true,
             paymentStatus: true,
             orderStatus: true,
@@ -211,6 +212,7 @@ export async function GET(req: NextRequest) {
         const updatedOrder = await db.tokoOrder.findFirst({
           where: { OR: [{ orderNumber: orderId }, { midtransOrderId: orderId }] },
           select: {
+            id: true,
             orderNumber: true,
             paymentStatus: true,
             orderStatus: true,
@@ -246,6 +248,10 @@ export async function GET(req: NextRequest) {
       // Midtrans API error (mis. 404 = transaksi belum ter-charge)
       // Abaikan — biarkan status DB yang dipakai
     }
+  }
+
+  if (!order) {
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
   // Hitung expiry: Midtrans Snap setting = 24 jam dari updatedAt

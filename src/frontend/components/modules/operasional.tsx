@@ -58,6 +58,7 @@ import {
   Save,
   FileText,
   Recycle,
+  ShieldCheck,
   Leaf,
   AlertCircle,
   CheckCircle2,

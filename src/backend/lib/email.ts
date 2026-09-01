@@ -196,7 +196,7 @@ interface SendStrukEmailParams {
   to: string
   subject: string
   strukHtml: string
-  attachments?: nodemailer.Attachment[]
+  attachments?: any[]
 }
 
 export async function sendStrukEmail(params: SendStrukEmailParams): Promise<{ success: boolean; error?: string }> {
@@ -602,3 +602,82 @@ export async function sendOrderConfirmationEmail(params: SendOrderEmailParams): 
     return { success: false, error: message }
   }
 }
+
+// =====================================================================
+// Email ke Admin: Pendaftar Baru
+// =====================================================================
+
+interface SendAdminNewUserParams {
+  to: string[] // List email admin
+  newUserName: string
+  newUserEmail: string
+  newUserPhone: string
+  newUserRoles: string[]
+}
+
+export async function sendAdminNewUserNotificationEmail(params: SendAdminNewUserParams): Promise<{ success: boolean; error?: string }> {
+  const { to, newUserName, newUserEmail, newUserPhone, newUserRoles } = params
+
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
+  if (!user || !pass) {
+    return { success: false, error: 'SMTP belum dikonfigurasi' }
+  }
+
+  if (!to || to.length === 0) {
+    return { success: false, error: 'Email admin tidak tersedia' }
+  }
+
+  const fromName = process.env.SMTP_FROM_NAME || 'Sistem Bank Sampah'
+  const fromEmail = process.env.SMTP_FROM_EMAIL || user
+
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <title>Pendaftar Baru</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f5f5dc;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:20px;">
+    <tr>
+      <td align="center">
+        <table width="500" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;padding:32px;">
+          <tr>
+            <td>
+              <h2 style="color:#2d5016;margin-top:0;">Pendaftar Baru!</h2>
+              <p>Halo Admin, ada pengguna baru yang baru saja mendaftar ke sistem:</p>
+              <ul>
+                <li><strong>Nama:</strong> ${newUserName}</li>
+                <li><strong>Email:</strong> ${newUserEmail}</li>
+                <li><strong>No Telepon:</strong> ${newUserPhone}</li>
+                <li><strong>Sebagai:</strong> ${newUserRoles.join(', ')}</li>
+              </ul>
+              <p>Silakan periksa di dashboard admin untuk melihat detail lebih lanjut.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+
+  try {
+    const transport = getTransporter()
+    // Kirim email ke masing-masing admin
+    for (const adminEmail of to) {
+      await transport.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to: adminEmail,
+        subject: `Pendaftar Baru: ${newUserName} - Bank Sampah Sukamaju`,
+        html,
+      })
+    }
+    return { success: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[Admin Notification Email] Error:', message)
+    return { success: false, error: message }
+  }
+}
+

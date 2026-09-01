@@ -370,4 +370,10 @@ export const api = {
     penjualanProduk: (filters?: { periode?: string; dari?: string; sampai?: string }) =>
       fetchApi<any>(`/laporan/penjualan-produk${filters ? '?' + new URLSearchParams(filters as any).toString() : ''}`),
   },
+
+  // Admin Notifications (In-App Lonceng Admin)
+  adminNotifications: {
+    list: () => fetchApi<any[]>('/notifications'),
+    markAsRead: (id?: string) => fetchApi<any>('/notifications', { method: 'PATCH', body: JSON.stringify(id ? { id } : {}) }),
+  },
 }

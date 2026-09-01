@@ -1894,7 +1894,7 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
 function PenarikanTab() {
   const [anggotaList, setAnggotaList] = useState<Anggota[]>([])
   const [anggotaId, setAnggotaId] = useState<string>('')
-  const [list, setList] = useState<any[]>([])
+  const [simpananList, setSimpananList] = useState<any[]>([])
   const [loadingAnggota, setLoadingAnggota] = useState(true)
   const [loadingList, setLoadingList] = useState(false)
 
@@ -1904,14 +1904,14 @@ function PenarikanTab() {
   const [alasan, setAlasan] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  // ---- Filter state (Daftar Pengajuan Penarikan) ----
+  // ---- Filter state (Daftar Penarikan) ----
   const [dariInput, setDariInput] = useState('')
   const [sampaiInput, setSampaiInput] = useState('')
   const [qInput, setQInput] = useState('')
   const [dari, setDari] = useState('')
   const [sampai, setSampai] = useState('')
   const [q, setQ] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all') // 'all' | 'menunggu' | 'disetujui' | 'ditolak' | 'dicairkan'
+  const [saldoSukarela, setSaldoSukarela] = useState<number>(0)
 
   const { strukData, strukOpen, setStrukOpen, showStruk } = useStruk()
 
@@ -1929,24 +1929,31 @@ function PenarikanTab() {
 
   const loadList = useCallback(async () => {
     if (!anggotaId) {
-      setList([])
+      setSimpananList([])
+      setSaldoSukarela(0)
       return
     }
     setLoadingList(true)
     try {
-      const data = await api.koperasi.penarikanList(anggotaId, {
-        status: statusFilter === 'all' ? '' : statusFilter,
-        dari,
-        sampai,
-        q,
-      })
-      setList(data)
+      const [data, agtData] = await Promise.all([
+        api.koperasi.simpananList(anggotaId, {
+          jenisSimpanan: 'sukarela',
+          tipe: 'tarik',
+          dari,
+          sampai,
+          q,
+        }),
+        api.anggota.get(anggotaId)
+      ])
+      setSimpananList(data)
+      const saldo = agtData?.simpananSaldos?.find((s: any) => s.jenisSimpanan === 'sukarela')?.saldo || 0
+      setSaldoSukarela(toNumber(saldo))
     } catch (e: any) {
       toast.error('Gagal memuat penarikan: ' + e.message)
     } finally {
       setLoadingList(false)
     }
-  }, [anggotaId, statusFilter, dari, sampai, q])
+  }, [anggotaId, dari, sampai, q])
 
   useEffect(() => {
     loadList()
@@ -1965,7 +1972,6 @@ function PenarikanTab() {
     setDari('')
     setSampai('')
     setQ('')
-    setStatusFilter('all')
   }
 
   const handleCreate = async () => {
@@ -1980,44 +1986,28 @@ function PenarikanTab() {
     }
     setSubmitting(true)
     try {
-      await api.koperasi.penarikanCreate({ anggotaId, jumlah: n, alasan })
-      toast.success('Pengajuan penarikan sukarela berhasil dibuat')
+      const res = await api.koperasi.simpananTx({
+        anggotaId,
+        jenisSimpanan: 'sukarela',
+        tipe: 'tarik',
+        jumlah: n,
+        keterangan: alasan,
+      })
+      toast.success('Penarikan sukarela berhasil dicairkan')
       setDialogOpen(false)
       setJumlah('')
       setAlasan('')
-      loadList()
-    } catch (e: any) {
-      toast.error(e.message || 'Gagal mengajukan penarikan')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const handleUpdate = async (
-    p: any,
-    status: 'disetujui' | 'ditolak' | 'dicairkan',
-  ) => {
-    try {
-      const res = await api.koperasi.penarikanUpdate(p.id, { status })
-      const label =
-        status === 'disetujui'
-          ? 'disetujui'
-          : status === 'ditolak'
-            ? 'ditolak'
-            : 'dicairkan'
-      toast.success(`Pengajuan ${p.nomorPengajuan} ${label}`)
-      // Tampilkan struk saat pencairan sukarela berhasil
-      if (status === 'dicairkan' && res) {
+      if (res) {
         showStruk({
           type: 'penarikan_sukarela',
-          receiptNo: res.nomorPengajuan || p.nomorPengajuan,
-          tanggal: res.tanggalPencairan || new Date().toISOString(),
-          anggotaName: res.anggota?.nama || '-',
-          anggotaCode: res.anggota?.nomorAnggota || '-',
+          receiptNo: res.nomorTransaksi,
+          tanggal: res.tanggalTransaksi || new Date().toISOString(),
+          anggotaName: anggotaList.find(a => a.id === anggotaId)?.nama || '-',
+          anggotaCode: anggotaList.find(a => a.id === anggotaId)?.nomorAnggota || '-',
           summary: [
             {
               label: 'Jumlah Ditarik',
-              value: formatRupiah(toNumber(res.jumlah ?? p.jumlah)),
+              value: formatRupiah(toNumber(res.jumlah)),
               highlight: true,
             },
             { label: 'Status', value: 'DANA DICAIRKAN' },
@@ -2027,7 +2017,9 @@ function PenarikanTab() {
       }
       loadList()
     } catch (e: any) {
-      toast.error(e.message || 'Gagal memproses penarikan')
+      toast.error(e.message || 'Gagal melakukan penarikan')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -2041,8 +2033,7 @@ function PenarikanTab() {
               Simpanan Sukarela
             </CardTitle>
             <CardDescription>
-              Pengajuan penarikan sukarela anggota — butuh persetujuan pengurus
-              sebelum dicairkan.
+              Penarikan dana simpanan sukarela anggota yang akan langsung dipotong dari saldo kas.
             </CardDescription>
           </div>
           <Button
@@ -2050,22 +2041,32 @@ function PenarikanTab() {
             disabled={!anggotaId}
             className="bg-emerald-600 text-white hover:bg-emerald-700"
           >
-            <Plus className="mr-1.5 h-4 w-4" /> Ajukan Penarikan
+            <Plus className="mr-1.5 h-4 w-4" /> Tarik Dana
           </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        <AnggotaSelector
-          value={anggotaId}
-          onChange={setAnggotaId}
-          anggotaList={anggotaList}
-          loading={loadingAnggota}
-        />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex-1">
+            <AnggotaSelector
+              value={anggotaId}
+              onChange={setAnggotaId}
+              anggotaList={anggotaList}
+              loading={loadingAnggota}
+            />
+          </div>
+          {anggotaId && (
+            <div className="flex min-w-[200px] flex-col justify-center rounded-lg border border-emerald-100 bg-emerald-50 p-4">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-emerald-800">Saldo Sukarela</p>
+              <p className="text-2xl font-bold text-emerald-700">{formatRupiah(saldoSukarela)}</p>
+            </div>
+          )}
+        </div>
 
         <div>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-semibold text-emerald-900">
-              Daftar Pengajuan Penarikan
+              Riwayat Penarikan Dana
             </p>
             {loadingList && <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />}
           </div>
@@ -2073,47 +2074,32 @@ function PenarikanTab() {
           {/* Filter bar */}
           <div className="mb-3 flex flex-wrap items-end gap-2 rounded-lg border border-emerald-100 bg-emerald-50/40 p-3">
             <div className="w-40">
-              <Label className="text-xs text-zinc-500">Status</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="h-9 bg-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua</SelectItem>
-                  <SelectItem value="menunggu">Menunggu</SelectItem>
-                  <SelectItem value="disetujui">Disetujui</SelectItem>
-                  <SelectItem value="ditolak">Ditolak</SelectItem>
-                  <SelectItem value="dicairkan">Dicairkan</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
               <Label className="text-xs text-zinc-500">Dari</Label>
               <Input
                 type="date"
                 value={dariInput}
                 onChange={(e) => setDariInput(e.target.value)}
-                className="h-9 w-36 bg-white"
+                className="h-9 bg-white"
               />
             </div>
-            <div>
+            <div className="w-40">
               <Label className="text-xs text-zinc-500">Sampai</Label>
               <Input
                 type="date"
                 value={sampaiInput}
                 onChange={(e) => setSampaiInput(e.target.value)}
-                className="h-9 w-36 bg-white"
+                className="h-9 bg-white"
               />
             </div>
             <div className="w-44">
-              <Label className="text-xs text-zinc-500">Cari No. Pengajuan</Label>
+              <Label className="text-xs text-zinc-500">Cari No. Penarikan</Label>
               <Input
                 value={qInput}
                 onChange={(e) => setQInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') applyFilters()
                 }}
-                placeholder="No. pengajuan..."
+                placeholder="No. transaksi..."
                 className="h-9 bg-white"
               />
             </div>
@@ -2128,10 +2114,9 @@ function PenarikanTab() {
             >
               Reset
             </Button>
-            {(dari || sampai || q || statusFilter !== 'all') && (
+            {(dari || sampai || q) && (
               <div className="ml-auto text-xs text-emerald-800">
                 Aktif: <span className="font-medium">{dari || '…'} — {sampai || '…'}</span>
-                {statusFilter !== 'all' && ` · ${statusFilter}`}
                 {q && ` · "${q}"`}
               </div>
             )}
@@ -2142,82 +2127,40 @@ function PenarikanTab() {
               <TableHeader className="sticky top-0 z-10 bg-emerald-50/95 backdrop-blur">
                 <TableRow>
                   <TableHead>Nomor</TableHead>
-                  <TableHead>Tanggal Pengajuan</TableHead>
+                  <TableHead>Tanggal Penarikan</TableHead>
+                  <TableHead>Nama Anggota</TableHead>
                   <TableHead className="text-right">Jumlah</TableHead>
-                  <TableHead>Alasan</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Aksi</TableHead>
+                  <TableHead>Keterangan</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loadingList ? (
-                  <SkeletonRows cols={6} />
-                ) : list.length === 0 ? (
+                  <SkeletonRows cols={5} />
+                ) : simpananList.length === 0 ? (
                   <EmptyRow
-                    colSpan={6}
-                    message="Belum ada pengajuan penarikan sukarela."
+                    colSpan={5}
+                    message="Belum ada riwayat penarikan dana."
                   />
                 ) : (
-                  list.map((p) => (
+                  simpananList.map((p: any) => (
                     <TableRow key={p.id}>
                       <TableCell className="font-mono text-xs">
-                        {p.nomorPengajuan}
+                        {p.nomorTransaksi}
                       </TableCell>
                       <TableCell className="text-xs">
-                        {formatDate(p.tanggalPengajuan)}
+                        {formatDate(p.tanggalTransaksi)}
+                      </TableCell>
+                      <TableCell className="font-semibold text-xs text-emerald-900">
+                        {p.anggota?.nama || '-'}
                       </TableCell>
                       <TableCell className="text-right font-medium">
                         {formatRupiah(toNumber(p.jumlah))}
                       </TableCell>
                       <TableCell
                         className="max-w-[260px] truncate text-xs text-emerald-700/80"
-                        title={p.alasan}
+                        title={p.keterangan}
                       >
-                        {p.alasan}
-                      </TableCell>
-                      <TableCell>
-                        <PenarikanStatusBadge status={p.status} />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap justify-end gap-1">
-                          {p.status === 'menunggu' && (
-                            <>
-                              <Button
-                                size="sm"
-                                className="h-7 bg-emerald-600 text-white hover:bg-emerald-700"
-                                onClick={() =>
-                                  handleUpdate(p, 'disetujui')
-                                }
-                              >
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Setujui
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 border-rose-200 text-rose-700 hover:bg-rose-50"
-                                onClick={() =>
-                                  handleUpdate(p, 'ditolak')
-                                }
-                              >
-                                <XCircle className="h-3.5 w-3.5" /> Tolak
-                              </Button>
-                            </>
-                          )}
-                          {p.status === 'disetujui' && (
-                            <Button
-                              size="sm"
-                              className="h-7 bg-teal-600 text-white hover:bg-teal-700"
-                              onClick={() =>
-                                handleUpdate(p, 'dicairkan')
-                              }
-                            >
-                              <Banknote className="h-3.5 w-3.5" /> Cairkan
-                            </Button>
-                          )}
-                          {(p.status === 'ditolak' || p.status === 'dicairkan') && (
-                            <span className="text-xs text-emerald-700/50">—</span>
-                          )}
-                        </div>
+                        {p.keterangan || '-'}
                       </TableCell>
                     </TableRow>
                   ))
@@ -2233,10 +2176,10 @@ function PenarikanTab() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-emerald-900">
-              Ajukan Penarikan Sukarela
+              Tarik Simpanan Sukarela
             </DialogTitle>
             <DialogDescription>
-              Pengajuan akan ditinjau oleh pengurus koperasi sebelum dicairkan.
+              Dana simpanan sukarela anggota akan langsung dipotong dari saldo kas dan dicairkan.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
@@ -2276,7 +2219,7 @@ function PenarikanTab() {
               className="bg-emerald-600 text-white hover:bg-emerald-700"
             >
               {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-              Ajukan
+              Cairkan Dana
             </Button>
           </DialogFooter>
         </DialogContent>

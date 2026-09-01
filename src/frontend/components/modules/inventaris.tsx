@@ -92,6 +92,8 @@ interface PartnerRow {
   type: string
   phone?: string | null
   address?: string | null
+  email?: string | null
+  notes?: string | null
 }
 
 interface StokBySource {
@@ -159,6 +161,7 @@ interface SalesTxItem {
 }
 interface SalesTx {
   id: string
+  invoiceNumber?: string | null
   partnerId: string
   totalWeight: string | number
   totalValue: string | number
@@ -1406,6 +1409,60 @@ function PenjualanMitraTab() {
   const [itemRows, setItemRows] = React.useState<MitraItemRow[]>([{ wasteItemId: '', source: '', pricePerUnit: '', quantity: '' }])
   const [notes, setNotes] = React.useState('')
 
+  // ---- Mitra management state ----
+  const [mitraModalOpen, setMitraModalOpen] = React.useState(false)
+  const [mitraManagerOpen, setMitraManagerOpen] = React.useState(false)
+  const [editingMitra, setEditingMitra] = React.useState<PartnerRow | null>(null)
+  const [mitraSaving, setMitraSaving] = React.useState(false)
+  const [mitraForm, setMitraForm] = React.useState({
+    name: '', type: 'Pengepul', phone: '', address: '', email: '', notes: ''
+  })
+
+  const openAddMitra = () => {
+    setEditingMitra(null)
+    setMitraForm({ name: '', type: 'Pengepul', phone: '', address: '', email: '', notes: '' })
+    setMitraModalOpen(true)
+  }
+
+  const openEditMitra = (mitra: PartnerRow) => {
+    setEditingMitra(mitra)
+    setMitraForm({
+      name: mitra.name,
+      type: mitra.type || 'Pengepul',
+      phone: mitra.phone || '',
+      address: mitra.address || '',
+      email: mitra.email || '',
+      notes: mitra.notes || ''
+    })
+    setMitraModalOpen(true)
+  }
+
+  const deleteMitra = (mitra: PartnerRow) => {
+    if (confirm(`Hapus mitra ${mitra.name}?`)) {
+      api.mitra.delete(mitra.id).then(() => {
+        setPartners(partners.filter((p) => p.id !== mitra.id))
+      })
+    }
+  }
+
+  const saveMitra = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setMitraSaving(true)
+    try {
+      if (editingMitra) {
+        const updated = await api.mitra.update(editingMitra.id, mitraForm)
+        setPartners(partners.map((p) => (p.id === editingMitra.id ? updated : p)))
+      } else {
+        const created = await api.mitra.create(mitraForm)
+        setPartners([...partners, created])
+      }
+      setMitraModalOpen(false)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setMitraSaving(false)
+    }
+  }
   // ---- Filter state ----
   const [dariInput, setDariInput] = React.useState('')
   const [sampaiInput, setSampaiInput] = React.useState('')

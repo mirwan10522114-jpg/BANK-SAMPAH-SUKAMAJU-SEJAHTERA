@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getActingUser, recordKasTx, generateTxNo } from '@/lib/business'
+import { getActingUser, tarikSimpananSukarela } from '@/lib/business'
 import { toNumber } from '@/lib/format'
+
+export const dynamic = 'force-dynamic'
 
 // GET: list penarikan sukarela
 // Query params:
@@ -50,17 +52,29 @@ export async function POST(req: NextRequest) {
   if (!anggotaId) return NextResponse.json({ error: 'Anggota wajib dipilih' }, { status: 400 })
   if (jumlah <= 0) return NextResponse.json({ error: 'Jumlah harus > 0' }, { status: 400 })
   if (!alasan) return NextResponse.json({ error: 'Alasan wajib diisi' }, { status: 400 })
-  const counter = await db.koperasiPenarikanSukarela.count()
-  const nomor = `PS / ${String(counter + 1).padStart(4, '0')}`
-  const ps = await db.koperasiPenarikanSukarela.create({
-    data: {
-      nomorPengajuan: nomor,
-      koperasiAnggotaId: anggotaId,
-      jumlah,
-      alasan,
-      status: 'menunggu',
-    },
-    include: { anggota: true },
-  })
-  return NextResponse.json(ps, { status: 201 })
+  
+  try {
+    const counter = await db.koperasiPenarikanSukarela.count()
+    const nomor = `PS / ${String(counter + 1).padStart(4, '0')}`
+    
+    // Cairkan secara langsung, ini juga akan memvalidasi apakah saldo mencukupi
+    await tarikSimpananSukarela(anggotaId, toNumber(jumlah), actor?.id, `Penarikan sukarela ${nomor}`)
+    
+    const ps = await db.koperasiPenarikanSukarela.create({
+      data: {
+        nomorPengajuan: nomor,
+        koperasiAnggotaId: anggotaId,
+        jumlah,
+        alasan,
+        status: 'dicairkan',
+        tanggalPersetujuan: new Date(),
+        tanggalPencairan: new Date(),
+        namaPengurus: actor?.name,
+      },
+      include: { anggota: true },
+    })
+    return NextResponse.json(ps, { status: 201 })
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || 'Gagal mengajukan penarikan' }, { status: 400 })
+  }
 }

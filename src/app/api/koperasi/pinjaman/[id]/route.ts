@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const tenor = pinjaman.tenorBulan
   const sukuBunga = toNumber(pinjaman.sukuBunga)
   const { pokokPerBulan, bungaPerBulan, angsuranPerBulan } = calcAngsuranSchedule(jumlah, tenor, sukuBunga)
-  const schedule = []
+  const schedule: any[] = []
   let sisa = jumlah
   const paidMap = new Map(pinjaman.angsurans.map((a) => [a.angsuranKe, a]))
   for (let i = 1; i <= tenor; i++) {

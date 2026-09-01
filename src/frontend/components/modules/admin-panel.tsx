@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Dashboard } from '@/components/modules/dashboard'
 import { DashboardKoperasi } from '@/components/modules/dashboard-koperasi'
 import { DashboardPenjualanProduk } from '@/components/modules/dashboard-penjualan-produk'
@@ -105,6 +106,95 @@ const DROPDOWN_GROUPS: DropdownGroup[] = [
 ]
 
 const NAV: NavItem[] = [...PRIMARY_NAV, ...DROPDOWN_GROUPS.flatMap((g) => g.items)]
+
+function NotificationBell() {
+  const [open, setOpen] = useState(false)
+  const [notifs, setNotifs] = useState<any[]>([])
+
+  const loadNotifs = () => {
+    api.adminNotifications.list().then(setNotifs).catch(() => {})
+  }
+
+  useEffect(() => {
+    loadNotifs()
+    const interval = setInterval(loadNotifs, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const unreadCount = notifs.filter((n) => !n.isRead).length
+
+  const handleMarkAsRead = async (id?: string) => {
+    await api.adminNotifications.markAsRead(id)
+    loadNotifs()
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="relative flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200">
+          <BellRing className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <span className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 p-0 shadow-lg">
+        <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+          <h3 className="font-semibold text-zinc-900">Notifikasi</h3>
+          {unreadCount > 0 && (
+            <button
+              onClick={() => handleMarkAsRead()}
+              className="text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
+            >
+              Tandai semua dibaca
+            </button>
+          )}
+        </div>
+        <div className="flex max-h-[300px] flex-col overflow-y-auto">
+          {notifs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-zinc-500">
+              <BellRing className="mb-2 h-8 w-8 text-zinc-200" />
+              <p className="text-sm">Tidak ada notifikasi baru</p>
+            </div>
+          ) : (
+            notifs.map((n) => (
+              <div
+                key={n.id}
+                className={cn(
+                  'flex flex-col gap-1 border-b border-zinc-100 p-4 transition',
+                  !n.isRead ? 'bg-emerald-50/50' : 'bg-white hover:bg-zinc-50'
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-sm font-semibold text-zinc-900">{n.title}</span>
+                  {!n.isRead && (
+                    <button
+                      onClick={() => handleMarkAsRead(n.id)}
+                      className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 hover:bg-emerald-200"
+                    >
+                      Tandai dibaca
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs leading-relaxed text-zinc-600">{n.message}</p>
+                <span className="text-[10px] text-zinc-400">
+                  {new Date(n.createdAt).toLocaleDateString('id-ID', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const [section, setSection] = useState<Section>('dashboard')
@@ -237,7 +327,7 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
                   <ClipboardCheck className="size-4" />
                   <span className="hidden sm:inline">Tugas Harian:</span>
                   <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[11px]">
-                    {dailyData?.summary?.completedTasks ?? 0}/{dailyData?.summary?.totalTasks ?? 4}
+                    {dailyData?.summary?.completedTasks ?? 0}/{dailyData?.summary?.totalTasks ?? 3}
                   </span>
                   {(dailyData?.summary?.pendingTasks ?? 0) > 0 && (
                     <span className="hidden md:inline text-[10px] opacity-95">
@@ -247,6 +337,9 @@ export function AdminPanel({ user, onLogout }: { user: AuthUser; onLogout: () =>
                 </>
               )}
             </button>
+
+            {/* Notifications */}
+            <NotificationBell />
 
             {/* Profile dropdown */}
             <div className="relative">

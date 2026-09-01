@@ -344,7 +344,7 @@ export async function sendOrderConfirmationEmail(params: SendOrderEmailParams): 
         from: fromEmail,
         to: [to],
         subject: `Konfirmasi Pesanan ${orderNumber} - Bank Sampah Sukamaju Sejahtera`,
-        html: buildOrderEmailHtml({ buyerName, orderNumber, items, subtotal, ongkir, total, paymentMethod, buyerAddress, buyerPhone, kurirNama, notes }),
+        html: buildOrderEmailHtml({ to, buyerName, orderNumber, items, subtotal, ongkir, total, paymentMethod, buyerAddress, buyerPhone, kurirNama, notes }),
       }),
     })
 
