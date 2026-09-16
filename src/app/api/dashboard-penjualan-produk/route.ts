@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { toNumber } from '@/lib/format'
+import { toNumber, parseFilterStartDate, parseFilterEndDate } from '@/lib/format'
 
 // Dashboard Penjualan Produk API
-// Returns: metric cards, monthly trend, top products, recent transactions
+// Returns: metric cards, monthly trend, top produks, recent transactions
 // Supports period filters: periode (bulan_ini/custom/1bul/3bul/6bul/1thn), dari, sampai
 // Uses endOfCurrentMonth as rangeEnd (same fix as laporan APIs).
 
@@ -19,16 +19,19 @@ export async function GET(req: NextRequest) {
   let rangeStart: Date
   let rangeEnd: Date = endOfCurrentMonth
   if (periode === 'custom' && dari && sampai) {
-    rangeStart = new Date(dari); rangeStart.setHours(0, 0, 0, 0)
-    rangeEnd = new Date(sampai); rangeEnd.setHours(23, 59, 59, 999)
+    const sDate = parseFilterStartDate(dari)
+    const eDate = parseFilterEndDate(sampai)
+    rangeStart = sDate || new Date(now.getFullYear(), 0, 1)
+    rangeEnd = eDate || endOfCurrentMonth
   } else if (periode === '1bul') {
-    rangeStart = new Date(now); rangeStart.setDate(rangeStart.getDate() - 29); rangeStart.setHours(0, 0, 0, 0)
+    rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
   } else if (periode === '3bul') {
-    rangeStart = new Date(now); rangeStart.setDate(rangeStart.getDate() - 89); rangeStart.setHours(0, 0, 0, 0)
+    rangeStart = new Date(now.getFullYear(), now.getMonth() - 2, 1)
   } else if (periode === '6bul') {
     rangeStart = new Date(now.getFullYear(), now.getMonth() - 5, 1)
   } else if (periode === '1thn') {
-    rangeStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+    rangeStart = new Date(now.getFullYear(), 0, 1)
+    rangeEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999)
   } else {
     rangeStart = new Date(now.getFullYear(), now.getMonth(), 1)
   }
@@ -43,38 +46,38 @@ export async function GET(req: NextRequest) {
     allProducts,
     wastePricesMap,
   ] = await Promise.all([
-    // Offline sales (ProductSale) — paid only
-    db.productSale.findMany({
+    // Offline sales (PenjualanProduk) — paid only
+    db.penjualanProduk.findMany({
       where: { transactedAt: dateRange, paymentStatus: 'paid' },
       include: { items: true, buyer: true },
       orderBy: { transactedAt: 'desc' },
     }),
-    // Online orders (TokoOrder) — paid only
-    db.tokoOrder.findMany({
+    // Online orders (PesananToko) — paid only
+    db.pesananToko.findMany({
       where: { createdAt: dateRange, paymentStatus: 'dibayar' },
       include: { items: true },
       orderBy: { createdAt: 'desc' },
     }),
     // Processing transactions in period (for COGS estimation)
-    db.processingTransaction.findMany({
+    db.transaksiPengolahan.findMany({
       where: { transactedAt: dateRange },
       include: { inputs: true, outputs: true },
     }),
-    // All active products
-    db.product.findMany({
+    // All active produks
+    db.produk.findMany({
       where: { isActive: true },
-      select: { id: true, name: true, price: true, stock: true, unit: true, productCategoryId: true },
+      select: { id: true, name: true, price: true, stock: true, unit: true, kategoriProdukId: true },
     }),
     // Waste prices for COGS (latest price per waste item)
-    db.wastePrice.findMany({
+    db.hargaSampah.findMany({
       orderBy: { effectiveFrom: 'desc' },
-      include: { wasteItem: true },
+      include: { jenisSampah: true },
     }),
   ])
 
-  // Fetch inventory movements for processing (to determine source: nabung vs sedekah)
+  // Fetch inventaris movements for processing (to determine source: nabung vs sedekah)
   const processingMovements = processingTxInPeriod.length > 0
-    ? await db.inventoryMovement.findMany({
+    ? await db.pergerakanInventaris.findMany({
         where: {
           reason: 'processing_input',
           direction: 'out',
@@ -84,26 +87,26 @@ export async function GET(req: NextRequest) {
       })
     : []
 
-  // Build wastePrice lookup (latest price per wasteItemId)
+  // Build hargaSampah lookup (latest price per jenisSampahId)
   const wastePriceByItemId = new Map<string, number>()
   for (const wp of wastePricesMap) {
-    if (!wastePriceByItemId.has(wp.wasteItemId)) {
-      wastePriceByItemId.set(wp.wasteItemId, toNumber(wp.pricePerUnit))
+    if (!wastePriceByItemId.has(wp.jenisSampahId)) {
+      wastePriceByItemId.set(wp.jenisSampahId, toNumber(wp.pricePerUnit))
     }
   }
-  // Fallback to wasteItem.pricePerUnit
-  const wasteItems = await db.wasteItem.findMany({ select: { id: true, pricePerUnit: true } })
-  for (const wi of wasteItems) {
+  // Fallback to jenisSampah.pricePerUnit
+  const jenisSampahs = await db.jenisSampah.findMany({ select: { id: true, pricePerUnit: true } })
+  for (const wi of jenisSampahs) {
     if (!wastePriceByItemId.has(wi.id)) {
       wastePriceByItemId.set(wi.id, toNumber(wi.pricePerUnit))
     }
   }
 
-  // ===== Build product COGS from processing transactions =====
+  // ===== Build produk COGS from processing transactions =====
   // Modal bahan = qty bahan baku × harga beli nasabah
   //   - Jika bahan dari sedekah → modal = Rp 0 (donasi, tidak bayar ke nasabah)
-  //   - Jika bahan dari nabung → modal = qty × harga acuan (WastePrice)
-  // Source bahan (nabung/sedekah) di-trace dari InventoryMovement.
+  //   - Jika bahan dari nabung → modal = qty × harga acuan (HargaSampah)
+  // Source bahan (nabung/sedekah) di-trace dari PergerakanInventaris.
   const productCostPerUnit = new Map<string, number>()
   const productCostSamples = new Map<string, { totalCost: number; totalQty: number }>()
 
@@ -119,9 +122,9 @@ export async function GET(req: NextRequest) {
     const movements = movementsByTxId.get(pt.id) || []
     let totalInputCost = 0
     for (const inp of pt.inputs) {
-      const price = wastePriceByItemId.get(inp.wasteItemId) || 0
+      const price = wastePriceByItemId.get(inp.jenisSampahId) || 0
       const qty = toNumber(inp.quantity)
-      const matchingMovement = movements.find(m => m.wasteItemId === inp.wasteItemId)
+      const matchingMovement = movements.find(m => m.jenisSampahId === inp.jenisSampahId)
       const source = matchingMovement?.source || 'nabung'
       const itemCost = source === 'sedekah' ? 0 : qty * price
       totalInputCost += itemCost
@@ -131,16 +134,16 @@ export async function GET(req: NextRequest) {
     for (const out of pt.outputs) {
       const qty = toNumber(out.quantity)
       const allocatedCost = totalInputCost * (qty / totalOutputQty)
-      const prev = productCostSamples.get(out.productId) || { totalCost: 0, totalQty: 0 }
-      productCostSamples.set(out.productId, {
+      const prev = productCostSamples.get(out.produkId) || { totalCost: 0, totalQty: 0 }
+      productCostSamples.set(out.produkId, {
         totalCost: prev.totalCost + allocatedCost,
         totalQty: prev.totalQty + qty,
       })
     }
   }
-  for (const [productId, sample] of productCostSamples.entries()) {
+  for (const [produkId, sample] of productCostSamples.entries()) {
     if (sample.totalQty > 0) {
-      productCostPerUnit.set(productId, sample.totalCost / sample.totalQty)
+      productCostPerUnit.set(produkId, sample.totalCost / sample.totalQty)
     }
   }
 
@@ -161,15 +164,15 @@ export async function GET(req: NextRequest) {
     for (const item of sale.items) {
       const qty = toNumber(item.quantity)
       const revenue = toNumber(item.subtotal)
-      const cogsPerUnit = productCostPerUnit.get(item.productId) || 0
+      const cogsPerUnit = productCostPerUnit.get(item.produkId) || 0
       const cogs = qty * cogsPerUnit
       offlineCOGS += cogs
-      const existing = offlineByProduct.get(item.productId) || { name: item.productNameSnapshot, qty: 0, revenue: 0, cogs: 0, count: 0 }
+      const existing = offlineByProduct.get(item.produkId) || { name: item.productNameSnapshot, qty: 0, revenue: 0, cogs: 0, count: 0 }
       existing.qty += qty
       existing.revenue += revenue
       existing.cogs += cogs
       existing.count++
-      offlineByProduct.set(item.productId, existing)
+      offlineByProduct.set(item.produkId, existing)
     }
   }
   for (const order of onlineOrders) {
@@ -178,16 +181,16 @@ export async function GET(req: NextRequest) {
     for (const item of order.items) {
       const qty = toNumber(item.quantity)
       const revenue = toNumber(item.subtotal)
-      const cogsPerUnit = productCostPerUnit.get(item.productId) || 0
+      const cogsPerUnit = productCostPerUnit.get(item.produkId) || 0
       const cogs = qty * cogsPerUnit
       onlineCOGS += cogs
       onlineItemsSold += qty
-      const existing = onlineByProduct.get(item.productId) || { name: item.productNameSnapshot, qty: 0, revenue: 0, cogs: 0, count: 0 }
+      const existing = onlineByProduct.get(item.produkId) || { name: item.productNameSnapshot, qty: 0, revenue: 0, cogs: 0, count: 0 }
       existing.qty += qty
       existing.revenue += revenue
       existing.cogs += cogs
       existing.count++
-      onlineByProduct.set(item.productId, existing)
+      onlineByProduct.set(item.produkId, existing)
     }
   }
 
@@ -201,7 +204,7 @@ export async function GET(req: NextRequest) {
   const totalUnitTerjual = offlineItemsSold + onlineItemsSold
   const avgPerTransaction = countTotal > 0 ? totalPenjualan / countTotal : 0
 
-  // ===== Stock value (current inventory at cost & price) =====
+  // ===== Stock value (current inventaris at cost & price) =====
   let stockValueAtPrice = 0
   let stockValueAtCost = 0
   for (const p of allProducts) {
@@ -244,7 +247,7 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([key, v]) => ({ key, ...v }))
 
-  // ===== By product (consolidated) =====
+  // ===== By produk (consolidated) =====
   const byProductMap = new Map<string, { name: string; qty: number; revenue: number; cogs: number; count: number; offline: number; online: number }>()
   for (const [pid, p] of offlineByProduct.entries()) {
     byProductMap.set(pid, { ...p, offline: p.revenue, online: 0 })
@@ -322,6 +325,32 @@ export async function GET(req: NextRequest) {
   recentRows.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime())
   const recentTransactions = recentRows.slice(0, 10)
 
+  // ===== TODAY SUMMARY =====
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+  const todayRange = { gte: todayStart, lte: todayEnd }
+
+  const [todayOffline, todayOnline] = await Promise.all([
+    db.penjualanProduk.aggregate({
+      where: { transactedAt: todayRange, paymentStatus: 'paid' },
+      _sum: { totalValue: true }
+    }),
+    db.pesananToko.aggregate({
+      where: { 
+        orderStatus: { in: ['dibayar', 'diproses', 'dikirim', 'selesai'] },
+        OR: [
+          { paidAt: todayRange },
+          { createdAt: todayRange } // fallback if paidAt is null
+        ]
+      },
+      _sum: { totalBayar: true }
+    })
+  ])
+
+  const offlineHariIni = toNumber(todayOffline._sum.totalValue)
+  const onlineHariIni = toNumber(todayOnline._sum.totalBayar)
+  const totalPenjualanHariIni = offlineHariIni + onlineHariIni
+
   return NextResponse.json({
     metrics: {
       totalPenjualan,
@@ -337,6 +366,11 @@ export async function GET(req: NextRequest) {
       marginKotor,
       stockValueAtPrice,
       stockValueAtCost,
+    },
+    todaySummary: {
+      totalPenjualan: totalPenjualanHariIni,
+      offline: offlineHariIni,
+      online: onlineHariIni
     },
     trend,
     byProduct,

@@ -6,8 +6,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const categoryId = searchParams.get('categoryId')
   const where: any = { isActive: true }
-  if (categoryId) where.wasteCategoryId = categoryId
-  const items = await db.wasteItem.findMany({
+  if (categoryId) where.kategoriSampahId = categoryId
+  const items = await db.jenisSampah.findMany({
     where,
     orderBy: { code: 'asc' },
     include: {
@@ -23,9 +23,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const actor = await getActingUser(req)
   const slug = body.slug || body.name.toLowerCase().replace(/\s+/g, '-') + '-' + body.code.toLowerCase()
-  const item = await db.wasteItem.create({
+  const item = await db.jenisSampah.create({
     data: {
-      wasteCategoryId: body.wasteCategoryId,
+      kategoriSampahId: body.kategoriSampahId,
       code: body.code,
       name: body.name,
       slug,
@@ -37,9 +37,9 @@ export async function POST(req: NextRequest) {
   })
   // create initial price record
   if (body.pricePerUnit) {
-    await db.wastePrice.create({
+    await db.hargaSampah.create({
       data: {
-        wasteItemId: item.id,
+        jenisSampahId: item.id,
         pricePerUnit: body.pricePerUnit,
         effectiveFrom: new Date(),
         notes: 'Harga awal saat barang dibuat.',

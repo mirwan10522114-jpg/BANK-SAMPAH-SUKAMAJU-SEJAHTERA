@@ -27,7 +27,7 @@ function parseDatabaseUrl(url) {
   try {
     const parsed = new URL(url);
     return {
-      user: parsed.username || 'root',
+      pengguna: parsed.username || 'root',
       password: parsed.password || '',
       host: parsed.hostname || 'localhost',
       port: parsed.port || '3306',
@@ -54,7 +54,7 @@ function backupDatabase() {
   const targetFile = path.join(backupDir, 'backup_banksampah_master.sql');
 
   const pwdArg = dbConfig.password ? `-p"${dbConfig.password}"` : '';
-  const cmd = `& "${mysqldumpExe}" -h ${dbConfig.host} -P ${dbConfig.port} -u ${dbConfig.user} ${pwdArg} --databases ${dbConfig.database} --routines --triggers --events --add-drop-database --add-drop-table > "${targetFile}"`;
+  const cmd = `& "${mysqldumpExe}" -h ${dbConfig.host} -P ${dbConfig.port} -u ${dbConfig.pengguna} ${pwdArg} --databases ${dbConfig.database} --routines --triggers --events --add-drop-database --add-drop-table > "${targetFile}"`;
 
   console.log(`Menyimpan backup dari database [${dbConfig.database}] ke [${targetFile}]...`);
   execSync(cmd, { shell: 'powershell.exe' });

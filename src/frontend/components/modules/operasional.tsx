@@ -10,6 +10,7 @@ import {
   formatDateTime,
   toNumber,
 } from '@/lib/format'
+import { sanitizeName } from '@/lib/validation'
 import { printStruk } from '@/lib/print-struk'
 import {
   Card,
@@ -73,6 +74,8 @@ import {
   RotateCcw,
   Clock,
   ClipboardList,
+  Truck,
+  XCircle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -85,7 +88,7 @@ type Nasabah = {
   address: string | null
   roles: string | null
   isMember: boolean | null
-  balance?:
+  saldo?:
     | {
         saldoTertahan: unknown
         saldoTersedia: unknown
@@ -95,7 +98,7 @@ type Nasabah = {
   koperasiAnggota?: unknown
 }
 
-type WasteItem = {
+type JenisSampah = {
   id: string
   code: string
   name: string
@@ -107,7 +110,7 @@ type WasteItem = {
 
 type ItemRow = {
   key: string
-  wasteItemId: string
+  jenisSampahId: string
   quantityBeforeQc: string
   quantityAfterQc: string
   qcReason: string
@@ -143,7 +146,7 @@ function uid() {
   return Math.random().toString(36).slice(2, 10)
 }
 
-function itemPrice(wi: WasteItem | undefined): number {
+function itemPrice(wi: JenisSampah | undefined): number {
   if (!wi) return 0
   if (wi.prices && wi.prices.length > 0) return toNumber(wi.prices[0].pricePerUnit)
   return toNumber(wi.pricePerUnit)
@@ -165,43 +168,44 @@ function rowNetto(row: ItemRow, applyQc: boolean): number {
 function rowSubtotal(
   row: ItemRow,
   applyQc: boolean,
-  itemMap: Map<string, WasteItem>
+  itemMap: Map<string, JenisSampah>
 ): number {
-  const wi = itemMap.get(row.wasteItemId)
+  const wi = itemMap.get(row.jenisSampahId)
   if (!wi) return 0
   return rowNetto(row, applyQc) * itemPrice(wi)
 }
 
-function qcBadge(status: string) {
+function qcBadge(status: string, rejectedAction?: string | null) {
   switch (status) {
     case 'passed':
       return (
         <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-100">
-          <CheckCircle2 className="size-3" /> OK
+          <CheckCircle2 className="size-3 mr-1" /> OK
         </Badge>
       )
     case 'adjusted':
       return (
         <Badge className="bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100">
-          <AlertCircle className="size-3" /> Disesuaikan
+          <AlertCircle className="size-3 mr-1" /> Disesuaikan
         </Badge>
       )
     case 'tidak_perlu':
       return (
         <Badge className="bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-100">
-          <CheckCircle2 className="size-3" /> Bersih (Tanpa QC)
+          <CheckCircle2 className="size-3 mr-1" /> Bersih (Tanpa QC)
         </Badge>
       )
     case 'pending':
       return (
-        <Badge className="bg-yellow-100 text-yellow-900 border-yellow-300 hover:bg-yellow-100 animate-pulse">
-          <Clock className="size-3" /> Menunggu QC
+        <Badge className="bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100">
+          <Clock className="size-3 mr-1" /> Menunggu QC
         </Badge>
       )
     case 'rejected':
+      const rejectedLabel = rejectedAction === 'sedekah' ? 'Ditolak (Sedekah)' : (rejectedAction === 'ambil_kembali' ? 'Ditolak (Ambil Kembali)' : 'Ditolak')
       return (
         <Badge className="bg-rose-100 text-rose-800 border-rose-200 hover:bg-rose-100">
-          <AlertCircle className="size-3" /> Ditolak
+          <XCircle className="size-3 mr-1" /> {rejectedLabel}
         </Badge>
       )
     case 'failed':
@@ -211,7 +215,11 @@ function qcBadge(status: string) {
         </Badge>
       )
     default:
-      return <Badge variant="outline">{status || '-'}</Badge>
+      return (
+        <Badge className="bg-gray-100 text-gray-800 border-gray-200 hover:bg-gray-100">
+          {status}
+        </Badge>
+      )
   }
 }
 
@@ -377,7 +385,7 @@ function ItemRowCard({
   index,
   applyQc,
   itemMap,
-  wasteItems,
+  jenisSampahs,
   onChange,
   onRemove,
   canRemove,
@@ -385,13 +393,13 @@ function ItemRowCard({
   row: ItemRow
   index: number
   applyQc: boolean
-  itemMap: Map<string, WasteItem>
-  wasteItems: WasteItem[]
+  itemMap: Map<string, JenisSampah>
+  jenisSampahs: JenisSampah[]
   onChange: (r: ItemRow) => void
   onRemove: () => void
   canRemove: boolean
 }) {
-  const wi = itemMap.get(row.wasteItemId)
+  const wi = itemMap.get(row.jenisSampahId)
   const price = itemPrice(wi)
   const bruto = rowBruto(row)
   const netto = rowNetto(row, applyQc)
@@ -405,14 +413,14 @@ function ItemRowCard({
         <div className="sm:col-span-4">
           <Label className="text-xs text-emerald-800">Barang Sampah #{index + 1}</Label>
           <Select
-            value={row.wasteItemId}
-            onValueChange={(v) => onChange({ ...row, wasteItemId: v })}
+            value={row.jenisSampahId}
+            onValueChange={(v) => onChange({ ...row, jenisSampahId: v })}
           >
             <SelectTrigger className="mt-1 w-full bg-white border-emerald-200 focus:ring-emerald-500/30">
               <SelectValue placeholder="Pilih barang…" />
             </SelectTrigger>
             <SelectContent>
-              {wasteItems.map((w) => (
+              {jenisSampahs.map((w) => (
                 <SelectItem key={w.id} value={w.id}>
                   <span className="font-mono text-xs text-emerald-700">{w.code}</span>
                   <span className="ml-1">— {w.name}</span>
@@ -515,12 +523,14 @@ function SummaryBar({
   poin,
   showNilai = true,
   extraInfo,
+  rupiahPerPoint = 1000,
 }: {
   totalBerat: number
   totalNilai: number
   poin: number
   showNilai?: boolean
   extraInfo?: React.ReactNode
+  rupiahPerPoint?: number
 }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -532,7 +542,7 @@ function SummaryBar({
       </div>
       {showNilai && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
-          <div className="text-xs text-emerald-700">Total Nilai</div>
+          <div className="text-xs text-emerald-700">Total Nilai Tabungan</div>
           <div className="text-lg font-bold text-emerald-900">
             {formatRupiah(totalNilai)}
           </div>
@@ -540,14 +550,14 @@ function SummaryBar({
       )}
       {showNilai && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
-          <div className="text-xs text-emerald-700">Estimasi Poin</div>
+          <div className="text-xs text-emerald-700">Estimasi Loyalty Poin</div>
           <div className="text-lg font-bold text-emerald-900">{formatNumber(poin, 0)}</div>
         </div>
       )}
       <div className="col-span-2 flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 sm:col-span-1">
         <div className="text-xs text-emerald-700 text-center">
           <Leaf className="mx-auto mb-1 size-4" />
-          Konversi poin: 1 poin / Rp 100
+          Konversi: 1 poin / {formatRupiah(rupiahPerPoint)}
         </div>
       </div>
       {extraInfo && (
@@ -729,7 +739,7 @@ function ReceiptDialog({
           </Button>
           <Button
             type="button"
-            onClick={() => printReceiptData(data)}
+            onClick={() => {}}
             className="bg-emerald-600 text-white hover:bg-emerald-700"
           >
             <Printer className="size-4" /> Cetak
@@ -741,27 +751,38 @@ function ReceiptDialog({
 }
 
 // ---------------- Nabung Form ----------------
-function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
+function NabungForm({ jenisSampahs }: { jenisSampahs: JenisSampah[] }) {
   const [nasabah, setNasabah] = useState<Nasabah | null>(null)
-  const [balance, setBalance] = useState<{
+  const [saldo, setBalance] = useState<{
     saldoTertahan: number
     saldoTersedia: number
     points: number
   } | null>(null)
   const [balanceLoading, setBalanceLoading] = useState(false)
   const [rows, setRows] = useState<ItemRow[]>([
-    { key: uid(), wasteItemId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' },
+    { key: uid(), jenisSampahId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' },
   ])
   const [applyQc, setApplyQc] = useState(false)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
+  const [rupiahPerPointEarn, setRupiahPerPointEarn] = useState(1000)
+
+  useEffect(() => {
+    api.aturanPoins.list().then((rules: any[]) => {
+      const active = rules?.find((r) => r.isActive)
+      if (active) {
+        const rp = active.rupiahPerPointEarn || (toNumber(active.pointsPerRupiah) > 0 ? Math.round(1 / toNumber(active.pointsPerRupiah)) : 1000)
+        if (rp > 0) setRupiahPerPointEarn(rp)
+      }
+    }).catch(() => {})
+  }, [])
 
   const itemMap = useMemo(() => {
-    const m = new Map<string, WasteItem>()
-    wasteItems.forEach((w) => m.set(w.id, w))
+    const m = new Map<string, JenisSampah>()
+    jenisSampahs.forEach((w) => m.set(w.id, w))
     return m
-  }, [wasteItems])
+  }, [jenisSampahs])
 
   useEffect(() => {
     if (!nasabah) {
@@ -773,9 +794,9 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
       .nasabahBalance(nasabah.id)
       .then((res: any) => {
         setBalance({
-          saldoTertahan: toNumber(res?.balance?.saldoTertahan),
-          saldoTersedia: toNumber(res?.balance?.saldoTersedia),
-          points: toNumber(res?.balance?.points),
+          saldoTertahan: toNumber(res?.saldo?.saldoTertahan),
+          saldoTersedia: toNumber(res?.saldo?.saldoTersedia),
+          points: toNumber(res?.saldo?.points),
         })
       })
       .catch(() => setBalance(null))
@@ -786,16 +807,16 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
     let berat = 0
     let nilai = 0
     rows.forEach((r) => {
-      if (!r.wasteItemId) return
+      if (!r.jenisSampahId) return
       berat += rowNetto(r, applyQc)
       nilai += rowSubtotal(r, applyQc, itemMap)
     })
     return {
       totalBerat: berat,
       totalNilai: nilai,
-      poin: Math.floor(nilai / 100),
+      poin: Math.floor(nilai / (rupiahPerPointEarn || 1000)),
     }
-  }, [rows, applyQc, itemMap])
+  }, [rows, applyQc, itemMap, rupiahPerPointEarn])
 
   const updateRow = (i: number, r: ItemRow) => {
     setRows((prev) => prev.map((x, idx) => (idx === i ? r : x)))
@@ -803,7 +824,7 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
   const addRow = () => {
     setRows((prev) => [
       ...prev,
-      { key: uid(), wasteItemId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' },
+      { key: uid(), jenisSampahId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' },
     ])
   }
   const removeRow = (i: number) => {
@@ -812,7 +833,7 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
 
   const reset = () => {
     setNasabah(null)
-    setRows([{ key: uid(), wasteItemId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' }])
+    setRows([{ key: uid(), jenisSampahId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' }])
     setApplyQc(false)
     setNotes('')
     setBalance(null)
@@ -824,7 +845,7 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
       return
     }
     const validRows = rows.filter(
-      (r) => r.wasteItemId && (parseFloat(r.quantityBeforeQc) || 0) > 0
+      (r) => r.jenisSampahId && (parseFloat(r.quantityBeforeQc) || 0) > 0
     )
     if (validRows.length === 0) {
       toast.error('Tambahkan minimal 1 item dengan berat > 0.')
@@ -836,7 +857,7 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
         const kotor = parseFloat(r.quantityBeforeQc) || 0
         const bersih = r.quantityAfterQc !== '' ? parseFloat(r.quantityAfterQc) : kotor
         if (bersih > kotor) {
-          toast.error(`Berat bersih tidak boleh lebih besar dari berat kotor untuk ${r.wasteItemId}`)
+          toast.error(`Berat bersih tidak boleh lebih besar dari berat kotor untuk ${r.jenisSampahId}`)
           return
         }
       }
@@ -844,9 +865,9 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
     setSaving(true)
     try {
       const payload = {
-        userId: nasabah.id,
+        penggunaId: nasabah.id,
         items: validRows.map((r) => ({
-          wasteItemId: r.wasteItemId,
+          jenisSampahId: r.jenisSampahId,
           quantityBeforeQc: parseFloat(r.quantityBeforeQc) || 0,
           quantityAfterQc: applyQc && r.quantityAfterQc !== '' ? parseFloat(r.quantityAfterQc) : null,
           qcReason: r.qcReason || undefined,
@@ -859,9 +880,9 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
 
       // Build receipt
       const itemRows = (tx.items || []).map((it: any) => ({
-        kode: it.itemCodeSnapshot || it.wasteItem?.code || '-',
-        nama: it.itemNameSnapshot || it.wasteItem?.name || '-',
-        kategori: it.categoryNameSnapshot || it.wasteItem?.category?.name || '-',
+        kode: it.itemCodeSnapshot || it.jenisSampah?.code || '-',
+        nama: it.itemNameSnapshot || it.jenisSampah?.name || '-',
+        kategori: it.categoryNameSnapshot || it.jenisSampah?.category?.name || '-',
         qtyKotor: toNumber(it.quantityBeforeQc),
         qtyBersih: toNumber(it.quantityAfterQc ?? it.quantityBeforeQc),
         susut: toNumber(it.susutQc),
@@ -908,7 +929,7 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        {/* Nasabah + Balance */}
+        {/* Nasabah + Saldo */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <NasabahPicker value={nasabah} onChange={setNasabah} />
@@ -925,13 +946,13 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Saldo Tersedia</span>
                   <span className="font-semibold text-emerald-900">
-                    {formatRupiah(balance?.saldoTersedia ?? 0)}
+                    {formatRupiah(saldo?.saldoTersedia ?? 0)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Poin</span>
                   <span className="font-semibold text-emerald-900">
-                    {formatNumber(balance?.points ?? 0, 0)}
+                    {formatNumber(saldo?.points ?? 0, 0)}
                   </span>
                 </div>
               </div>
@@ -979,7 +1000,7 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
               index={i}
               applyQc={applyQc}
               itemMap={itemMap}
-              wasteItems={wasteItems}
+              jenisSampahs={jenisSampahs}
               onChange={(nr) => updateRow(i, nr)}
               onRemove={() => removeRow(i)}
               canRemove={rows.length > 1}
@@ -988,7 +1009,7 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
         </div>
 
         {/* Summary */}
-        <SummaryBar totalBerat={totalBerat} totalNilai={totalNilai} poin={poin} />
+        <SummaryBar totalBerat={totalBerat} totalNilai={totalNilai} poin={poin} rupiahPerPoint={rupiahPerPointEarn} />
 
         {/* Notes */}
         <div>
@@ -1036,11 +1057,11 @@ function NabungForm({ wasteItems }: { wasteItems: WasteItem[] }) {
 }
 
 // ---------------- Sedekah Form ----------------
-function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
+function SedekahForm({ jenisSampahs }: { jenisSampahs: JenisSampah[] }) {
   const [nasabah, setNasabah] = useState<Nasabah | null>(null)
   const [donorName, setDonorName] = useState('')
   const [rows, setRows] = useState<ItemRow[]>([
-    { key: uid(), wasteItemId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' },
+    { key: uid(), jenisSampahId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' },
   ])
   const [qcMode, setQcMode] = useState<'langsung' | 'nanti' | 'bersih'>('nanti')
   const applyQc = qcMode === 'langsung'
@@ -1050,16 +1071,16 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
 
   const itemMap = useMemo(() => {
-    const m = new Map<string, WasteItem>()
-    wasteItems.forEach((w) => m.set(w.id, w))
+    const m = new Map<string, JenisSampah>()
+    jenisSampahs.forEach((w) => m.set(w.id, w))
     return m
-  }, [wasteItems])
+  }, [jenisSampahs])
 
   const { totalKotor, totalBersih, persentaseSusut } = useMemo(() => {
     let kotor = 0
     let bersih = 0
     rows.forEach((r) => {
-      if (!r.wasteItemId) return
+      if (!r.jenisSampahId) return
       kotor += rowBruto(r)
       bersih += rowNetto(r, applyQc)
     })
@@ -1076,7 +1097,7 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
   const addRow = () => {
     setRows((prev) => [
       ...prev,
-      { key: uid(), wasteItemId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' },
+      { key: uid(), jenisSampahId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' },
     ])
   }
   const removeRow = (i: number) => {
@@ -1086,7 +1107,7 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
   const reset = () => {
     setNasabah(null)
     setDonorName('')
-    setRows([{ key: uid(), wasteItemId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' }])
+    setRows([{ key: uid(), jenisSampahId: '', quantityBeforeQc: '', quantityAfterQc: '', qcReason: '' }])
     setQcMode('nanti')
     setNotes('')
   }
@@ -1097,7 +1118,7 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
       return
     }
     const validRows = rows.filter(
-      (r) => r.wasteItemId && (parseFloat(r.quantityBeforeQc) || 0) > 0
+      (r) => r.jenisSampahId && (parseFloat(r.quantityBeforeQc) || 0) > 0
     )
     if (validRows.length === 0) {
       toast.error('Tambahkan minimal 1 item dengan berat > 0.')
@@ -1109,7 +1130,7 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
         const kotor = parseFloat(r.quantityBeforeQc) || 0
         const bersih = r.quantityAfterQc !== '' ? parseFloat(r.quantityAfterQc) : kotor
         if (bersih > kotor) {
-          toast.error(`Berat bersih tidak boleh lebih besar dari berat kotor untuk ${r.wasteItemId}`)
+          toast.error(`Berat bersih tidak boleh lebih besar dari berat kotor untuk ${r.jenisSampahId}`)
           return
         }
       }
@@ -1117,10 +1138,10 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
     setSaving(true)
     try {
       const payload = {
-        userId: nasabah?.id,
+        penggunaId: nasabah?.id,
         donorName: nasabah ? undefined : donorName.trim(),
         items: validRows.map((r) => ({
-          wasteItemId: r.wasteItemId,
+          jenisSampahId: r.jenisSampahId,
           quantityBeforeQc: parseFloat(r.quantityBeforeQc) || 0,
           quantityAfterQc: applyQc && r.quantityAfterQc !== '' ? parseFloat(r.quantityAfterQc) : null,
           qcReason: r.qcReason || undefined,
@@ -1138,9 +1159,9 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
       }
 
       const itemRows = (tx.items || []).map((it: any) => ({
-        kode: it.itemCodeSnapshot || it.wasteItem?.code || '-',
-        nama: it.itemNameSnapshot || it.wasteItem?.name || '-',
-        kategori: it.categoryNameSnapshot || it.wasteItem?.category?.name || '-',
+        kode: it.itemCodeSnapshot || it.jenisSampah?.code || '-',
+        nama: it.itemNameSnapshot || it.jenisSampah?.name || '-',
+        kategori: it.categoryNameSnapshot || it.jenisSampah?.category?.name || '-',
         qtyKotor: toNumber(it.quantityBeforeQc),
         qtyBersih: toNumber(it.quantityAfterQc ?? it.quantityBeforeQc),
         susut: toNumber(it.susutQc),
@@ -1202,7 +1223,7 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
             </Label>
             <Input
               value={donorName}
-              onChange={(e) => setDonorName(e.target.value)}
+              onChange={(e) => setDonorName(sanitizeName(e.target.value))}
               placeholder={nasabah ? '— (nasabah terpilih)' : 'cth: Budi / Donatur Anonim'}
               disabled={!!nasabah}
               className="mt-1.5 bg-white border-emerald-200 focus-visible:ring-emerald-500/30 focus-visible:border-emerald-500"
@@ -1300,7 +1321,7 @@ function SedekahForm({ wasteItems }: { wasteItems: WasteItem[] }) {
               index={i}
               applyQc={applyQc}
               itemMap={itemMap}
-              wasteItems={wasteItems}
+              jenisSampahs={jenisSampahs}
               onChange={(nr) => updateRow(i, nr)}
               onRemove={() => removeRow(i)}
               canRemove={rows.length > 1}
@@ -1395,6 +1416,7 @@ type RiwayatRow = {
   totalNilai: number
   poin: number
   qcStatus: string
+  rejectedAction?: string | null
   raw: any
 }
 
@@ -1435,13 +1457,14 @@ function Riwayat() {
         id: t.id,
         jenis: 'nabung' as const,
         tanggal: t.transactedAt,
-        nama: t.user?.name || '-',
-        kode: t.user?.memberCode || '',
+        nama: t.pengguna?.name || '-',
+        kode: t.pengguna?.memberCode || '',
         kodeTransaksi: `NB / ${dateKey} / ${String(seq).padStart(5, '0')}`,
         totalBerat: toNumber(t.totalWeight),
         totalNilai: toNumber(t.totalValue),
         poin: toNumber(t.pointsAwarded),
-        qcStatus: t.qcStatus || 'passed',
+        qcStatus: t.qcStatus || (t.status === 'dibatalkan' ? 'rejected' : (t.status === 'menunggu_qc' ? 'pending' : 'passed')),
+        rejectedAction: t.rejectedAction,
         raw: t,
       }
     })
@@ -1457,13 +1480,14 @@ function Riwayat() {
         id: t.id,
         jenis: 'sedekah' as const,
         tanggal: t.transactedAt || t.filterAt,
-        nama: t.user?.name || t.donorName || 'Donatur Anonim',
-        kode: t.user?.memberCode || '',
+        nama: t.pengguna?.name || t.donorName || 'Donatur Anonim',
+        kode: t.pengguna?.memberCode || '',
         kodeTransaksi: `SD / ${dateKey} / ${String(seq).padStart(5, '0')}`,
         totalBerat: toNumber(t.totalWeightBersih ?? t.totalWeight),
         totalNilai: 0,
         poin: 0,
-        qcStatus: t.qcStatus || 'passed',
+        qcStatus: t.qcStatus || (t.status === 'dibatalkan' ? 'rejected' : (t.status === 'menunggu_qc' ? 'pending' : 'passed')),
+        rejectedAction: t.rejectedAction,
         raw: t,
       }
     })
@@ -1506,7 +1530,7 @@ function Riwayat() {
     }
   }, [filterKey])
 
-  // Manual reload triggered by user (e.g. "Muat ulang" button)
+  // Manual reload triggered by pengguna (e.g. "Muat ulang" button)
   const load = () => {
     setLoading(true)
     const f = buildFilters()
@@ -1796,7 +1820,7 @@ function Riwayat() {
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell>{qcBadge(r.qcStatus)}</TableCell>
+                    <TableCell>{qcBadge(r.qcStatus, r.rejectedAction)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button
@@ -1890,7 +1914,7 @@ function Riwayat() {
                 )}
                 <div className="col-span-2 flex items-center gap-2 sm:col-span-4">
                   <span className="text-xs text-emerald-700">Status QC:</span>
-                  {qcBadge(detail.qcStatus)}
+                  {qcBadge(detail.qcStatus, detail.rejectedAction)}
                 </div>
               </div>
 
@@ -1917,13 +1941,13 @@ function Riwayat() {
                       {(detail.raw?.items || []).map((it: any, i: number) => (
                         <TableRow key={i}>
                           <TableCell className="font-mono text-xs text-emerald-700">
-                            {it.itemCodeSnapshot || it.wasteItem?.code || '-'}
+                            {it.itemCodeSnapshot || it.jenisSampah?.code || '-'}
                           </TableCell>
                           <TableCell className="font-medium text-emerald-900">
-                            {it.itemNameSnapshot || it.wasteItem?.name || '-'}
+                            {it.itemNameSnapshot || it.jenisSampah?.name || '-'}
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
-                            {it.categoryNameSnapshot || it.wasteItem?.category?.name || '-'}
+                            {it.categoryNameSnapshot || it.jenisSampah?.category?.name || '-'}
                           </TableCell>
                           <TableCell className="text-right">
                             {formatNumber(toNumber(it.quantityBeforeQc))} kg
@@ -2070,9 +2094,9 @@ function Riwayat() {
                         return (
                           <TableRow key={it.id} className="border-amber-100">
                             <TableCell>
-                              <div className="font-medium text-zinc-900">{it.itemNameSnapshot || it.wasteItem?.name || '-'}</div>
+                              <div className="font-medium text-zinc-900">{it.itemNameSnapshot || it.jenisSampah?.name || '-'}</div>
                               <div className="text-[10px] text-zinc-500">
-                                {it.itemCodeSnapshot || it.wasteItem?.code || '-'} · {it.categoryNameSnapshot || it.wasteItem?.category?.name || '-'}
+                                {it.itemCodeSnapshot || it.jenisSampah?.code || '-'} · {it.categoryNameSnapshot || it.jenisSampah?.category?.name || '-'}
                                 {editQc.jenis === 'nabung' && ` · ${formatRupiah(price)}/kg`}
                               </div>
                             </TableCell>
@@ -2263,8 +2287,8 @@ function printReceiptData(data: ReceiptData) {
   html += `<div class="info-row"><span class="key">Berat Kotor</span><span class="val">${formatNumber(data.totalBeratKotor)} kg</span></div>
     <div class="info-row"><span class="key">Berat Bersih</span><span class="val">${formatNumber(data.totalBeratBersih)} kg</span></div>`
   if (!isSedekah) {
-    html += `<div class="info-row"><span class="key">Total Nilai</span><span class="val">${formatRupiah(data.totalNilai)}</span></div>
-    <div class="info-row"><span class="key">Poin</span><span class="val">${formatNumber(data.poin, 0)}</span></div>`
+    html += `<div class="info-row"><span class="key">Total Nilai Tabungan</span><span class="val">${formatRupiah(data.totalNilai)}</span></div>
+    <div class="info-row"><span class="key">Loyalty Point</span><span class="val bold" style="color:#047857;">${formatNumber(data.poin, 0)} Poin</span></div>`
   } else {
     html += `<div class="info-row"><span class="key">% Susut</span><span class="val">${formatNumber(data.persentaseSusut, 2)}%</span></div>`
   }
@@ -2274,7 +2298,7 @@ function printReceiptData(data: ReceiptData) {
   // Items table
   if (data.items && data.items.length > 0) {
     html += `<div class="struk-section">
-      <div class="label">Detail Item</div>
+      <div class="label">Detail Item Sampah</div>
       <table class="items-table">
         <thead><tr>
           <th>Kode</th>
@@ -2282,7 +2306,7 @@ function printReceiptData(data: ReceiptData) {
           <th class="right">Kotor</th>
           <th class="right">Bersih</th>`
     if (!isSedekah) {
-      html += `<th class="right">Subtotal</th>`
+      html += `<th class="right">Harga/kg</th><th class="right">Subtotal</th>`
     }
     html += `</tr></thead>
       <tbody>`
@@ -2293,7 +2317,7 @@ function printReceiptData(data: ReceiptData) {
         <td class="right">${formatNumber(it.qtyKotor)} kg</td>
         <td class="right">${formatNumber(it.qtyBersih)} kg</td>`
       if (!isSedekah) {
-        html += `<td class="right">${formatRupiah(it.subtotal)}</td>`
+        html += `<td class="right">${formatRupiah(it.harga || 0)}</td><td class="right">${formatRupiah(it.subtotal)}</td>`
       }
       html += `</tr>`
     }
@@ -2341,8 +2365,8 @@ function printOperasionalDetail(detail: any) {
     <div class="info-row"><span class="key">${isSedekah ? 'Donatur' : 'Nasabah'}</span><span class="val bold">${detail.nama}</span></div>
     <div class="info-row"><span class="key">Total Berat</span><span class="val">${formatNumber(detail.totalBerat)} kg</span></div>`
   if (!isSedekah) {
-    html += `<div class="info-row"><span class="key">Total Nilai</span><span class="val">${formatRupiah(detail.totalNilai)}</span></div>
-    <div class="info-row"><span class="key">Poin</span><span class="val">${formatNumber(detail.poin, 0)}</span></div>`
+    html += `<div class="info-row"><span class="key">Total Nilai Tabungan</span><span class="val">${formatRupiah(detail.totalNilai)}</span></div>
+    <div class="info-row"><span class="key">Loyalty Point</span><span class="val bold" style="color:#047857;">${formatNumber(detail.poin, 0)} Poin</span></div>`
   }
   html += `<div class="info-row"><span class="key">Status QC</span><span class="val">${detail.qcStatus === 'passed' ? 'Lolos QC' : detail.qcStatus === 'adjusted' ? 'Disesuaikan' : 'Menunggu QC'}</span></div>
   </div>`
@@ -2350,7 +2374,7 @@ function printOperasionalDetail(detail: any) {
   // Items table
   if (detail.raw?.items && detail.raw.items.length > 0) {
     html += `<div class="struk-section">
-      <div class="label">Detail Item</div>
+      <div class="label">Detail Item Sampah</div>
       <table class="items-table">
         <thead><tr>
           <th>Kode</th>
@@ -2358,22 +2382,23 @@ function printOperasionalDetail(detail: any) {
           <th class="right">Kotor</th>
           <th class="right">Bersih</th>`
     if (!isSedekah) {
-      html += `<th class="right">Subtotal</th>`
+      html += `<th class="right">Harga/kg</th><th class="right">Subtotal</th>`
     }
     html += `</tr></thead>
       <tbody>`
     for (const it of detail.raw.items) {
-      const kode = it.itemCodeSnapshot || it.wasteItem?.code || '-'
-      const nama = it.itemNameSnapshot || it.wasteItem?.name || '-'
+      const kode = it.itemCodeSnapshot || it.jenisSampah?.code || '-'
+      const nama = it.itemNameSnapshot || it.jenisSampah?.name || '-'
       const kotor = formatNumber(toNumber(it.quantityBeforeQc))
       const bersih = formatNumber(toNumber(it.quantityAfterQc ?? it.quantityBeforeQc))
+      const harga = toNumber(it.pricePerUnitSnapshot || it.pricePerUnit || 0)
       html += `<tr>
         <td style="font-family:monospace;font-size:10px">${kode}</td>
         <td>${nama}</td>
         <td class="right">${kotor} kg</td>
         <td class="right">${bersih} kg</td>`
       if (!isSedekah) {
-        html += `<td class="right">${formatRupiah(toNumber(it.subtotal))}</td>`
+        html += `<td class="right">${formatRupiah(harga)}</td><td class="right">${formatRupiah(toNumber(it.subtotal))}</td>`
       }
       html += `</tr>`
     }
@@ -2403,10 +2428,97 @@ function printOperasionalDetail(detail: any) {
   printStruk(html)
 }
 
+// ---------------- Pickup Queue Tab ----------------
+function PickupQueueTab() {
+  const [data, setData] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/operasional/pickup-queue')
+      const json = await res.json()
+      if (res.ok) {
+        setData(json)
+      } else {
+        toast.error(json.error || 'Gagal memuat antrean pengambilan')
+      }
+    } catch (e: any) {
+      toast.error('Terjadi kesalahan')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  const handlePickup = async (id: string) => {
+    try {
+      const res = await fetch(`/api/operasional/nabung/${id}/pickup-rejected`, {
+        method: 'POST',
+      })
+      const json = await res.json()
+      if (res.ok) {
+        toast.success('Berhasil ditandai sudah diambil')
+        load()
+      } else {
+        toast.error(json.error || 'Gagal menyimpan status pengambilan')
+      }
+    } catch (e) {
+      toast.error('Terjadi kesalahan saat memproses')
+    }
+  }
+
+  return (
+    <Card className="border-emerald-200">
+      <CardHeader className="bg-emerald-50/50 pb-4">
+        <CardTitle className="text-emerald-900 flex items-center gap-2">
+          <Truck className="size-5" />
+          Antrean Pengambilan Sampah Ditolak
+        </CardTitle>
+        <CardDescription>
+          Daftar sampah nasabah yang ditolak saat QC dan menunggu untuk diambil kembali oleh nasabah.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        {loading ? (
+          <div className="p-8 text-center text-zinc-500">Memuat data...</div>
+        ) : data.length === 0 ? (
+          <div className="p-8 text-center text-zinc-500">Tidak ada antrean pengambilan.</div>
+        ) : (
+          <div className="divide-y divide-emerald-100">
+            {data.map((tx) => (
+              <div key={tx.id} className="p-4 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                <div>
+                  <div className="font-semibold text-emerald-900">
+                    {tx.pengguna?.name || 'Anonim'} <span className="text-xs font-normal text-zinc-500">({tx.pengguna?.memberCode || 'No Member'})</span>
+                  </div>
+                  <div className="text-sm text-zinc-600 mt-1">
+                    {tx.kodeTransaksi || tx.id} • Ditolak pada {formatDate(tx.qcAt)}
+                  </div>
+                  <div className="text-xs text-rose-700 mt-1 font-medium bg-rose-50 inline-block px-2 py-0.5 rounded border border-rose-200">
+                    Alasan: {tx.qcReason}
+                  </div>
+                </div>
+                <Button onClick={() => handlePickup(tx.id)} className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto shrink-0">
+                  <CheckCircle2 className="size-4 mr-2" />
+                  Tandai Sudah Diambil
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ---------------- Main ----------------
 export function Operasional() {
-  const [tab, setTab] = useState<'nabung' | 'sedekah' | 'riwayat'>('nabung')
-  const [wasteItems, setWasteItems] = useState<WasteItem[]>([])
+  const [tab, setTab] = useState<'nabung' | 'sedekah' | 'riwayat' | 'qc-queue' | 'pickup-queue'>('nabung')
+  const [jenisSampahs, setWasteItems] = useState<JenisSampah[]>([])
   const [itemsLoading, setItemsLoading] = useState(true)
 
   // Initial fetch of waste items for the form selectors. `itemsLoading` defaults
@@ -2417,7 +2529,7 @@ export function Operasional() {
       .list()
       .then((r) => {
         if (cancelled) return
-        setWasteItems(r as WasteItem[])
+        setWasteItems(r as JenisSampah[])
       })
       .catch((e) => {
         if (!cancelled) toast.error(e?.message || 'Gagal memuat barang sampah.')
@@ -2445,7 +2557,7 @@ export function Operasional() {
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
-        <TabsList className="grid w-full grid-cols-4 bg-emerald-100/60 border border-emerald-200">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 bg-emerald-100/60 border border-emerald-200 h-auto md:h-10">
           <TabsTrigger
             value="nabung"
             className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white text-xs sm:text-sm"
@@ -2463,6 +2575,12 @@ export function Operasional() {
             className="data-[state=active]:bg-amber-600 data-[state=active]:text-white text-xs sm:text-sm"
           >
             <ClipboardList className="size-4" /> <span className="hidden sm:inline">Antrian</span> QC
+          </TabsTrigger>
+          <TabsTrigger
+            value="pickup-queue"
+            className="data-[state=active]:bg-rose-600 data-[state=active]:text-white text-xs sm:text-sm"
+          >
+            <Truck className="size-4" /> <span className="hidden sm:inline">Ambil</span> Kembali
           </TabsTrigger>
           <TabsTrigger
             value="riwayat"
@@ -2484,7 +2602,7 @@ export function Operasional() {
               </CardContent>
             </Card>
           ) : (
-            <NabungForm wasteItems={wasteItems} />
+            <NabungForm jenisSampahs={jenisSampahs} />
           )}
         </TabsContent>
 
@@ -2500,7 +2618,7 @@ export function Operasional() {
               </CardContent>
             </Card>
           ) : (
-            <SedekahForm wasteItems={wasteItems} />
+            <SedekahForm jenisSampahs={jenisSampahs} />
           )}
         </TabsContent>
 
@@ -2510,6 +2628,9 @@ export function Operasional() {
 
         <TabsContent value="riwayat">
           <Riwayat />
+        </TabsContent>
+        <TabsContent value="pickup-queue">
+          <PickupQueueTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -2532,6 +2653,7 @@ function QcQueueView() {
   const [qcNotes, setQcNotes] = useState('')
   const [rejectMode, setRejectMode] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
+  const [rejectedAction, setRejectedAction] = useState<'sedekah' | 'ambil_kembali' | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -2581,10 +2703,12 @@ function QcQueueView() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          status: rejectMode ? 'dibatalkan' : 'selesai',
           items: editItemsArr,
           qcNotes,
           rejectAll: rejectMode,
           rejectReason,
+          rejectedAction: rejectMode ? rejectedAction : null,
         }),
       })
       const data = await res.json()
@@ -2654,9 +2778,9 @@ function QcQueueView() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <Clock className="size-4 text-amber-600" />
-                      <span className="font-semibold text-zinc-900">{tx.user?.name || tx.donorName || 'Donatur'}</span>
-                      {tx.user?.memberCode && (
-                        <span className="text-xs text-zinc-500">({tx.user?.memberCode})</span>
+                      <span className="font-semibold text-zinc-900">{tx.pengguna?.name || tx.donorName || 'Donatur'}</span>
+                      {tx.pengguna?.memberCode && (
+                        <span className="text-xs text-zinc-500">({tx.pengguna?.memberCode})</span>
                       )}
                       {tx.tipe === 'sedekah' ? (
                         <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">
@@ -2689,7 +2813,7 @@ function QcQueueView() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CardTitle className="text-base text-zinc-900">
-                  QC — {selected.user?.name || selected.donorName || 'Donatur'} {selected.user?.memberCode ? `(${selected.user?.memberCode})` : ''}
+                  QC — {selected.pengguna?.name || selected.donorName || 'Donatur'} {selected.pengguna?.memberCode ? `(${selected.pengguna?.memberCode})` : ''}
                 </CardTitle>
                 {isSedekah ? (
                   <span className="rounded-md bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
@@ -2749,7 +2873,7 @@ function QcQueueView() {
                           qcReason: prev[item.id]?.qcReason || '',
                         },
                       }))}
-                      disabled={rejectMode}
+                      disabled={rejectMode && rejectedAction !== 'sedekah'}
                       className="border-zinc-300 bg-white"
                     />
                   </div>
@@ -2766,7 +2890,7 @@ function QcQueueView() {
                           qcReason: e.target.value,
                         },
                       }))}
-                      disabled={rejectMode}
+                      disabled={rejectMode && rejectedAction !== 'sedekah'}
                       className="border-zinc-300 bg-white"
                     />
                   </div>
@@ -2817,13 +2941,49 @@ function QcQueueView() {
                 </Label>
               </div>
               {rejectMode && (
-                <Input
-                  type="text"
-                  placeholder="Alasan penolakan (wajib diisi)"
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  className="border-rose-300 bg-white"
-                />
+                <div className="space-y-3">
+                  <Input
+                    type="text"
+                    placeholder="Alasan penolakan (wajib diisi)"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    className="border-rose-300 bg-white"
+                  />
+                  {!isSedekah && (
+                    <div className="space-y-2 mt-2 border-t border-rose-200 pt-2">
+                      <Label className="text-sm font-semibold text-rose-800">Tindakan Fisik Sampah:</Label>
+                      <div className="flex flex-col gap-2">
+                        <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="rejectedAction"
+                            value="sedekah"
+                            checked={rejectedAction === 'sedekah'}
+                            onChange={() => setRejectedAction('sedekah')}
+                            className="accent-rose-600"
+                          />
+                          Disumbangkan ke Bank Sampah (Masuk stok gudang)
+                        </label>
+                        {rejectedAction === 'sedekah' && (
+                          <div className="ml-6 -mt-1 text-xs text-rose-700 italic">
+                            Silakan sesuaikan kembali <b>Berat Bersih</b> pada tiap item di atas sesuai kondisi fisik yang masuk ke gudang sedekah.
+                          </div>
+                        )}
+                        <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="rejectedAction"
+                            value="ambil_kembali"
+                            checked={rejectedAction === 'ambil_kembali'}
+                            onChange={() => setRejectedAction('ambil_kembali')}
+                            className="accent-rose-600"
+                          />
+                          Akan diambil kembali oleh nasabah
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -2855,7 +3015,7 @@ function QcQueueView() {
             <div className="flex gap-2 pt-1">
               <Button
                 onClick={handleSubmit}
-                disabled={submitting || (rejectMode && !rejectReason.trim())}
+                disabled={submitting || (rejectMode && (!rejectReason.trim() || (!isSedekah && !rejectedAction)))}
                 className={cn(
                   'text-white',
                   rejectMode

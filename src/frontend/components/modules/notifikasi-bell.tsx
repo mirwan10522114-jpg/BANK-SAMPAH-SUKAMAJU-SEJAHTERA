@@ -57,12 +57,12 @@ type NotifData = {
 }
 
 // ============================================================
-// localStorage read-status tracking (per user)
+// localStorage read-status tracking (per pengguna)
 // ============================================================
-function getReadIds(userId: string): Set<string> {
+function getReadIds(penggunaId: string): Set<string> {
   if (typeof window === 'undefined') return new Set()
   try {
-    const raw = localStorage.getItem(`notif-read-${userId}`)
+    const raw = localStorage.getItem(`notif-read-${penggunaId}`)
     if (!raw) return new Set()
     const arr = JSON.parse(raw) as string[]
     return new Set(arr)
@@ -71,17 +71,17 @@ function getReadIds(userId: string): Set<string> {
   }
 }
 
-function saveReadIds(userId: string, ids: Set<string>) {
+function saveReadIds(penggunaId: string, ids: Set<string>) {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(`notif-read-${userId}`, JSON.stringify([...ids]))
+    localStorage.setItem(`notif-read-${penggunaId}`, JSON.stringify([...ids]))
   } catch {
     // ignore
   }
 }
 
 // ============================================================
-// Icon helper — pick icon based on notification type
+// Icon helper — pick icon based on notifikasi type
 // ============================================================
 function getTxIcon(notif: TxNotif) {
   const { category, type } = notif
@@ -157,7 +157,7 @@ function typeLabel(type: string): string {
 }
 
 // ============================================================
-// Notification Item (clickable)
+// Notifikasi Item (clickable)
 // ============================================================
 function NotifItem({ notif, isUnread, onClick }: { notif: TxNotif | ReminderNotif; isUnread: boolean; onClick: () => void }) {
   const isReminder = notif.category === 'reminder'
@@ -236,7 +236,7 @@ function NotifItem({ notif, isUnread, onClick }: { notif: TxNotif | ReminderNoti
 }
 
 // ============================================================
-// Notification Detail Dialog
+// Notifikasi Detail Dialog
 // ============================================================
 function NotifDetailDialog({ notif, onClose }: { notif: TxNotif | ReminderNotif | null; onClose: () => void }) {
   if (!notif) return null
@@ -369,7 +369,7 @@ function NotifDetailDialog({ notif, onClose }: { notif: TxNotif | ReminderNotif 
 // ============================================================
 // Main NotificationBell component
 // ============================================================
-export function NotificationBell({ userId }: { userId: string }) {
+export function NotificationBell({ penggunaId }: { penggunaId: string }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<NotifData | null>(null)
@@ -380,14 +380,14 @@ export function NotificationBell({ userId }: { userId: string }) {
 
   // Load read IDs from localStorage on mount
   useEffect(() => {
-    setReadIds(getReadIds(userId))
-  }, [userId])
+    setReadIds(getReadIds(penggunaId))
+  }, [penggunaId])
 
   const load = useCallback(() => {
-    if (!userId) return
+    if (!penggunaId) return
     const myId = ++reqId.current
     setLoading(true)
-    api.notifications(userId)
+    api.notifikasis(penggunaId)
       .then((res) => {
         if (myId === reqId.current) {
           setData(res)
@@ -399,17 +399,17 @@ export function NotificationBell({ userId }: { userId: string }) {
           setLoading(false)
         }
       })
-  }, [userId])
+  }, [penggunaId])
 
   // Initial load + refresh every 60 seconds
   useEffect(() => {
-    if (!userId) return
+    if (!penggunaId) return
     let cancelled = false
     const myId = ++reqId.current
 
     const fetchNotifs = () => {
       setLoading(true)
-      api.notifications(userId)
+      api.notifikasis(penggunaId)
         .then((res) => {
           if (!cancelled && myId === reqId.current) {
             setData(res)
@@ -429,9 +429,9 @@ export function NotificationBell({ userId }: { userId: string }) {
       cancelled = true
       clearInterval(interval)
     }
-  }, [userId])
+  }, [penggunaId])
 
-  // Compute all notifications + unread count (based on localStorage read IDs)
+  // Compute all notifikasis + unread count (based on localStorage read IDs)
   const allNotifs: (TxNotif | ReminderNotif)[] = data
     ? [...data.reminders, ...data.transactions]
     : []
@@ -441,16 +441,16 @@ export function NotificationBell({ userId }: { userId: string }) {
   const unreadReminders = data ? data.reminders.filter((n) => !readIds.has(n.id)).length : 0
   const hasUnread = unreadCount > 0
 
-  // Mark a single notification as read
+  // Mark a single notifikasi as read
   const markAsRead = useCallback((notifId: string) => {
     setReadIds((prev) => {
       if (prev.has(notifId)) return prev
       const next = new Set(prev)
       next.add(notifId)
-      saveReadIds(userId, next)
+      saveReadIds(penggunaId, next)
       return next
     })
-  }, [userId])
+  }, [penggunaId])
 
   // Mark all as read
   const markAllAsRead = useCallback(() => {
@@ -459,12 +459,12 @@ export function NotificationBell({ userId }: { userId: string }) {
       for (const n of allNotifs) {
         next.add(n.id)
       }
-      saveReadIds(userId, next)
+      saveReadIds(penggunaId, next)
       return next
     })
-  }, [userId, allNotifs])
+  }, [penggunaId, allNotifs])
 
-  // Handle clicking a notification — mark as read + open detail dialog
+  // Handle clicking a notifikasi — mark as read + open detail dialog
   const handleClickNotif = useCallback((notif: TxNotif | ReminderNotif) => {
     markAsRead(notif.id)
     setSelectedNotif(notif)

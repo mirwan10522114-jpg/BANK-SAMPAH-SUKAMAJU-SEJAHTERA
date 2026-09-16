@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getActingUser } from '@/lib/business'
 
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const anggota = await db.koperasiAnggota.findMany({
     where: { deletedAt: null },
     orderBy: { tanggalBergabung: 'desc' },
     include: {
-      user: true,
+      pengguna: true,
       simpananSaldos: true,
       _count: { select: { pinjamans: true } },
     },
@@ -18,7 +19,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { nama, noKtp, noTelepon, alamat, userId, simpananPokok } = body
+  const { nama, noKtp, noTelepon, alamat, penggunaId, simpananPokok } = body
 
   if (!nama || !nama.trim()) {
     return NextResponse.json({ error: 'Nama wajib diisi' }, { status: 400 })
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
       alamat,
       status: 'aktif',
       tanggalBergabung: new Date(),
-      userId: userId || null,
+      penggunaId: penggunaId || null,
     },
   })
 

@@ -11,22 +11,22 @@ export async function GET(req: NextRequest) {
   const statusFilter = searchParams.get('status') || 'menunggu_qc'
 
   const [savingQueue, sedekahQueue] = await Promise.all([
-    db.savingTransaction.findMany({
+    db.transaksiNabung.findMany({
       where: { status: statusFilter },
       orderBy: { transactedAt: 'asc' }, // FIFO: terlama dulu
       include: {
-        user: { select: { id: true, name: true, memberCode: true, phone: true } },
-        items: { include: { wasteItem: { include: { category: true } } } },
+        pengguna: { select: { id: true, name: true, memberCode: true, phone: true } },
+        items: { include: { jenisSampah: { include: { category: true } } } },
         createdBy: { select: { id: true, name: true } },
       },
       take: 100,
     }),
-    db.sedekahTransaction.findMany({
+    db.transaksiSedekah.findMany({
       where: { status: statusFilter },
       orderBy: { transactedAt: 'asc' }, // FIFO: terlama dulu
       include: {
-        user: { select: { id: true, name: true, memberCode: true, phone: true } },
-        items: { include: { wasteItem: { include: { category: true } } } },
+        pengguna: { select: { id: true, name: true, memberCode: true, phone: true } },
+        items: { include: { jenisSampah: { include: { category: true } } } },
         createdBy: { select: { id: true, name: true } },
       },
       take: 100,
@@ -50,8 +50,8 @@ export async function GET(req: NextRequest) {
 
   // Hitung summary untuk dashboard badge
   const [totalSavingMenunggu, totalSedekahMenunggu] = await Promise.all([
-    db.savingTransaction.count({ where: { status: 'menunggu_qc' } }),
-    db.sedekahTransaction.count({ where: { status: 'menunggu_qc' } }),
+    db.transaksiNabung.count({ where: { status: 'menunggu_qc' } }),
+    db.transaksiSedekah.count({ where: { status: 'menunggu_qc' } }),
   ])
 
   return NextResponse.json({

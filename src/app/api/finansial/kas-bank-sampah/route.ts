@@ -1,42 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { toNumber } from '@/lib/format'
+import { toNumber, parseFilterStartDate, parseFilterEndDate } from '@/lib/format'
 import { getBankSampahKasBalance, recordBankSampahKas, getActingUser } from '@/lib/business'
 
-// GET: Buku Kas Utama institusi (list + balance + summary)
+// GET: Buku Kas Utama institusi (list + saldo + summary)
 // Supports optional dari/sampai period filter for summary stats.
 // Note: kasSaldo is always all-time (current cash on hand).
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const tipe = searchParams.get('tipe')
   const sumber = searchParams.get('sumber')
+  const buku = searchParams.get('buku')
   const dari = searchParams.get('dari')
   const sampai = searchParams.get('sampai')
+  const limit = parseInt(searchParams.get('limit') || '5000', 10)
 
   const where: any = {}
-  if (tipe) where.tipe = tipe
-  if (sumber) where.sumber = sumber
+  if (tipe && tipe !== 'all' && tipe !== 'Semua') where.tipe = tipe
+  if (sumber && sumber !== 'all' && sumber !== 'Semua') where.sumber = sumber
+  if (buku && buku !== 'all') where.buku = buku
 
-  // Period filter for list + summary (kasSaldo stays all-time)
-  const periodFilter: any = {}
-  if (dari) periodFilter.gte = new Date(dari)
-  if (sampai) periodFilter.lte = new Date(sampai + 'T23:59:59')
-  const hasPeriod = !!(dari || sampai)
-  if (hasPeriod) where.transactedAt = periodFilter
+  // Robust date filter
+  const startDate = parseFilterStartDate(dari)
+  const endDate = parseFilterEndDate(sampai)
+  const hasPeriod = !!(startDate || endDate)
+  if (hasPeriod) {
+    where.transactedAt = {}
+    if (startDate) where.transactedAt.gte = startDate
+    if (endDate) where.transactedAt.lte = endDate
+  }
 
-  const masukWhere = { tipe: 'masuk' as const, ...(hasPeriod ? { transactedAt: periodFilter } : {}) }
-  const keluarWhere = { tipe: 'keluar' as const, ...(hasPeriod ? { transactedAt: periodFilter } : {}) }
+  const todayStart = new Date()
+  todayStart.setHours(0, 0, 0, 0)
+  const todayEnd = new Date()
+  todayEnd.setHours(23, 59, 59, 999)
+
+  const dateFilter = hasPeriod ? where.transactedAt : { gte: todayStart, lte: todayEnd }
+
+  const masukWhere = { tipe: 'masuk' as const, transactedAt: dateFilter, ...(buku && buku !== 'all' ? { buku } : {}) }
+  const keluarWhere = { tipe: 'keluar' as const, transactedAt: dateFilter, ...(buku && buku !== 'all' ? { buku } : {}) }
 
   const [list, kasSaldo, masukAgg, keluarAgg] = await Promise.all([
-    db.bankSampahKas.findMany({
+    db.kasBankSampah.findMany({
       where,
       orderBy: { transactedAt: 'desc' },
       include: { createdBy: { select: { name: true } } },
-      take: 200,
+      take: limit,
     }),
-    getBankSampahKasBalance(), // always all-time
-    db.bankSampahKas.aggregate({ where: masukWhere, _sum: { jumlah: true } }),
-    db.bankSampahKas.aggregate({ where: keluarWhere, _sum: { jumlah: true } }),
+    getBankSampahKasBalance(buku && buku !== 'all' ? (buku as 'utama' | 'nasabah') : undefined), // always all-time
+    db.kasBankSampah.aggregate({ where: masukWhere, _sum: { jumlah: true } }),
+    db.kasBankSampah.aggregate({ where: keluarWhere, _sum: { jumlah: true } }),
   ])
 
   return NextResponse.json({
@@ -45,9 +58,9 @@ export async function GET(req: NextRequest) {
       jumlah: toNumber(k.jumlah),
       saldoSetelah: toNumber(k.saldoSetelah),
     })),
-    kasSaldo, // all-time current balance
-    totalMasuk: toNumber(masukAgg._sum.jumlah), // filtered by period if provided
-    totalKeluar: toNumber(keluarAgg._sum.jumlah), // filtered by period if provided
+    kasSaldo, // all-time current saldo
+    totalMasuk: toNumber(masukAgg._sum.jumlah), // always today's total
+    totalKeluar: toNumber(keluarAgg._sum.jumlah), // always today's total
     periode: hasPeriod ? { dari, sampai } : null,
   })
 }

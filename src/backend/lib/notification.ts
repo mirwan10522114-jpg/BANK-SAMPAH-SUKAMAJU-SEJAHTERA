@@ -8,7 +8,7 @@ import { db } from '@/lib/db'
  */
 export async function broadcastAdminNotification(title: string, message: string, type: string = 'info') {
   try {
-    const admins = await db.user.findMany({
+    const admins = await db.pengguna.findMany({
       where: {
         roles: {
           contains: '"admin"'
@@ -19,9 +19,9 @@ export async function broadcastAdminNotification(title: string, message: string,
 
     if (admins.length > 0) {
       // @ts-ignore: Model might not be typed yet until server restarts and prisma generate finishes
-      await db.notification.createMany({
+      await db.notifikasi.createMany({
         data: admins.map(a => ({
-          userId: a.id,
+          penggunaId: a.id,
           title,
           message,
           type
@@ -29,6 +29,6 @@ export async function broadcastAdminNotification(title: string, message: string,
       })
     }
   } catch (error) {
-    console.error('[Notification Broadcast Error]', error)
+    console.error('[Notifikasi Broadcast Error]', error)
   }
 }

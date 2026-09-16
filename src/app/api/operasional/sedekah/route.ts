@@ -1,77 +1,101 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getActingUser, addInventory, generateTxNo } from '@/lib/business'
-import { toNumber } from '@/lib/format'
+import { toNumber, parseFilterStartDate, parseFilterEndDate } from '@/lib/format'
 
 // GET: list sedekah transactions
 // Query params:
-//   userId   — filter by donor (nasabah)
-//   qcStatus — 'passed' | 'adjusted' | 'failed' | 'pending'
-//   dari     — ISO date (gte transactedAt)
-//   sampai   — ISO date (lte transactedAt)
-//   q        — search by user name OR donorName (case-insensitive contains)
+//   penggunaId   — filter by donor (nasabah)
+//   qcStatus — 'passed' | 'adjusted' | 'failed' | 'pending' | 'all'
+//   dari     — YYYY-MM-DD, YYYY-MM, DD/MM/YYYY, or ISO date
+//   sampai   — YYYY-MM-DD, YYYY-MM, DD/MM/YYYY, or ISO date
+//   q        — search by pengguna name, donorName, memberCode, or kodeTransaksi
+//   limit    — max rows (default 5000)
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const userId = searchParams.get('userId')
+  const penggunaId = searchParams.get('penggunaId')
   const qcStatus = searchParams.get('qcStatus')
   const dari = searchParams.get('dari')
   const sampai = searchParams.get('sampai')
   const q = (searchParams.get('q') || '').trim()
+  const limit = parseInt(searchParams.get('limit') || '5000', 10)
 
   const where: any = {}
-  if (userId) where.userId = userId
-  if (qcStatus) where.qcStatus = qcStatus
-  if (dari || sampai) {
+  if (penggunaId) where.penggunaId = penggunaId
+  if (qcStatus && qcStatus !== 'all' && qcStatus !== 'Semua') where.qcStatus = qcStatus
+
+  const startDate = parseFilterStartDate(dari)
+  const endDate = parseFilterEndDate(sampai)
+  if (startDate || endDate) {
     where.transactedAt = {}
-    if (dari) where.transactedAt.gte = new Date(dari)
-    if (sampai) {
-      const s = new Date(sampai)
-      s.setHours(23, 59, 59, 999)
-      where.transactedAt.lte = s
-    }
+    if (startDate) where.transactedAt.gte = startDate
+    if (endDate) where.transactedAt.lte = endDate
   }
 
   if (q) {
-    // Match either user.name OR donorName (OR-combined via Prisma OR).
-    const matched = await db.user.findMany({
-      where: { name: { contains: q } },
+    const matched = await db.pengguna.findMany({
+      where: {
+        OR: [
+          { name: { contains: q } },
+          { memberCode: { contains: q } },
+        ],
+      },
       select: { id: true },
-      take: 200,
+      take: 500,
     })
     const matchedUserIds = matched.map((u) => u.id)
     const orClauses: any[] = [
+      { kodeTransaksi: { contains: q } },
       { donorName: { contains: q } },
     ]
     if (matchedUserIds.length > 0) {
-      orClauses.push({ userId: { in: matchedUserIds } })
+      orClauses.push({ penggunaId: { in: matchedUserIds } })
     }
     where.OR = orClauses
   }
 
-  const tx = await db.sedekahTransaction.findMany({
-    where,
-    orderBy: { transactedAt: 'desc' },
-    include: { user: true, items: { include: { wasteItem: true } } },
-    take: 100,
+  const [tx, countAgg, sumAgg] = await Promise.all([
+    db.transaksiSedekah.findMany({
+      where,
+      orderBy: { transactedAt: 'desc' },
+      include: { pengguna: true, items: { include: { jenisSampah: true } } },
+      take: limit,
+    }),
+    db.transaksiSedekah.count({ where }),
+    db.transaksiSedekah.aggregate({ where, _sum: { totalWeight: true, totalWeightBersih: true } }),
+  ])
+
+  const totalCount = countAgg
+  const totalWeight = toNumber(sumAgg._sum.totalWeightBersih || sumAgg._sum.totalWeight)
+
+  const format = searchParams.get('format')
+  if (format === 'wrapped') {
+    return NextResponse.json({ list: tx, totalCount, totalWeight })
+  }
+
+  return NextResponse.json(tx, {
+    headers: {
+      'x-total-count': String(totalCount),
+      'x-total-weight': String(totalWeight),
+    },
   })
-  return NextResponse.json(tx)
 }
 
-// POST: create sedekah sampah transaction (no balance/points - pure donation to bank)
+// POST: create sedekah sampah transaction (no saldo/points - pure donation to bank)
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const actor = await getActingUser(req)
-  const { userId, donorName, items, notes, applyQc, skipQc, qcMode } = body as {
-    userId?: string
+  const { penggunaId, donorName, items, notes, applyQc, skipQc, qcMode } = body as {
+    penggunaId?: string
     donorName?: string
-    items: { wasteItemId: string; quantityBeforeQc: number; quantityAfterQc?: number; qcReason?: string }[]
+    items: { jenisSampahId: string; quantityBeforeQc: number; quantityAfterQc?: number; qcReason?: string }[]
     notes?: string
     applyQc?: boolean
     skipQc?: boolean
     qcMode?: 'langsung' | 'nanti' | 'bersih'
   }
 
-  if (!userId && !donorName) return NextResponse.json({ error: 'Nasabah atau nama donatur wajib diisi' }, { status: 400 })
+  if (!penggunaId && !donorName) return NextResponse.json({ error: 'Nasabah atau nama donatur wajib diisi' }, { status: 400 })
   if (!items?.length) return NextResponse.json({ error: 'Minimal 1 item sampah' }, { status: 400 })
 
   // Validate berat per item: tidak boleh negatif atau 0
@@ -86,15 +110,15 @@ export async function POST(req: NextRequest) {
   const isPendingQc = qcMode === 'nanti' || (!isApplyQc && !isSkipQc && qcMode !== undefined)
   const shouldFinalize = !isPendingQc
 
-  const wasteItems = await db.wasteItem.findMany({
-    where: { id: { in: items.map((i) => i.wasteItemId) } },
+  const jenisSampahs = await db.jenisSampah.findMany({
+    where: { id: { in: items.map((i) => i.jenisSampahId) } },
     include: { category: true },
   })
 
   let totalKotor = 0
   let totalBersih = 0
   const itemRows = items.map((it: any) => {
-    const wi = wasteItems.find((w) => w.id === it.wasteItemId)
+    const wi = jenisSampahs.find((w) => w.id === it.jenisSampahId)
     if (!wi) throw new Error('Barang sampah tidak ditemukan')
     const before = toNumber(it.quantityBeforeQc !== undefined ? it.quantityBeforeQc : (it.weight !== undefined ? it.weight : (it.berat !== undefined ? it.berat : it.quantity || 0)))
     const after = isApplyQc && it.quantityAfterQc != null ? toNumber(it.quantityAfterQc) : before
@@ -102,7 +126,7 @@ export async function POST(req: NextRequest) {
     totalKotor += before
     totalBersih += after
     return {
-      wasteItemId: wi.id,
+      jenisSampahId: wi.id,
       itemCodeSnapshot: wi.code,
       itemNameSnapshot: wi.name,
       categoryNameSnapshot: wi.category.name,
@@ -123,9 +147,9 @@ export async function POST(req: NextRequest) {
   const { generateTxNo } = await import('@/lib/business')
   const kodeTransaksi = await generateTxNo('SD')
 
-  const tx = await db.sedekahTransaction.create({
+  const tx = await db.transaksiSedekah.create({
     data: {
-      userId: userId || null,
+      penggunaId: penggunaId || null,
       donorName: donorName || null,
       kodeTransaksi, // SIMPAN kode transaksi resmi (SD / DDMMYYYY / 00001)
       totalWeight: shouldFinalize ? totalBersih : totalKotor,
@@ -146,10 +170,10 @@ export async function POST(req: NextRequest) {
     include: { items: true },
   })
 
-  // Only add to inventory if transaction is finalized immediately (not pending QC)
+  // Only add to inventaris if transaction is finalized immediately (not pending QC)
   if (shouldFinalize) {
     for (const row of itemRows) {
-      await addInventory(row.wasteItemId, 'sedekah', toNumber(row.quantity), 'sedekah', 'sedekah_transaction', tx.id, actor?.id, `Sedekah sampah (${qcStatus})`)
+      await addInventory(row.jenisSampahId, 'sedekah', toNumber(row.quantity), 'sedekah', 'sedekah_transaction', tx.id, actor?.id, `Sedekah sampah (${qcStatus})`)
     }
 
     // Send struk via email to nasabah (or skip if no email)
@@ -157,10 +181,10 @@ export async function POST(req: NextRequest) {
       const { sendStrukEmail } = await import('@/lib/email')
       let email = ''
       let name = donorName || 'Donatur'
-      if (userId) {
-        const user = await db.user.findUnique({ where: { id: userId }, select: { email: true, name: true, memberCode: true } })
-        email = user?.email || ''
-        name = user?.name || name
+      if (penggunaId) {
+        const pengguna = await db.pengguna.findUnique({ where: { id: penggunaId }, select: { email: true, name: true, memberCode: true } })
+        email = pengguna?.email || ''
+        name = pengguna?.name || name
       }
       if (email) {
         let strukHtml = `<div class="struk-header"><div class="icon">🤲</div><h2>Bank Sampah</h2><div class="sub">Sukamaju Sejahtera</div><div class="badge">STRUK SEDEKAH SAMPAH</div></div>`

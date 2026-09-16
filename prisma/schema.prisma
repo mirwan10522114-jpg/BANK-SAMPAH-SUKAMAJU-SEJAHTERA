@@ -12,84 +12,99 @@ datasource db {
 
 // ==================== MASTER: USERS & ROLES ====================
 
-model User {
-  id              String   @id @default(cuid())
-  memberCode      String?  @unique
+model Pengguna {
+  id              String    @id @default(cuid())
+  memberCode      String?   @unique
   name            String
-  email           String   @unique
-  nik             String?  @unique
-  roles           String   @default("[]") // JSON array string e.g. ["admin","nasabah"]
+  email           String    @unique
+  nik             String?   @unique
+  roles           String    @default("[]") // JSON array string e.g. ["admin","nasabah"]
   phone           String?
   address         String?
-  isMember        Boolean  @default(false)
+  tempatLahir     String?
+  tanggalLahir    DateTime?
+  jenisKelamin    String?
+  rt              String?
+  rw              String?
+  desaKelurahan   String?
+  kecamatan       String?
+  pekerjaan       String?
+  fotoKtp         String?
+  isMember        Boolean   @default(false)
   memberJoinedAt  DateTime?
   emailVerifiedAt DateTime?
-  password        String   @default("password")
+  password        String    @default("password")
   // OTP untuk verifikasi email (dikirim via Resend email service)
-  otpCode         String?  // 6-digit OTP code
+  otpCode         String? // 6-digit OTP code
   otpExpiresAt    DateTime? // kapan OTP expired (default 10 menit)
-  otpAttempts     Int      @default(0) // jumlah salah coba OTP (max 5)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  otpAttempts     Int       @default(0) // jumlah salah coba OTP (max 5)
 
-  balance               Balance?
-  balanceHistories      BalanceHistory[]         @relation("BalanceHistoryUser")
-  pointHistories        PointHistory[]           @relation("PointHistoryUser")
-  pointCashOuts         PointCashOut[]           @relation("PointCashOutUser")
-  savingTransactions    SavingTransaction[]      @relation("SavingUser")
-  sedekahTransactions   SedekahTransaction[]     @relation("SedekahUser")
-  withdrawals           WithdrawalRequest[]      @relation("WithdrawalUser")
-  redemptions           Redemption[]             @relation("RedemptionUser")
-  articles              Article[]
-  kegiatans             Kegiatan[]
-  koperasiAnggota       KoperasiAnggota?
-  createdSavingTx       SavingTransaction[]      @relation("SavingCreatedBy")
-  createdSedekahTx      SedekahTransaction[]     @relation("SedekahCreatedBy")
-  createdBalanceHistories BalanceHistory[]       @relation("BalanceHistoryCreatedBy")
-  createdPointHistories PointHistory[]           @relation("PointHistoryCreatedBy")
-  createdSalesTx        SalesTransaction[]       @relation("SalesCreatedBy")
-  createdProcessingTx   ProcessingTransaction[] @relation("ProcessingCreatedBy")
-  createdProductSale    ProductSale[]            @relation("ProductSaleCreatedBy")
-  boughtProductSales    ProductSale[]            @relation("ProductSaleBuyer")
-  createdProductPrice   ProductPrice[]           @relation("ProductPriceCreatedBy")
-  createdProductMovement ProductMovement[]       @relation("ProductMovementCreatedBy")
-  createdWastePrice     WastePrice[]             @relation("WastePriceCreatedBy")
-  createdPointRule      PointRule[]              @relation("PointRuleCreatedBy")
-  createdInventoryMvmt  InventoryMovement[]      @relation("InventoryMovementCreatedBy")
-  createdSimpananTx     KoperasiSimpananTransaksi[] @relation("SimpananCreatedBy")
-  createdPinjaman       KoperasiPinjaman[]       @relation("PinjamanCreatedBy")
-  createdAngsuran       KoperasiPinjamanAngsuran[] @relation("AngsuranCreatedBy")
-  createdKasTx          KoperasiKasTransaksi[]   @relation("KasCreatedBy")
-  createdAnggotaKeluar  KoperasiAnggotaKeluar[]  @relation("AnggotaKeluarCreatedBy")
-  reviewedPerbaikan      KoperasiPinjamanPerbaikan[] @relation("PerbaikanReviewedBy")
-  qcSavingTx            SavingTransaction[]      @relation("SavingQcBy")
-  qcSedekahTx           SedekahTransaction[]     @relation("SedekahQcBy")
-  filterSedekahTx       SedekahTransaction[]     @relation("SedekahFilterBy")
-  processedWithdrawal   WithdrawalRequest[]      @relation("WithdrawalProcessedBy")
-  processedRedemption   Redemption[]             @relation("RedemptionProcessedBy")
-  processedPointCashOut PointCashOut[]           @relation("PointCashOutProcessedBy")
-  balanceReleasesAsUser BalanceRelease[]         @relation("BalanceReleaseUser")
-  balanceReleases       BalanceRelease[]         @relation("BalanceReleaseReleasedBy")
-  bankSampahKasCreated  BankSampahKas[]          @relation("BankSampahKasCreatedBy")
-  createdTokoOrder      TokoOrder[]              @relation("TokoOrderCreatedBy")
-  createdTokoStatus     TokoOrderStatusHistory[]  @relation("TokoStatusCreatedBy")
-  notifications         Notification[]           @relation("NotificationUser")
-}
+  // Verifikasi 2-Langkah
+  verificationStatus String    @default("pending_otp") // "pending_otp", "pending_admin", "verified"
+  adminVerifiedAt    DateTime?
 
-model Notification {
-  id        String   @id @default(cuid())
-  userId    String
-  title     String
-  message   String   @db.Text
-  isRead    Boolean  @default(false)
-  type      String   @default("info")
-  link      String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user      User     @relation("NotificationUser", fields: [userId], references: [id])
+  saldo                   Saldo?
+  balanceHistories        RiwayatSaldo[]              @relation("BalanceHistoryUser")
+  pointHistories          RiwayatPoin[]               @relation("PointHistoryUser")
+  pencairanPoins          PencairanPoin[]             @relation("PointCashOutUser")
+  transaksiNabungs        TransaksiNabung[]           @relation("SavingUser")
+  transaksiSedekahs       TransaksiSedekah[]          @relation("SedekahUser")
+  withdrawals             PermintaanPenarikan[]       @relation("WithdrawalUser")
+  penukaranPoins          PenukaranPoin[]             @relation("RedemptionUser")
+  articles                Article[]
+  kegiatans               Kegiatan[]
+  koperasiAnggota         KoperasiAnggota?
+  createdSavingTx         TransaksiNabung[]           @relation("SavingCreatedBy")
+  createdSedekahTx        TransaksiSedekah[]          @relation("SedekahCreatedBy")
+  createdBalanceHistories RiwayatSaldo[]              @relation("BalanceHistoryCreatedBy")
+  createdPointHistories   RiwayatPoin[]               @relation("PointHistoryCreatedBy")
+  createdSalesTx          TransaksiPenjualanMitra[]   @relation("SalesCreatedBy")
+  createdProcessingTx     TransaksiPengolahan[]       @relation("ProcessingCreatedBy")
+  createdProductSale      PenjualanProduk[]           @relation("ProductSaleCreatedBy")
+  boughtProductSales      PenjualanProduk[]           @relation("ProductSaleBuyer")
+  createdProductPrice     HargaProduk[]               @relation("ProductPriceCreatedBy")
+  createdProductMovement  PergerakanProduk[]          @relation("ProductMovementCreatedBy")
+  createdWastePrice       HargaSampah[]               @relation("WastePriceCreatedBy")
+  createdPointRule        AturanPoin[]                @relation("PointRuleCreatedBy")
+  createdInventoryMvmt    PergerakanInventaris[]      @relation("InventoryMovementCreatedBy")
+  createdSimpananTx       KoperasiSimpananTransaksi[] @relation("SimpananCreatedBy")
+  createdPinjaman         KoperasiPinjaman[]          @relation("PinjamanCreatedBy")
+  approvedPinjamans       KoperasiPinjaman[]          @relation("PinjamanApprovedBy")
+  createdAngsuran         KoperasiPinjamanAngsuran[]  @relation("AngsuranCreatedBy")
+  createdKasTx            KoperasiKasTransaksi[]      @relation("KasCreatedBy")
+  createdAnggotaKeluar    KoperasiAnggotaKeluar[]     @relation("AnggotaKeluarCreatedBy")
+  reviewedPerbaikan       KoperasiPinjamanPerbaikan[] @relation("PerbaikanReviewedBy")
+  qcSavingTx              TransaksiNabung[]           @relation("SavingQcBy")
+  qcSedekahTx             TransaksiSedekah[]          @relation("SedekahQcBy")
+  filterSedekahTx         TransaksiSedekah[]          @relation("SedekahFilterBy")
+  processedWithdrawal     PermintaanPenarikan[]       @relation("WithdrawalProcessedBy")
+  processedRedemption     PenukaranPoin[]             @relation("RedemptionProcessedBy")
+  processedPointCashOut   PencairanPoin[]             @relation("PointCashOutProcessedBy")
+  balanceReleasesAsUser   PelepasanSaldo[]            @relation("BalanceReleaseUser")
+  pelepasanSaldos         PelepasanSaldo[]            @relation("BalanceReleaseReleasedBy")
+  bankSampahKasCreated    KasBankSampah[]             @relation("BankSampahKasCreatedBy")
+  createdTokoOrder        PesananToko[]               @relation("TokoOrderCreatedBy")
+  createdTokoStatus       RiwayatStatusPesananToko[]  @relation("TokoStatusCreatedBy")
+  notifikasis             Notifikasi[]                @relation("NotificationUser")
 }
 
-model MemberCodeCounter {
+model Notifikasi {
+  id         String   @id @default(cuid())
+  penggunaId String
+  title      String
+  message    String   @db.Text
+  isRead     Boolean  @default(false)
+  type       String   @default("info")
+  link       String?
+  createdAt  DateTime @default(now())
+
+  pengguna Pengguna @relation("NotificationUser", fields: [penggunaId], references: [id])
+}
+
+model PenghitungKodeAnggota {
   id         String   @id @default(cuid())
   prefix     String   @unique
   lastNumber Int      @default(0)
@@ -99,110 +114,111 @@ model MemberCodeCounter {
 
 // ==================== MASTER: WASTE CATALOG ====================
 
-model WasteCategory {
-  id          String      @id @default(cuid())
+model KategoriSampah {
+  id          String        @id @default(cuid())
   name        String
-  slug        String      @unique
-  codePrefix  String      @unique
+  slug        String        @unique
+  codePrefix  String        @unique
   description String?
   image       String?
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  items       WasteItem[]
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  items       JenisSampah[]
 }
 
-model WasteItem {
-  id               String        @id @default(cuid())
-  wasteCategoryId  String
-  code             String        @unique
+model JenisSampah {
+  id               String   @id @default(cuid())
+  kategoriSampahId String
+  code             String   @unique
   name             String
-  slug             String        @unique
-  unit             String        @default("kg")
-  pricePerUnit     Decimal       @default(0)
+  slug             String   @unique
+  unit             String   @default("kg")
+  pricePerUnit     Decimal  @default(0)
   description      String?
-  isActive         Boolean       @default(true)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  category          WasteCategory       @relation(fields: [wasteCategoryId], references: [id])
-  prices            WastePrice[]
-  savingItems       SavingTransactionItem[]
-  sedekahItems      SedekahTransactionItem[]
-  salesItems        SalesTransactionItem[]
-  processingInputs  ProcessingInput[]
-  inventories       Inventory[]
-  inventoryMovements InventoryMovement[]
-  recipeItems       ProcessingRecipe[] // resep pengolahan (bahan baku untuk produk)
+  category              KategoriSampah                @relation(fields: [kategoriSampahId], references: [id])
+  prices                HargaSampah[]
+  savingItems           ItemTransaksiNabung[]
+  sedekahItems          ItemTransaksiSedekah[]
+  salesItems            ItemTransaksiPenjualanMitra[]
+  inputPengolahans      InputPengolahan[]
+  inventories           Inventaris[]
+  pergerakanInventariss PergerakanInventaris[]
+  recipeItems           ResepPengolahan[] // resep pengolahan (bahan baku untuk produk)
 }
 
-model WastePrice {
-  id            String    @id @default(cuid())
-  wasteItemId   String
+model HargaSampah {
+  id            String   @id @default(cuid())
+  jenisSampahId String
   pricePerUnit  Decimal
   effectiveFrom DateTime
   notes         String?
   createdById   String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  wasteItem     WasteItem @relation(fields: [wasteItemId], references: [id])
-  createdBy     User?     @relation("WastePriceCreatedBy", fields: [createdById], references: [id])
-  savingItems   SavingTransactionItem[]
+  jenisSampah JenisSampah           @relation(fields: [jenisSampahId], references: [id])
+  createdBy   Pengguna?             @relation("WastePriceCreatedBy", fields: [createdById], references: [id])
+  savingItems ItemTransaksiNabung[]
 }
 
 // ==================== MASTER: POINT RULES ====================
 
-model PointRule {
-  id              String    @id @default(cuid())
-  pointsPerRupiah Decimal                 // poin per Rp setoran (mis. 0.01 = 1 poin / Rp 100)
-  rupiahPerPoint  Decimal   @default(0)   // nilai 1 poin dalam Rupiah (untuk cash out)
-  effectiveFrom   DateTime
-  notes           String?
-  isActive        Boolean   @default(true)
+model AturanPoin {
+  id                 String   @id @default(cuid())
+  pointsPerRupiah    Decimal // poin per Rp setoran (mis. 0.001 = 1 poin / Rp 1000)
+  rupiahPerPointEarn Int      @default(1000) // nilai rupiah tabungan untuk mendapatkan 1 poin (mis. 1000, 2000, 500)
+  rupiahPerPoint     Decimal  @default(0) // nilai 1 poin dalam Rupiah (untuk cash out / tukar produk)
+  effectiveFrom      DateTime
+  notes              String?
+  isActive           Boolean  @default(true)
   // ===== Aturan Loyalty =====
-  resetPeriod     String    @default("never")  // never | monthly | quarterly | yearly
-  resetDay        Int        @default(1)        // tanggal reset (1-28), default awal bulan
-  minRedeemPoints Int        @default(50)       // minimal poin untuk redeem/cashout
-  expiryDays      Int        @default(0)         // poin expired setelah X hari (0 = tidak expired)
-  rolloverPoints  Int        @default(0)         // poin maksimal yang rollover saat reset (0 = semua hangus)
+  resetPeriod        String   @default("never") // never | monthly | quarterly | yearly
+  resetDay           Int      @default(1) // tanggal reset (1-28), default awal bulan
+  minRedeemPoints    Int      @default(50) // minimal poin untuk redeem/cashout
+  expiryDays         Int      @default(0) // poin expired setelah X hari (0 = tidak expired)
+  rolloverPoints     Int      @default(0) // poin maksimal yang rollover saat reset (0 = semua hangus)
   // ===== Tier Multiplier (bonus poin berdasarkan tier nasabah) =====
-  tierBronzeMult  Decimal    @default(1)   // multiplier untuk tier Bronze (0-499 poin)
-  tierSilverMult  Decimal    @default(1.2) // multiplier untuk tier Silver (500-999 poin)
-  tierGoldMult    Decimal    @default(1.5) // multiplier untuk tier Gold (1000-2499 poin)
-  tierPlatinumMult Decimal   @default(2)   // multiplier untuk tier Platinum (2500+ poin)
+  tierBronzeMult     Decimal  @default(1) // multiplier untuk tier Bronze (0-499 poin)
+  tierSilverMult     Decimal  @default(1.2) // multiplier untuk tier Silver (500-999 poin)
+  tierGoldMult       Decimal  @default(1.5) // multiplier untuk tier Gold (1000-2499 poin)
+  tierPlatinumMult   Decimal  @default(2) // multiplier untuk tier Platinum (2500+ poin)
   // ===== Streak Bonus =====
   streakBonusEnabled Boolean  @default(true) // aktifkan bonus setoran berturut-turut
-  streakBonusMonths  Int      @default(3)     // minimal bulan berturut-turut untuk dapat bonus
-  streakBonusMult    Decimal  @default(1.5)   // multiplier bonus streak
-  createdById       String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  streakBonusMonths  Int      @default(3) // minimal bulan berturut-turut untuk dapat bonus
+  streakBonusMult    Decimal  @default(1.5) // multiplier bonus streak
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  createdBy       User?           @relation("PointRuleCreatedBy", fields: [createdById], references: [id])
-  pointHistories  PointHistory[]
-  pointCashOuts   PointCashOut[]
+  createdBy      Pengguna?       @relation("PointRuleCreatedBy", fields: [createdById], references: [id])
+  pointHistories RiwayatPoin[]
+  pencairanPoins PencairanPoin[]
 }
 
 // ==================== BALANCE & POINTS ====================
 
-model Balance {
+model Saldo {
   id            String   @id @default(cuid())
-  userId        String   @unique
-  saldoTertahan Decimal  @default(0) // held balance (from savings, can be withdrawn/cash-out)
-  saldoTersedia Decimal  @default(0) // available balance (after cash-out approval etc.)
+  penggunaId    String   @unique
+  saldoTertahan Decimal  @default(0) // held saldo (from savings, can be withdrawn/cash-out)
+  saldoTersedia Decimal  @default(0) // available saldo (after cash-out approval etc.)
   points        Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  user         User              @relation(fields: [userId], references: [id])
+  pengguna Pengguna @relation(fields: [penggunaId], references: [id])
 }
 
-model BalanceHistory {
+model RiwayatSaldo {
   id           String   @id @default(cuid())
-  userId       String
-  bucket       String   // saldo_tertahan | saldo_tersedia | points
-  type         String   // credit | debit
+  penggunaId   String
+  bucket       String // saldo_tertahan | saldo_tersedia | points
+  type         String // credit | debit
   amount       Decimal
   balanceAfter Decimal
   sourceType   String?
@@ -212,34 +228,34 @@ model BalanceHistory {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  user     User    @relation("BalanceHistoryUser", fields: [userId], references: [id])
-  createdBy User?  @relation("BalanceHistoryCreatedBy", fields: [createdById], references: [id])
+  pengguna  Pengguna  @relation("BalanceHistoryUser", fields: [penggunaId], references: [id])
+  createdBy Pengguna? @relation("BalanceHistoryCreatedBy", fields: [createdById], references: [id])
 }
 
-model PointHistory {
-  id            String   @id @default(cuid())
-  userId        String
-  pointRuleId   String?
-  type          String   // earn | cash_out | redeem
-  points        Int
-  balanceAfter  Int
-  rateSnapshot  Decimal?
-  sourceType    String?
-  sourceId      String?
-  description   String?
-  createdById   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+model RiwayatPoin {
+  id           String   @id @default(cuid())
+  penggunaId   String
+  aturanPoinId String?
+  type         String // earn | cash_out | redeem
+  points       Int
+  balanceAfter Int
+  rateSnapshot Decimal?
+  sourceType   String?
+  sourceId     String?
+  description  String?
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  user       User       @relation("PointHistoryUser", fields: [userId], references: [id])
-  pointRule  PointRule? @relation(fields: [pointRuleId], references: [id])
-  createdBy  User?      @relation("PointHistoryCreatedBy", fields: [createdById], references: [id])
+  pengguna   Pengguna    @relation("PointHistoryUser", fields: [penggunaId], references: [id])
+  aturanPoin AturanPoin? @relation(fields: [aturanPoinId], references: [id])
+  createdBy  Pengguna?   @relation("PointHistoryCreatedBy", fields: [createdById], references: [id])
 }
 
-model PointCashOut {
+model PencairanPoin {
   id            String   @id @default(cuid())
-  userId        String
-  pointRuleId   String?
+  penggunaId    String
+  aturanPoinId  String?
   pointsUsed    Int
   rateSnapshot  Decimal
   cashAmount    Decimal
@@ -249,163 +265,165 @@ model PointCashOut {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  user        User       @relation("PointCashOutUser", fields: [userId], references: [id])
-  pointRule   PointRule? @relation(fields: [pointRuleId], references: [id])
-  processedBy User?      @relation("PointCashOutProcessedBy", fields: [processedById], references: [id])
+  pengguna    Pengguna    @relation("PointCashOutUser", fields: [penggunaId], references: [id])
+  aturanPoin  AturanPoin? @relation(fields: [aturanPoinId], references: [id])
+  processedBy Pengguna?   @relation("PointCashOutProcessedBy", fields: [processedById], references: [id])
 }
 
 // ==================== OPERASIONAL: NABUNG SAMPAH ====================
 
-model SavingTransaction {
-  id            String   @id @default(cuid())
-  userId        String
+model TransaksiNabung {
+  id                      String    @id @default(cuid())
+  penggunaId              String
   // Kode transaksi resmi (format: NB / DDMMYYYY / 00001) — disimpan saat create
-  kodeTransaksi String?
-  totalWeight   Decimal  @default(0)
-  totalValue    Decimal  @default(0)
-  pointsAwarded Int      @default(0)
-  notes         String?
-  createdById   String?
-  transactedAt  DateTime @default(now())
+  kodeTransaksi           String?
+  totalWeight             Decimal   @default(0)
+  totalValue              Decimal   @default(0)
+  pointsAwarded           Int       @default(0)
+  notes                   String?
+  createdById             String?
+  transactedAt            DateTime  @default(now())
   // Status transaksi: menunggu_qc | selesai | dibatalkan
   // - menunggu_qc: transaksi dibuat, saldo BELUM masuk (menunggu QC konfirmasi)
   // - selesai: QC selesai (atau tidak_perlu_qc) → saldo sudah masuk
   // - dibatalkan: dibatalkan saat QC (0kg diterima), saldo tidak masuk sama sekali
-  status        String   @default("menunggu_qc")
+  status                  String    @default("menunggu_qc")
   // QC flow: pending (default menunggu QC) | tidak_perlu (teller tandai bersih) | passed | adjusted | rejected
-  qcStatus      String   @default("pending") // pending | tidak_perlu | passed | adjusted | rejected
-  qcAt          DateTime?
-  qcById        String?
-  qcNotes       String?
-  qcReason      String?  // alasan utama pembatalan/penolakan
-  finalizedAt   DateTime? // kapan saldo dikredit (saat status → selesai)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  qcStatus                String    @default("pending") // pending | tidak_perlu | passed | adjusted | rejected
+  qcAt                    DateTime?
+  qcById                  String?
+  qcNotes                 String?
+  qcReason                String? // alasan utama pembatalan/penolakan
+  rejectedAction          String? // null | "sedekah" | "ambil_kembali"
+  isRejectedWastePickedUp Boolean   @default(false)
+  finalizedAt             DateTime? // kapan saldo dikredit (saat status → selesai)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
-  user       User                    @relation("SavingUser", fields: [userId], references: [id])
-  createdBy  User?                   @relation("SavingCreatedBy", fields: [createdById], references: [id])
-  qcBy       User?                   @relation("SavingQcBy", fields: [qcById], references: [id])
-  items      SavingTransactionItem[]
+  pengguna  Pengguna              @relation("SavingUser", fields: [penggunaId], references: [id])
+  createdBy Pengguna?             @relation("SavingCreatedBy", fields: [createdById], references: [id])
+  qcBy      Pengguna?             @relation("SavingQcBy", fields: [qcById], references: [id])
+  items     ItemTransaksiNabung[]
 }
 
-model SavingTransactionItem {
-  id                    String   @id @default(cuid())
-  savingTransactionId   String
-  wasteItemId           String
-  wastePriceId          String?
-  itemCodeSnapshot      String
-  itemNameSnapshot      String
-  categoryNameSnapshot  String
-  unitSnapshot          String   @default("kg")
-  pricePerUnitSnapshot  Decimal
-  quantity              Decimal
-  subtotal              Decimal
-  quantityBeforeQc      Decimal  @default(0)
-  quantityAfterQc       Decimal?
-  susutQc               Decimal  @default(0)
-  subtotalBeforeQc      Decimal  @default(0)
-  qcReason              String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+model ItemTransaksiNabung {
+  id                   String   @id @default(cuid())
+  transaksiNabungId    String
+  jenisSampahId        String
+  hargaSampahId        String?
+  itemCodeSnapshot     String
+  itemNameSnapshot     String
+  categoryNameSnapshot String
+  unitSnapshot         String   @default("kg")
+  pricePerUnitSnapshot Decimal
+  quantity             Decimal
+  subtotal             Decimal
+  quantityBeforeQc     Decimal  @default(0)
+  quantityAfterQc      Decimal?
+  susutQc              Decimal  @default(0)
+  subtotalBeforeQc     Decimal  @default(0)
+  qcReason             String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  savingTransaction SavingTransaction @relation(fields: [savingTransactionId], references: [id])
-  wasteItem         WasteItem          @relation(fields: [wasteItemId], references: [id])
-  wastePrice        WastePrice?        @relation(fields: [wastePriceId], references: [id])
+  transaksiNabung TransaksiNabung @relation(fields: [transaksiNabungId], references: [id])
+  jenisSampah     JenisSampah     @relation(fields: [jenisSampahId], references: [id])
+  hargaSampah     HargaSampah?    @relation(fields: [hargaSampahId], references: [id])
 }
 
 // ==================== OPERASIONAL: SEDEKAH SAMPAH ====================
 
-model SedekahTransaction {
-  id                  String   @id @default(cuid())
-  userId              String?
-  donorName           String?
+model TransaksiSedekah {
+  id                String    @id @default(cuid())
+  penggunaId        String?
+  donorName         String?
   // Kode transaksi resmi (format: SD / DDMMYYYY / 00001) — disimpan saat create
-  kodeTransaksi       String?
-  totalWeight         Decimal  @default(0)
-  notes               String?
-  createdById         String?
-  transactedAt        DateTime @default(now())
-  // Status: menunggu_qc | selesai | dibatalkan (sinkron dengan SavingTransaction)
-  status              String   @default("menunggu_qc")
-  qcStatus            String   @default("pending") // pending | tidak_perlu | passed | adjusted | rejected
-  qcAt                DateTime?
-  qcById              String?
-  qcNotes             String?
-  qcReason            String?
-  finalizedAt         DateTime?
-  totalWeightKotor    Decimal  @default(0)
-  totalWeightBersih   Decimal?
-  persentaseSusut     Decimal?
-  filterNotes         String?
-  filterAt            DateTime?
-  filterById          String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  kodeTransaksi     String?
+  totalWeight       Decimal   @default(0)
+  notes             String?
+  createdById       String?
+  transactedAt      DateTime  @default(now())
+  // Status: menunggu_qc | selesai | dibatalkan (sinkron dengan TransaksiNabung)
+  status            String    @default("menunggu_qc")
+  qcStatus          String    @default("pending") // pending | tidak_perlu | passed | adjusted | rejected
+  qcAt              DateTime?
+  qcById            String?
+  qcNotes           String?
+  qcReason          String?
+  finalizedAt       DateTime?
+  totalWeightKotor  Decimal   @default(0)
+  totalWeightBersih Decimal?
+  persentaseSusut   Decimal?
+  filterNotes       String?
+  filterAt          DateTime?
+  filterById        String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  user       User?                      @relation("SedekahUser", fields: [userId], references: [id])
-  createdBy  User?                     @relation("SedekahCreatedBy", fields: [createdById], references: [id])
-  qcBy       User?                     @relation("SedekahQcBy", fields: [qcById], references: [id])
-  filterBy   User?                     @relation("SedekahFilterBy", fields: [filterById], references: [id])
-  items      SedekahTransactionItem[]
+  pengguna  Pengguna?              @relation("SedekahUser", fields: [penggunaId], references: [id])
+  createdBy Pengguna?              @relation("SedekahCreatedBy", fields: [createdById], references: [id])
+  qcBy      Pengguna?              @relation("SedekahQcBy", fields: [qcById], references: [id])
+  filterBy  Pengguna?              @relation("SedekahFilterBy", fields: [filterById], references: [id])
+  items     ItemTransaksiSedekah[]
 }
 
-model SedekahTransactionItem {
-  id                    String   @id @default(cuid())
-  sedekahTransactionId  String
-  wasteItemId           String
-  itemCodeSnapshot      String
-  itemNameSnapshot      String
-  categoryNameSnapshot  String
-  unitSnapshot          String   @default("kg")
-  quantity              Decimal
-  quantityBeforeQc      Decimal  @default(0)
-  quantityAfterQc       Decimal?
-  susutQc               Decimal  @default(0)
-  qcReason              String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+model ItemTransaksiSedekah {
+  id                   String   @id @default(cuid())
+  transaksiSedekahId   String
+  jenisSampahId        String
+  itemCodeSnapshot     String
+  itemNameSnapshot     String
+  categoryNameSnapshot String
+  unitSnapshot         String   @default("kg")
+  quantity             Decimal
+  quantityBeforeQc     Decimal  @default(0)
+  quantityAfterQc      Decimal?
+  susutQc              Decimal  @default(0)
+  qcReason             String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  sedekahTransaction SedekahTransaction @relation(fields: [sedekahTransactionId], references: [id])
-  wasteItem          WasteItem           @relation(fields: [wasteItemId], references: [id])
+  transaksiSedekah TransaksiSedekah @relation(fields: [transaksiSedekahId], references: [id])
+  jenisSampah      JenisSampah      @relation(fields: [jenisSampahId], references: [id])
 }
 
 // ==================== INVENTORY ====================
 
-model Inventory {
-  id           String   @id @default(cuid())
-  wasteItemId  String
-  source       String   // nabung | sedekah | processing_output | sale_return
-  stock        Decimal  @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+model Inventaris {
+  id            String   @id @default(cuid())
+  jenisSampahId String
+  source        String // nabung | sedekah | processing_output | sale_return
+  stock         Decimal  @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  wasteItem      WasteItem            @relation(fields: [wasteItemId], references: [id])
+  jenisSampah JenisSampah @relation(fields: [jenisSampahId], references: [id])
 
-  @@unique([wasteItemId, source])
+  @@unique([jenisSampahId, source])
 }
 
-model InventoryMovement {
-  id              String   @id @default(cuid())
-  wasteItemId     String
-  source          String
-  direction       String   // in | out
-  reason          String   // saving | sedekah | processing_input | sale | adjustment
-  quantity        Decimal
-  stockAfter      Decimal
-  sourceRefType   String?
-  sourceRefId     String?
-  notes           String?
-  createdById     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+model PergerakanInventaris {
+  id            String   @id @default(cuid())
+  jenisSampahId String
+  source        String
+  direction     String // in | out
+  reason        String // saving | sedekah | processing_input | sale | adjustment
+  quantity      Decimal
+  stockAfter    Decimal
+  sourceRefType String?
+  sourceRefId   String?
+  notes         String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  wasteItem   WasteItem @relation(fields: [wasteItemId], references: [id])
-  createdBy   User?     @relation("InventoryMovementCreatedBy", fields: [createdById], references: [id])
+  jenisSampah JenisSampah @relation(fields: [jenisSampahId], references: [id])
+  createdBy   Pengguna?   @relation("InventoryMovementCreatedBy", fields: [createdById], references: [id])
 }
 
 // ==================== PARTNERS & SALES (to mitra) ====================
 
-model Partner {
+model Mitra {
   id        String   @id @default(cuid())
   name      String
   type      String   @default("pengepul")
@@ -417,47 +435,47 @@ model Partner {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  salesTransactions SalesTransaction[]
+  transaksiPenjualanMitras TransaksiPenjualanMitra[]
 }
 
-model SalesTransaction {
+model TransaksiPenjualanMitra {
   id            String   @id @default(cuid())
   invoiceNumber String?  @unique
-  partnerId     String
-  totalWeight  Decimal  @default(0)
-  totalValue   Decimal  @default(0)
-  notes        String?
-  createdById  String?
-  transactedAt DateTime @default(now())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  mitraId       String
+  totalWeight   Decimal  @default(0)
+  totalValue    Decimal  @default(0)
+  notes         String?
+  createdById   String?
+  transactedAt  DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  partner   Partner                  @relation(fields: [partnerId], references: [id])
-  createdBy User?                    @relation("SalesCreatedBy", fields: [createdById], references: [id])
-  items     SalesTransactionItem[]
+  mitra     Mitra                         @relation(fields: [mitraId], references: [id])
+  createdBy Pengguna?                     @relation("SalesCreatedBy", fields: [createdById], references: [id])
+  items     ItemTransaksiPenjualanMitra[]
 }
 
-model SalesTransactionItem {
-  id                  String   @id @default(cuid())
-  salesTransactionId  String
-  wasteItemId         String
-  itemCodeSnapshot    String
-  itemNameSnapshot    String
-  categoryNameSnapshot String
-  unitSnapshot        String   @default("kg")
-  pricePerUnit        Decimal
-  quantity            Decimal
-  subtotal            Decimal
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+model ItemTransaksiPenjualanMitra {
+  id                        String   @id @default(cuid())
+  transaksiPenjualanMitraId String
+  jenisSampahId             String
+  itemCodeSnapshot          String
+  itemNameSnapshot          String
+  categoryNameSnapshot      String
+  unitSnapshot              String   @default("kg")
+  pricePerUnit              Decimal
+  quantity                  Decimal
+  subtotal                  Decimal
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
-  salesTransaction SalesTransaction @relation(fields: [salesTransactionId], references: [id])
-  wasteItem        WasteItem         @relation(fields: [wasteItemId], references: [id])
+  transaksiPenjualanMitra TransaksiPenjualanMitra @relation(fields: [transaksiPenjualanMitraId], references: [id])
+  jenisSampah             JenisSampah             @relation(fields: [jenisSampahId], references: [id])
 }
 
 // ==================== PRODUCT CATEGORY (E-COMMERCE) ====================
 
-model ProductCategory {
+model KategoriProduk {
   id          String   @id @default(cuid())
   name        String
   slug        String   @unique
@@ -467,51 +485,51 @@ model ProductCategory {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  products Product[]
+  produks         Produk[]
   aturanPenjualan AturanPenjualan[]
 }
 
 // ==================== PRODUCTS & PROCESSING ====================
 
-model Product {
-  id                String   @id @default(cuid())
-  name              String
-  slug              String   @unique
-  description       String?
-  image             String?
-  images            String   @default("[]") // JSON array of image URLs
-  unit              String   @default("pcs")
-  price             Decimal  @default(0)
-  pointsCost        Int      @default(0)
-  dijualDenganPoin  Boolean  @default(false) // produk ini bisa ditukar dengan poin
-  stock             Decimal  @default(0)
-  isActive          Boolean  @default(true)
+model Produk {
+  id               String   @id @default(cuid())
+  name             String
+  slug             String   @unique
+  description      String?
+  image            String?
+  images           String   @default("[]") // JSON array of image URLs
+  unit             String   @default("pcs")
+  price            Decimal  @default(0)
+  pointsCost       Int      @default(0)
+  dijualDenganPoin Boolean  @default(false) // produk ini bisa ditukar dengan poin
+  stock            Decimal  @default(0)
+  isActive         Boolean  @default(true)
   // E-commerce fields
-  productCategoryId String?
-  weightGram        Int      @default(0)   // berat produk dalam gram (wajib untuk ongkir)
-  lengthCm          Int      @default(0)   // dimensi panjang (opsional, volumetrik)
-  widthCm           Int      @default(0)   // dimensi lebar
-  heightCm          Int      @default(0)   // dimensi tinggi
-  dijualOnline      Boolean  @default(false)
-  dijualOffline     Boolean  @default(true)
-  minOrderQty       Int      @default(1)   // minimal pembelian per item
-  maxOrderQty       Int      @default(0)   // 0 = tidak ada batas
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  kategoriProdukId String?
+  weightGram       Int      @default(0) // berat produk dalam gram (wajib untuk ongkir)
+  lengthCm         Int      @default(0) // dimensi panjang (opsional, volumetrik)
+  widthCm          Int      @default(0) // dimensi lebar
+  heightCm         Int      @default(0) // dimensi tinggi
+  dijualOnline     Boolean  @default(false)
+  dijualOffline    Boolean  @default(true)
+  minOrderQty      Int      @default(1) // minimal pembelian per item
+  maxOrderQty      Int      @default(0) // 0 = tidak ada batas
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  category           ProductCategory? @relation(fields: [productCategoryId], references: [id])
-  prices             ProductPrice[]
-  movements          ProductMovement[]
-  processingOutputs  ProcessingOutput[]
-  saleItems          ProductSaleItem[]
-  redemptions        Redemption[]
-  tokoOrderItems     TokoOrderItem[]
-  recipes            ProcessingRecipe[] // resep pengolahan (produk hasil)
+  category          KategoriProduk?       @relation(fields: [kategoriProdukId], references: [id])
+  prices            HargaProduk[]
+  movements         PergerakanProduk[]
+  outputPengolahans OutputPengolahan[]
+  saleItems         ItemPenjualanProduk[]
+  penukaranPoins    PenukaranPoin[]
+  itemPesananTokos  ItemPesananToko[]
+  recipes           ResepPengolahan[] // resep pengolahan (produk hasil)
 }
 
-model ProductPrice {
+model HargaProduk {
   id            String   @id @default(cuid())
-  productId     String
+  produkId      String
   pricePerUnit  Decimal
   effectiveFrom DateTime
   notes         String?
@@ -519,271 +537,298 @@ model ProductPrice {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  product    Product  @relation(fields: [productId], references: [id])
-  createdBy  User?    @relation("ProductPriceCreatedBy", fields: [createdById], references: [id])
-  saleItems  ProductSaleItem[]
+  produk    Produk                @relation(fields: [produkId], references: [id])
+  createdBy Pengguna?             @relation("ProductPriceCreatedBy", fields: [createdById], references: [id])
+  saleItems ItemPenjualanProduk[]
 }
 
-model ProductMovement {
-  id              String   @id @default(cuid())
-  movementNumber  String?  @unique
-  productId       String
-  direction       String   // in | out
-  reason          String   // processing_output | sale | redemption | adjustment | online_sale | online_reserve | online_release
-  quantity        Decimal
-  stockAfter      Decimal
-  sourceRefType   String?
-  sourceRefId     String?
-  notes           String?
-  createdById     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  product    Product @relation(fields: [productId], references: [id])
-  createdBy  User?   @relation("ProductMovementCreatedBy", fields: [createdById], references: [id])
-}
-
-model ProductSale {
+model PergerakanProduk {
   id             String   @id @default(cuid())
-  invoiceNumber  String?  @unique
-  buyerUserId    String?
-  buyerName      String
-  buyerPhone     String
-  paymentMethod  String   @default("cash")
-  paymentStatus  String   @default("paid")
-  totalQuantity  Decimal
-  totalValue     Decimal
-  channel        String   @default("offline") // offline | online
+  movementNumber String?  @unique
+  produkId       String
+  direction      String // in | out
+  reason         String // processing_output | sale | penukaranPoin | adjustment | online_sale | online_reserve | online_release
+  quantity       Decimal
+  stockAfter     Decimal
+  sourceRefType  String?
+  sourceRefId    String?
   notes          String?
   createdById    String?
-  transactedAt   DateTime @default(now())
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  buyer     User?             @relation("ProductSaleBuyer", fields: [buyerUserId], references: [id])
-  createdBy User?             @relation("ProductSaleCreatedBy", fields: [createdById], references: [id])
-  items     ProductSaleItem[]
+  produk    Produk    @relation(fields: [produkId], references: [id])
+  createdBy Pengguna? @relation("ProductMovementCreatedBy", fields: [createdById], references: [id])
 }
 
-model ProductSaleItem {
-  id                  String   @id @default(cuid())
-  productSaleId       String
-  productId           String
-  productPriceId      String?
-  productNameSnapshot String
-  unitSnapshot        String
+model PenjualanProduk {
+  id            String   @id @default(cuid())
+  invoiceNumber String?  @unique
+  buyerUserId   String?
+  buyerName     String
+  buyerPhone    String
+  paymentMethod String   @default("cash")
+  paymentStatus String   @default("paid")
+  totalQuantity Decimal
+  totalValue    Decimal
+  channel       String   @default("offline") // offline | online
+  notes         String?
+  createdById   String?
+  transactedAt  DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  buyer     Pengguna?             @relation("ProductSaleBuyer", fields: [buyerUserId], references: [id])
+  createdBy Pengguna?             @relation("ProductSaleCreatedBy", fields: [createdById], references: [id])
+  items     ItemPenjualanProduk[]
+}
+
+model ItemPenjualanProduk {
+  id                   String   @id @default(cuid())
+  penjualanProdukId    String
+  produkId             String
+  hargaProdukId        String?
+  productNameSnapshot  String
+  unitSnapshot         String
   pricePerUnitSnapshot Decimal
-  quantity            Decimal
-  subtotal            Decimal
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  quantity             Decimal
+  subtotal             Decimal
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  productSale  ProductSale    @relation(fields: [productSaleId], references: [id])
-  product      Product        @relation(fields: [productId], references: [id])
-  productPrice ProductPrice?  @relation(fields: [productPriceId], references: [id])
+  penjualanProduk PenjualanProduk @relation(fields: [penjualanProdukId], references: [id])
+  produk          Produk          @relation(fields: [produkId], references: [id])
+  hargaProduk     HargaProduk?    @relation(fields: [hargaProdukId], references: [id])
 }
 
-model ProcessingTransaction {
-  id               String   @id @default(cuid())
-  totalInputWeight Decimal  @default(0)
-  notes            String?
-  createdById      String?
-  transactedAt     DateTime @default(now())
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+model TransaksiPengolahan {
+  id                    String   @id @default(cuid())
+  totalInputWeight      Decimal  @default(0)
+  totalHppBahanBaku     Decimal  @default(0) // Total HPP bahan baku (harga beli × qty dari sumber nabung)
+  totalBiayaOperasional Decimal  @default(0) // Total biaya operasional (tenaga kerja, bahan pendukung, dll)
+  totalBiayaProduksi    Decimal  @default(0) // = totalHppBahanBaku + totalBiayaOperasional
+  status                String   @default("selesai") // selesai | dibatalkan
+  notes                 String?
+  createdById           String?
+  transactedAt          DateTime @default(now())
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  createdBy User?              @relation("ProcessingCreatedBy", fields: [createdById], references: [id])
-  inputs    ProcessingInput[]
-  outputs   ProcessingOutput[]
+  createdBy  Pengguna?          @relation("ProcessingCreatedBy", fields: [createdById], references: [id])
+  inputs     InputPengolahan[]
+  outputs    OutputPengolahan[]
+  biayaItems BiayaPengolahan[]
 }
 
-model ProcessingInput {
-  id                      String   @id @default(cuid())
-  processingTransactionId String
-  wasteItemId             String
-  itemCodeSnapshot        String
-  itemNameSnapshot        String
-  categoryNameSnapshot    String
-  unitSnapshot            String   @default("kg")
-  quantity                Decimal
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+model InputPengolahan {
+  id                    String   @id @default(cuid())
+  transaksiPengolahanId String
+  jenisSampahId         String
+  itemCodeSnapshot      String
+  itemNameSnapshot      String
+  categoryNameSnapshot  String
+  unitSnapshot          String   @default("kg")
+  quantity              Decimal
+  source                String   @default("nabung") // nabung | sedekah
+  hargaSatuan           Decimal  @default(0) // snapshot harga beli saat pengolahan
+  subtotal              Decimal  @default(0) // hargaSatuan × quantity (HPP per item)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  processingTransaction ProcessingTransaction @relation(fields: [processingTransactionId], references: [id])
-  wasteItem             WasteItem              @relation(fields: [wasteItemId], references: [id])
+  transaksiPengolahan TransaksiPengolahan @relation(fields: [transaksiPengolahanId], references: [id])
+  jenisSampah         JenisSampah         @relation(fields: [jenisSampahId], references: [id])
 }
 
-model ProcessingOutput {
-  id                      String   @id @default(cuid())
-  processingTransactionId String
-  productId               String
-  productNameSnapshot     String
-  unitSnapshot            String   @default("pcs")
-  quantity                Decimal
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+model OutputPengolahan {
+  id                    String   @id @default(cuid())
+  transaksiPengolahanId String
+  produkId              String
+  productNameSnapshot   String
+  unitSnapshot          String   @default("pcs")
+  quantity              Decimal
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  processingTransaction ProcessingTransaction @relation(fields: [processingTransactionId], references: [id])
-  product               Product                @relation(fields: [productId], references: [id])
+  transaksiPengolahan TransaksiPengolahan @relation(fields: [transaksiPengolahanId], references: [id])
+  produk              Produk              @relation(fields: [produkId], references: [id])
 }
 
 // ==================== RESEP PENGOLAHAN (1 produk = N kg bahan baku) ====================
 // Pengaturan otomatis: kalau aktif, input bahan baku auto-terisi saat pilih produk
-// Contoh: 1 Vas Bunga = 1.67 kg Dus → user tinggal isi qty produk, bahan auto-hitung
+// Contoh: 1 Vas Bunga = 1.67 kg Dus → pengguna tinggal isi qty produk, bahan auto-hitung
 
-model ProcessingRecipe {
+model ResepPengolahan {
   id              String   @id @default(cuid())
-  productId       String   // produk hasil
-  wasteItemId     String   // bahan baku
-  quantityPerUnit Decimal  // jumlah bahan baku per 1 unit produk (mis. 1.67 kg per 1 pcs)
+  produkId        String // produk hasil
+  jenisSampahId   String // bahan baku
+  quantityPerUnit Decimal // jumlah bahan baku per 1 unit produk (mis. 1.67 kg per 1 pcs)
   source          String   @default("nabung") // sumber stok: nabung | sedekah
   isActive        Boolean  @default(true) // true = resep aktif (auto-fill), false = manual
   notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  product   Product   @relation(fields: [productId], references: [id])
-  wasteItem WasteItem @relation(fields: [wasteItemId], references: [id])
+  produk      Produk      @relation(fields: [produkId], references: [id])
+  jenisSampah JenisSampah @relation(fields: [jenisSampahId], references: [id])
 
-  @@unique([productId, wasteItemId]) // 1 produk + 1 bahan baku = 1 resep
-  @@index([productId])
+  @@unique([produkId, jenisSampahId]) // 1 produk + 1 bahan baku = 1 resep
+  @@index([produkId])
+}
+
+// ==================== BIAYA PENGOLAHAN (rincian biaya produksi per transaksi) ====================
+// Mencatat biaya operasional: tenaga kerja, bahan pendukung (lem, benang), transportasi, listrik, dll
+
+model BiayaPengolahan {
+  id                    String   @id @default(cuid())
+  transaksiPengolahanId String
+  kategori              String   // tenaga_kerja | bahan_pendukung | transportasi | listrik | lainnya
+  keterangan            String   // contoh: "Upah jahit 2 orang x 3 jam", "Beli lem 2 botol"
+  jumlah                Decimal
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  transaksiPengolahan TransaksiPengolahan @relation(fields: [transaksiPengolahanId], references: [id])
+
+  @@index([transaksiPengolahanId])
 }
 
 // ==================== REDEMPTION (poin -> produk) & WITHDRAWAL ====================
 
-model Redemption {
-  id                String   @id @default(cuid())
-  userId            String
-  productId         String?
+model PenukaranPoin {
+  id                  String   @id @default(cuid())
+  penggunaId          String
+  produkId            String?
   productNameSnapshot String
-  unitSnapshot      String   @default("pcs")
-  quantity          Decimal
-  pointsUsed        Int
-  notes             String?
-  processedById     String?
-  redeemedAt        DateTime @default(now())
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  unitSnapshot        String   @default("pcs")
+  quantity            Decimal
+  pointsUsed          Int
+  notes               String?
+  processedById       String?
+  redeemedAt          DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  user        User     @relation("RedemptionUser", fields: [userId], references: [id])
-  product     Product? @relation(fields: [productId], references: [id])
-  processedBy User?    @relation("RedemptionProcessedBy", fields: [processedById], references: [id])
+  pengguna    Pengguna  @relation("RedemptionUser", fields: [penggunaId], references: [id])
+  produk      Produk?   @relation(fields: [produkId], references: [id])
+  processedBy Pengguna? @relation("RedemptionProcessedBy", fields: [processedById], references: [id])
 }
 
-model WithdrawalRequest {
-  id           String   @id @default(cuid())
-  userId       String
-  amount       Decimal
-  method       String   @default("cash")
-  bankName     String?
+model PermintaanPenarikan {
+  id            String   @id @default(cuid())
+  penggunaId    String
+  amount        Decimal
+  method        String   @default("cash")
+  bankName      String?
   accountNumber String?
-  accountName  String?
-  notes        String?
+  accountName   String?
+  notes         String?
   // Financial flow: withdrawal cuts from saldoTersedia (validated in real-time)
-  // and records a kas keluar in BankSampahKas (Buku Kas Utama institusi)
-  status       String   @default("diproses") // diproses | sukses | ditolak
-  receiptNo    String?  @unique
+  // and records a kas keluar in KasBankSampah (Buku Kas Utama institusi)
+  status        String   @default("diproses") // diproses | sukses | ditolak
+  receiptNo     String?  @unique
   processedById String?
-  processedAt  DateTime @default(now())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  processedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  user        User  @relation("WithdrawalUser", fields: [userId], references: [id])
-  processedBy User? @relation("WithdrawalProcessedBy", fields: [processedById], references: [id])
+  pengguna    Pengguna  @relation("WithdrawalUser", fields: [penggunaId], references: [id])
+  processedBy Pengguna? @relation("WithdrawalProcessedBy", fields: [processedById], references: [id])
 }
 
 // Buku Kas Utama institusi Bank Sampah (source of truth for cash liquidity)
 // All cash in (penjualan ke mitra, produk, dll) and cash out (penarikan nasabah, biaya) recorded here
 // Used to validate Release Saldo: only release if kas saldo >= total saldo tertahan being released
-model BankSampahKas {
-  id            String   @id @default(cuid())
-  tipe          String   // masuk | keluar
-  sumber        String   // penjualan_mitra | penjualan_produk | penarikan_nasabah | biaya_operasional | setoran_awal | penyesuaian
-  jumlah        Decimal
-  saldoSetelah  Decimal
-  keterangan    String?
+model KasBankSampah {
+  id                String   @id @default(cuid())
+  buku              String   @default("utama") // utama | nasabah
+  tipe              String // masuk | keluar
+  sumber            String // penjualan_mitra | penjualan_produk | penarikan_nasabah | biaya_operasional | setoran_awal | penyesuaian
+  jumlah            Decimal
+  saldoSetelah      Decimal
+  keterangan        String?
   // optional links
-  withdrawalId  String?
-  salesTxId     String?
-  productSaleId String?
-  createdById   String?
-  transactedAt  DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  withdrawalId      String?
+  salesTxId         String?
+  penjualanProdukId String?
+  createdById       String?
+  transactedAt      DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  createdBy User? @relation("BankSampahKasCreatedBy", fields: [createdById], references: [id])
+  createdBy Pengguna? @relation("BankSampahKasCreatedBy", fields: [createdById], references: [id])
 }
 
 // Log of Release Saldo operations (saldoTertahan → saldoTersedia)
 // Each release records who/when/how much, for audit trail
-model BalanceRelease {
-  id            String   @id @default(cuid())
-  userId        String
-  amount        Decimal
-  saldoTertahanSebelum Decimal
+model PelepasanSaldo {
+  id                    String   @id @default(cuid())
+  penggunaId            String
+  amount                Decimal
+  saldoTertahanSebelum  Decimal
   saldoTertahanSesudah  Decimal
-  saldoTersediaSebelum Decimal
-  saldoTersediaSesudah Decimal
-  keterangan    String?
+  saldoTersediaSebelum  Decimal
+  saldoTersediaSesudah  Decimal
+  keterangan            String?
   // Validation: at release time, snapshot kas institusi to prove liquidity
   kasSaldoSnapshot      Decimal
   totalTertahanSnapshot Decimal
-  releasedById String?
-  releasedAt   DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  releasedById          String?
+  releasedAt            DateTime @default(now())
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  user       User   @relation("BalanceReleaseUser", fields: [userId], references: [id])
-  releasedBy User?  @relation("BalanceReleaseReleasedBy", fields: [releasedById], references: [id])
+  pengguna   Pengguna  @relation("BalanceReleaseUser", fields: [penggunaId], references: [id])
+  releasedBy Pengguna? @relation("BalanceReleaseReleasedBy", fields: [releasedById], references: [id])
 }
 
 // ==================== KOPERASI: SETTINGS ====================
 
 model KoperasiSetting {
-  id                    String   @id @default(cuid())
+  id                    String    @id @default(cuid())
   namaKoperasi          String
   telepon               String?
   email                 String?
   alamat                String?
   logo                  String?
-  nominalSimpananPokok  Decimal  @default(0)
-  nominalSimpananWajib  Decimal  @default(0)
-  biayaAdminPinjaman    Decimal  @default(0)
-  minimalBulanAnggota   Int      @default(3)
-  saldoKasAwal          Decimal  @default(0)
+  nominalSimpananPokok  Decimal   @default(0)
+  nominalSimpananWajib  Decimal   @default(0)
+  biayaAdminPinjaman    Decimal   @default(0)
+  minimalBulanAnggota   Int       @default(3)
+  minimalSimpananPinjaman Decimal @default(0)
+  saldoKasAwal          Decimal   @default(0)
   tanggalSaldoAwal      DateTime?
-  dendaTerlambatPerHari Int      @default(0)
-  sukuBungaPinjaman     Decimal  @default(0) // persen flat per tahun
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  dendaTerlambatPerHari Int       @default(0)
+  sukuBungaPinjaman     Decimal   @default(0) // persen flat per tahun
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }
 
 // ==================== KOPERASI: ANGGOTA ====================
 
 model KoperasiAnggota {
-  id                String   @id @default(cuid())
-  nomorAnggota      String   @unique
+  id                String                      @id @default(cuid())
+  nomorAnggota      String                      @unique
   nama              String
   noKtp             String
   noTelepon         String?
   alamat            String?
   foto              String?
-  status            String   @default("aktif") // aktif | pasif | keluar
+  status            String                      @default("aktif") // aktif | pasif | keluar
   tanggalBergabung  DateTime
   tanggalKeluar     DateTime?
   deletedAt         DateTime?
-  pinjamanDiblokir  Boolean  @default(false) // true = tidak bisa pinjam (riwayat jelek, menunggu perbaikan)
+  pinjamanDiblokir  Boolean                     @default(false) // true = tidak bisa pinjam (riwayat jelek, menunggu perbaikan)
   perbaikanRequests KoperasiPinjamanPerbaikan[]
-  userId            String?  @unique
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  penggunaId        String?                     @unique
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
 
-  user              User?                      @relation(fields: [userId], references: [id])
+  pengguna          Pengguna?                   @relation(fields: [penggunaId], references: [id])
   simpananSaldos    KoperasiSimpananSaldo[]
-  simpananTx      KoperasiSimpananTransaksi[]
-  pinjamans       KoperasiPinjaman[]
+  simpananTx        KoperasiSimpananTransaksi[]
+  pinjamans         KoperasiPinjaman[]
   penarikanSukarela KoperasiPenarikanSukarela[]
-  anggotaKeluars  KoperasiAnggotaKeluar[]
+  anggotaKeluars    KoperasiAnggotaKeluar[]
 }
 
 model KoperasiAnggotaKeluar {
@@ -794,12 +839,12 @@ model KoperasiAnggotaKeluar {
   danaDikembalikan  Decimal
   tanggalKeluar     DateTime
   keterangan        String?
-  userId            String?
+  penggunaId        String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   anggota   KoperasiAnggota @relation(fields: [koperasiAnggotaId], references: [id])
-  createdBy User?           @relation("AnggotaKeluarCreatedBy", fields: [userId], references: [id])
+  createdBy Pengguna?       @relation("AnggotaKeluarCreatedBy", fields: [penggunaId], references: [id])
 }
 
 // ==================== KOPERASI: SIMPANAN ====================
@@ -807,7 +852,7 @@ model KoperasiAnggotaKeluar {
 model KoperasiSimpananSaldo {
   id                String   @id @default(cuid())
   koperasiAnggotaId String
-  jenisSimpanan     String   // pokok | wajib | sukarela
+  jenisSimpanan     String // pokok | wajib | sukarela
   saldo             Decimal  @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -821,44 +866,47 @@ model KoperasiSimpananTransaksi {
   id                String   @id @default(cuid())
   nomorTransaksi    String   @unique
   koperasiAnggotaId String
-  jenisSimpanan     String   // pokok | wajib | sukarela
-  tipe              String   // setor | tarik
+  jenisSimpanan     String // pokok | wajib | sukarela
+  tipe              String // setor | tarik
   jumlah            Decimal
   saldoSebelum      Decimal
   saldoSesudah      Decimal
   keterangan        String?
   tanggalTransaksi  DateTime @default(now())
-  userId            String?
+  penggunaId        String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   anggota   KoperasiAnggota @relation(fields: [koperasiAnggotaId], references: [id])
-  createdBy User?           @relation("SimpananCreatedBy", fields: [userId], references: [id])
+  createdBy Pengguna?       @relation("SimpananCreatedBy", fields: [penggunaId], references: [id])
 }
 
 // ==================== KOPERASI: PINJAMAN & ANGSURAN ====================
 
 model KoperasiPinjaman {
-  id                String   @id @default(cuid())
-  nomorPinjaman     String   @unique
+  id                String    @id @default(cuid())
+  nomorPinjaman     String    @unique
   koperasiAnggotaId String
   jumlahPinjaman    Decimal
   tenorBulan        Int
   angsuranPerBulan  Decimal
-  biayaAdmin        Decimal  @default(0)
-  tanggalPengajuan  DateTime @default(now())
+  biayaAdmin        Decimal   @default(0)
+  tanggalPengajuan  DateTime  @default(now())
   tanggalPencairan  DateTime?
-  status            String   @default("diajukan") // diajukan | disetujui | ditolak | berjalan | lunas
+  status            String    @default("diajukan") // diajukan | disetujui | ditolak | berjalan | lunas
   sisaPinjaman      Decimal
-  sukuBunga         Decimal  @default(0) // persen flat per tahun
+  sukuBunga         Decimal   @default(0) // persen flat per tahun
   keterangan        String?
-  userId            String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  penggunaId        String?
+  disetujuiOlehId   String?
+  disetujuiPada     DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  anggota   KoperasiAnggota              @relation(fields: [koperasiAnggotaId], references: [id])
-  createdBy User?                        @relation("PinjamanCreatedBy", fields: [userId], references: [id])
-  angsurans KoperasiPinjamanAngsuran[]
+  anggota       KoperasiAnggota            @relation(fields: [koperasiAnggotaId], references: [id])
+  createdBy     Pengguna?                  @relation("PinjamanCreatedBy", fields: [penggunaId], references: [id])
+  disetujuiOleh Pengguna?                  @relation("PinjamanApprovedBy", fields: [disetujuiOlehId], references: [id])
+  angsurans     KoperasiPinjamanAngsuran[]
 }
 
 model KoperasiPinjamanAngsuran {
@@ -871,12 +919,12 @@ model KoperasiPinjamanAngsuran {
   tanggalBayar        DateTime @default(now())
   sisaPinjamanSetelah Decimal
   keterangan          String?
-  userId              String?
+  penggunaId          String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
   pinjaman  KoperasiPinjaman @relation(fields: [koperasiPinjamanId], references: [id])
-  createdBy User?            @relation("AngsuranCreatedBy", fields: [userId], references: [id])
+  createdBy Pengguna?        @relation("AngsuranCreatedBy", fields: [penggunaId], references: [id])
 
   @@unique([koperasiPinjamanId, angsuranKe])
 }
@@ -884,34 +932,34 @@ model KoperasiPinjamanAngsuran {
 // ==================== KOPERASI: KAS & PENARIKAN SUKARELA ====================
 
 model KoperasiKasTransaksi {
-  id                String   @id @default(cuid())
-  nomorKas          String?  @unique
-  nomorReferensi    String?
-  sumber            String   // simpanan | penarikan | pinjaman | angsuran | denda | saldo_awal
-  tipe              String   // masuk | keluar
-  jumlah            Decimal
-  keterangan        String?
-  tanggalTransaksi  DateTime @default(now())
-  userId            String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default(cuid())
+  nomorKas         String?  @unique
+  nomorReferensi   String?
+  sumber           String // simpanan | penarikan | pinjaman | angsuran | denda | saldo_awal
+  tipe             String // masuk | keluar
+  jumlah           Decimal
+  keterangan       String?
+  tanggalTransaksi DateTime @default(now())
+  penggunaId       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  createdBy User? @relation("KasCreatedBy", fields: [userId], references: [id])
+  createdBy Pengguna? @relation("KasCreatedBy", fields: [penggunaId], references: [id])
 }
 
 model KoperasiPenarikanSukarela {
-  id                String   @id @default(cuid())
-  nomorPengajuan    String   @unique
-  koperasiAnggotaId String
-  jumlah            Decimal
-  alasan            String
-  status            String   @default("menunggu") // menunggu | disetujui | ditolak | dicairkan
-  tanggalPengajuan  DateTime @default(now())
+  id                 String    @id @default(cuid())
+  nomorPengajuan     String    @unique
+  koperasiAnggotaId  String
+  jumlah             Decimal
+  alasan             String
+  status             String    @default("menunggu") // menunggu | disetujui | ditolak | dicairkan
+  tanggalPengajuan   DateTime  @default(now())
   tanggalPersetujuan DateTime?
-  namaPengurus      String?
-  tanggalPencairan  DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  namaPengurus       String?
+  tanggalPencairan   DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   anggota KoperasiAnggota @relation(fields: [koperasiAnggotaId], references: [id])
 }
@@ -919,140 +967,143 @@ model KoperasiPenarikanSukarela {
 // ==================== KOPERASI: PINJAMAN PERBAIKAN ELIGIBILITAS ====================
 
 model KoperasiPinjamanPerbaikan {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   koperasiAnggotaId String
-  alasan            String                                          // alasan user mengajukan perbaikan
-  janjiPerbaikan    String?                                         // komitmen user (misal: "akan bayar tepat waktu")
-  status            String   @default("menunggu")                   // menunggu | disetujui | ditolak
-  catatanAdmin      String?                                         // alasan admin menyetujui/menolak
-  syaratTambahan    String?                                         // syarat dari admin (misal: tunggu 3 bulan)
+  alasan            String // alasan pengguna mengajukan perbaikan
+  janjiPerbaikan    String? // komitmen pengguna (misal: "akan bayar tepat waktu")
+  status            String    @default("menunggu") // menunggu | disetujui | ditolak
+  catatanAdmin      String? // alasan admin menyetujui/menolak
+  syaratTambahan    String? // syarat dari admin (misal: tunggu 3 bulan)
   reviewedById      String?
   reviewedAt        DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  anggota   KoperasiAnggota @relation(fields: [koperasiAnggotaId], references: [id])
-  reviewedBy User?           @relation("PerbaikanReviewedBy", fields: [reviewedById], references: [id])
+  anggota    KoperasiAnggota @relation(fields: [koperasiAnggotaId], references: [id])
+  reviewedBy Pengguna?       @relation("PerbaikanReviewedBy", fields: [reviewedById], references: [id])
 }
 
 // ==================== TOKO ONLINE (E-COMMERCE) ====================
 
 // Online order with full lifecycle (menunggu_pembayaran -> dibayar -> diproses -> dikirim -> diterima)
-model TokoOrder {
-  id                String   @id @default(cuid())
-  orderNumber       String   @unique // format: TKO-YYYYMMDD-XXXX
-  // Buyer info (guest checkout, no user account needed)
-  buyerName         String
-  buyerPhone        String
-  buyerEmail        String?
-  buyerAddress      String   // full address JSON
+model PesananToko {
+  id                      String    @id @default(cuid())
+  orderNumber             String    @unique // format: TKO-YYYYMMDD-XXXX
+  // Buyer info (guest checkout, no pengguna account needed)
+  buyerName               String
+  buyerPhone              String
+  buyerEmail              String?
+  buyerAddress            String // full address JSON
   // Financial
-  subtotalProduk    Decimal  @default(0)
-  ongkir            Decimal  @default(0)
-  totalBayar        Decimal  @default(0)
+  subtotalProduk          Decimal   @default(0)
+  ongkir                  Decimal   @default(0)
+  totalBayar              Decimal   @default(0)
   // Payment
-  paymentMethod     String   @default("midtrans") // midtrans | manual
-  paymentStatus     String   @default("menunggu") // menunggu | dibayar | gagal | dibatalkan | expired
-  midtransOrderId   String?  @unique
-  midtransSnapToken String?
-  paidAt            DateTime?
+  paymentMethod           String    @default("midtrans") // midtrans | manual
+  paymentStatus           String    @default("menunggu") // menunggu | dibayar | gagal | dibatalkan | expired
+  midtransOrderId         String?   @unique
+  midtransSnapToken       String?
+  paidAt                  DateTime?
   // Midtrans transaction detail (diisi oleh webhook)
-  midtransTransactionId   String?  // transaction_id dari Midtrans
-  midtransPaymentType     String?  // payment_type: credit_card, qris, bank_transfer, echannel, gopay, shopeepay, cstore, akulaku, etc.
-  midtransVaNumber        String?  // va_number (untuk bank_transfer / echannel)
-  midtransIssuer          String?  // bank issuer (bca, bni, bri, mandiri, ...)
-  midtransPdfUrl          String?  // pdf_url untuk instruksi pembayaran VA / CVS
-  midtransStatusCode      String?  // status_code terakhir dari Midtrans
+  midtransTransactionId   String? // transaction_id dari Midtrans
+  midtransPaymentType     String? // payment_type: credit_card, qris, bank_transfer, echannel, gopay, shopeepay, cstore, akulaku, etc.
+  midtransVaNumber        String? // va_number (untuk bank_transfer / echannel)
+  midtransIssuer          String? // bank issuer (bca, bni, bri, mandiri, ...)
+  midtransPdfUrl          String? // pdf_url untuk instruksi pembayaran VA / CVS
+  midtransStatusCode      String? // status_code terakhir dari Midtrans
   midtransGrossAmount     Decimal? // gross_amount dari callback (verifikasi)
   midtransTransactionTime DateTime? // transaction_time
   midtransSettlementTime  DateTime? // settlement_time (saat benar-benar lunas)
-  midtransRawCallback     String?  // snapshot JSON callback terakhir (audit/debug)
+  midtransRawCallback     String? // snapshot JSON callback terakhir (audit/debug)
   midtransLastWebhookAt   DateTime? // terakhir kali webhook diterima untuk order ini
   // Order lifecycle
-  orderStatus       String   @default("menunggu_pembayaran") // menunggu_pembayaran | dibayar | diproses | dikirim | diterima | dibatalkan | expired
+  orderStatus             String    @default("menunggu_pembayaran") // menunggu_pembayaran | dibayar | diproses | dikirim | diterima | dibatalkan | expired
   // Shipping
-  kurirNama         String?
-  noResi            String?
-  shippedAt         DateTime?
-  receivedAt        DateTime?
+  kurirNama               String?
+  noResi                  String?
+  resiPhotoUrl            String? // foto resi pengiriman
+  shippingEtaStart        DateTime? // Estimasi tiba (awal)
+  shippingEtaEnd          DateTime? // Estimasi tiba (akhir)
+  shippedAt               DateTime?
+  receivedAt              DateTime?
   // Metadata
-  notes             String?
-  createdById       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  notes                   String?
+  createdById             String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
-  createdBy User?                    @relation("TokoOrderCreatedBy", fields: [createdById], references: [id])
-  items     TokoOrderItem[]
-  statusHistory TokoOrderStatusHistory[]
+  createdBy     Pengguna?                  @relation("TokoOrderCreatedBy", fields: [createdById], references: [id])
+  items         ItemPesananToko[]
+  statusHistory RiwayatStatusPesananToko[]
 }
 
-model TokoOrderItem {
-  id                  String   @id @default(cuid())
-  tokoOrderId         String
-  productId           String
-  productNameSnapshot String
-  unitSnapshot        String
+model ItemPesananToko {
+  id                   String   @id @default(cuid())
+  pesananTokoId        String
+  produkId             String
+  productNameSnapshot  String
+  unitSnapshot         String
   pricePerUnitSnapshot Decimal
-  quantity            Decimal
-  weightGramSnapshot  Int      @default(0)
-  subtotal            Decimal
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  quantity             Decimal
+  weightGramSnapshot   Int      @default(0)
+  subtotal             Decimal
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  tokoOrder TokoOrder @relation(fields: [tokoOrderId], references: [id])
-  product   Product   @relation(fields: [productId], references: [id])
+  pesananToko PesananToko @relation(fields: [pesananTokoId], references: [id])
+  produk      Produk      @relation(fields: [produkId], references: [id])
 }
 
-model TokoOrderStatusHistory {
+model RiwayatStatusPesananToko {
   id            String   @id @default(cuid())
-  tokoOrderId   String
-  status        String   // menunggu_pembayaran | dibayar | diproses | dikirim | diterima | dibatalkan | expired
+  pesananTokoId String
+  status        String // menunggu_pembayaran | dibayar | diproses | dikirim | diterima | dibatalkan | expired
   keterangan    String?
   createdById   String?
   createdAt     DateTime @default(now())
 
-  tokoOrder TokoOrder @relation(fields: [tokoOrderId], references: [id])
-  createdBy User?      @relation("TokoStatusCreatedBy", fields: [createdById], references: [id])
+  pesananToko PesananToko @relation(fields: [pesananTokoId], references: [id])
+  createdBy   Pengguna?   @relation("TokoStatusCreatedBy", fields: [createdById], references: [id])
 }
 
 // ==================== TOKO SETTINGS ====================
 
 model TokoSetting {
-  id                  String   @id @default(cuid())
+  id                   String   @id @default(cuid())
   // Ongkir
-  ongkirRatePerKg     Decimal  @default(0)    // Rp per kg
-  ongkirRatePerKm     Decimal  @default(0)    // Rp per km (alternative)
-  ongkirTetap         Decimal  @default(0)    // flat rate jika tidak pakai per kg/km
-  beratMinimumKg      Decimal  @default(1)    // minimum berat dihitung
+  ongkirRatePerKg      Decimal  @default(0) // Rp per kg
+  ongkirRatePerKm      Decimal  @default(0) // Rp per km (alternative)
+  ongkirTetap          Decimal  @default(0) // flat rate jika tidak pakai per kg/km
+  beratMinimumKg       Decimal  @default(1) // minimum berat dihitung
   // Lokasi asal pengiriman
-  originLatitude      Decimal?
-  originLongitude     Decimal?
-  originAddress       String?
+  originLatitude       Decimal?
+  originLongitude      Decimal?
+  originAddress        String?
   // Midtrans
-  midtransServerKey   String?
-  midtransClientKey   String?
-  midtransIsProduction Boolean @default(false)
+  midtransServerKey    String?
+  midtransClientKey    String?
+  midtransIsProduction Boolean  @default(false)
   // Stok
-  stokRendahThreshold Int      @default(5)    // ambang batas notifikasi stok rendah
+  stokRendahThreshold  Int      @default(5) // ambang batas notifikasi stok rendah
   // Aktif
-  tokoOnlineAktif     Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  tokoOnlineAktif      Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 // ==================== ATURAN PENJUALAN (per kategori) ====================
 
 model AturanPenjualan {
-  id                  String   @id @default(cuid())
-  productCategoryId   String?  // null = aturan global, else per kategori
-  minPembelian        Int      @default(1)    // minimal qty per item dalam 1 order
-  maxPembelian        Int      @default(0)    // 0 = tidak ada batas
-  berlakuOffline      Boolean  @default(true)
-  berlakuOnline       Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id               String   @id @default(cuid())
+  kategoriProdukId String? // null = aturan global, else per kategori
+  minPembelian     Int      @default(1) // minimal qty per item dalam 1 order
+  maxPembelian     Int      @default(0) // 0 = tidak ada batas
+  berlakuOffline   Boolean  @default(true)
+  berlakuOnline    Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  category ProductCategory? @relation(fields: [productCategoryId], references: [id])
+  category KategoriProduk? @relation(fields: [kategoriProdukId], references: [id])
 }
 
 // ==================== ARTICLES (public content, minor) ====================
@@ -1069,26 +1120,26 @@ model Article {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  author User? @relation(fields: [authorId], references: [id])
+  author Pengguna? @relation(fields: [authorId], references: [id])
 }
 
 // ==================== KEGIATAN (activity documentation) ====================
 
 model Kegiatan {
-  id          String   @id @default(cuid())
-  title       String
-  slug        String   @unique
-  description String?
+  id           String    @id @default(cuid())
+  title        String
+  slug         String    @unique
+  description  String?
   activityDate DateTime?
   location     String?
-  images      String   @default("[]") // JSON array of image URLs
-  coverImage  String?
-  publishedAt DateTime?
-  authorId    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  images       String    @default("[]") // JSON array of image URLs
+  coverImage   String?
+  publishedAt  DateTime?
+  authorId     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  author User? @relation(fields: [authorId], references: [id])
+  author Pengguna? @relation(fields: [authorId], references: [id])
 }
 
 // ==================== MASTER WILAYAH INDONESIA ====================
@@ -1098,7 +1149,7 @@ model Kegiatan {
 // tidak query berulang ke API luar untuk kecamatan yang sama.
 
 model Province {
-  id        String  @id // kode Kemendagri, e.g. "32"
+  id        String   @id // kode Kemendagri, e.g. "32"
   name      String
   altName   String?
   latitude  String?
@@ -1124,17 +1175,17 @@ model City {
 }
 
 model District {
-  id                String   @id // kode Kemendagri, e.g. "32.73.01"
-  cityId            String
-  name              String
-  altName           String?
-  latitude          String?
-  longitude         String?
+  id               String   @id // kode Kemendagri, e.g. "32.73.01"
+  cityId           String
+  name             String
+  altName          String?
+  latitude         String?
+  longitude        String?
   // Cache ID tujuan RajaOngkir (Komerce) supaya tidak query berulang
   // untuk kecamatan yang sama. Diisi lazily saat pertama kali resolve.
-  rajaOngkirDestId  Int?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  rajaOngkirDestId Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   city City @relation(fields: [cityId], references: [id])
 
@@ -1142,11 +1193,11 @@ model District {
 }
 
 // ==================== ADMIN: DAILY TASK & REMINDER LOG ====================
-model AdminDailyTaskLog {
+model LogTugasHarianAdmin {
   id          String   @id @default(cuid())
-  taskKey     String   // 'pinjaman_reminders' | 'simpanan_wajib_reminder' | 'antrian_qc_verification' | 'stok_produk_monitoring'
-  dateString  String   // 'YYYY-MM-DD'
-  action      String   // 'blast_email' | 'tagih_semua' | 'manual_complete'
+  taskKey     String // 'pinjaman_reminders' | 'simpanan_wajib_reminder' | 'antrian_qc_verification' | 'stok_produk_monitoring'
+  dateString  String // 'YYYY-MM-DD'
+  action      String // 'blast_email' | 'tagih_semua' | 'manual_complete'
   sentCount   Int      @default(0)
   failedCount Int      @default(0)
   notes       String?  @db.Text
@@ -1155,4 +1206,3 @@ model AdminDailyTaskLog {
 
   @@unique([taskKey, dateString])
 }
-

@@ -19,11 +19,11 @@ export async function GET(req: NextRequest) {
       ],
     }]
   }
-  const users = await db.user.findMany({
+  const penggunas = await db.pengguna.findMany({
     where,
-    select: { id: true, name: true, memberCode: true, nik: true, phone: true, address: true, roles: true, isMember: true, balance: true, koperasiAnggota: { select: { id: true, nomorAnggota: true, status: true, simpananSaldos: { select: { jenisSimpanan: true, saldo: true } } } } },
+    select: { id: true, name: true, memberCode: true, nik: true, email: true, phone: true, address: true, roles: true, isMember: true, saldo: true, koperasiAnggota: { select: { id: true, nomorAnggota: true, status: true, tanggalBergabung: true, createdAt: true, simpananSaldos: { select: { jenisSimpanan: true, saldo: true } } } } },
     take: 50,
     orderBy: { name: 'asc' },
   })
-  return NextResponse.json(users)
+  return NextResponse.json(penggunas)
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   const setting = await db.koperasiSetting.findFirst()
   return NextResponse.json(setting)
@@ -41,6 +43,7 @@ export async function PUT(req: NextRequest) {
         saldoKasAwal: body.saldoKasAwal || 0,
         dendaTerlambatPerHari: body.dendaTerlambatPerHari || 0,
         sukuBungaPinjaman: body.sukuBungaPinjaman || 0,
+        minimalSimpananPinjaman: body.minimalSimpananPinjaman || 0,
       },
     })
   }

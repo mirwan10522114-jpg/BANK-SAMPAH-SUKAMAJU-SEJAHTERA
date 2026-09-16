@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
-  const partners = await db.partner.findMany({ orderBy: { name: 'asc' }, include: { _count: { select: { salesTransactions: true } } } })
-  return NextResponse.json(partners)
+  const mitras = await db.mitra.findMany({ orderBy: { name: 'asc' }, include: { _count: { select: { transaksiPenjualanMitras: true } } } })
+  return NextResponse.json(mitras)
 }
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const p = await db.partner.create({
+  const p = await db.mitra.create({
     data: {
       name: body.name,
       type: body.type || 'pengepul',

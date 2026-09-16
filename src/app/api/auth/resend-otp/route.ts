@@ -1,36 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { sendOtpEmail, generateOtp } from '@/lib/email'
+import { sendOtpEmail, generateOtp } from '@/backend/lib/email'
+import { sendWhatsAppMessage } from '@/lib/whatsapp'
 
 // POST /api/auth/resend-otp
-// Kirim ulang OTP ke email user (kalau OTP expired atau tidak terima email)
+// Kirim ulang OTP ke email pengguna (kalau OTP expired atau tidak terima email)
 export async function POST(req: NextRequest) {
-  const { userId } = await req.json()
+  const { penggunaId } = await req.json()
 
-  if (!userId) {
-    return NextResponse.json({ error: 'User ID wajib diisi' }, { status: 400 })
+  if (!penggunaId) {
+    return NextResponse.json({ error: 'Pengguna ID wajib diisi' }, { status: 400 })
   }
 
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { id: true, name: true, email: true, emailVerifiedAt: true },
+  const pengguna = await db.pengguna.findUnique({
+    where: { id: penggunaId },
+    select: { id: true, name: true, email: true, phone: true, emailVerifiedAt: true },
   })
 
-  if (!user) {
-    return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 })
+  if (!pengguna) {
+    return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
   }
 
-  if (user.emailVerifiedAt) {
-    return NextResponse.json({ error: 'Email sudah terverifikasi' }, { status: 400 })
-  }
+
 
   // Generate OTP baru
   const otp = generateOtp()
   const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 menit
 
   // Update OTP di DB
-  await db.user.update({
-    where: { id: userId },
+  await db.pengguna.update({
+    where: { id: penggunaId },
     data: {
       otpCode: otp,
       otpExpiresAt,
@@ -40,19 +39,28 @@ export async function POST(req: NextRequest) {
 
   // Kirim email OTP via Resend
   const emailResult = await sendOtpEmail({
-    to: user.email,
+    to: pengguna.email,
     otp,
-    userName: user.name,
+    userName: pengguna.name,
   })
 
-  if (!emailResult.success) {
+  // Kirim OTP via WA Fonnte
+  let waSent = false
+  if (pengguna.phone) {
+    waSent = await sendWhatsAppMessage(
+      pengguna.phone,
+      `Halo ${pengguna.name},\n\nKode OTP (Kirim Ulang) Anda untuk Bank Sampah Sukamaju Sejahtera adalah: *${otp}*\n\nKode ini berlaku selama 10 menit. Jangan bagikan kode ini kepada siapa pun.`
+    )
+  }
+
+  if (!emailResult.success && !waSent) {
     return NextResponse.json({
-      error: `Gagal mengirim email OTP: ${emailResult.error}`,
+      error: `Gagal mengirim OTP ke Email dan WA. Silakan coba lagi nanti.`,
     }, { status: 500 })
   }
 
   return NextResponse.json({
     success: true,
-    message: `Kode OTP baru telah dikirim ke ${user.email}`,
+    message: `Kode OTP baru telah dikirim ke ${pengguna.email}`,
   })
 }

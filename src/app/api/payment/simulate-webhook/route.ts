@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   // Find the order to get the gross_amount
   // Use db directly to avoid circular imports
   const { db } = await import('@/lib/db')
-  const order = await db.tokoOrder.findFirst({
+  const order = await db.pesananToko.findFirst({
     where: { midtransOrderId: body.midtransOrderId },
     select: { id: true, totalBayar: true, midtransOrderId: true },
   })

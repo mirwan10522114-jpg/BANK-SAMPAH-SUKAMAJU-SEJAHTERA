@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { toNumber, parseFilterStartDate, parseFilterEndDate } from '@/lib/format'
 import { getActingUser, setorSimpanan, tarikSimpananSukarela } from '@/lib/business'
 
 // GET: list simpanan transactions
 // Query params:
 //   anggotaId      — filter by anggota
-//   jenisSimpanan  — 'pokok' | 'wajib' | 'sukarela'
-//   tipe           — 'setor' | 'tarik'
-//   dari           — ISO date (gte tanggalTransaksi)
-//   sampai         — ISO date (lte tanggalTransaksi)
-//   q              — search by nomorTransaksi (case-insensitive contains)
+//   jenisSimpanan  — 'pokok' | 'wajib' | 'sukarela' | 'all'
+//   tipe           — 'setor' | 'tarik' | 'all'
+//   dari           — YYYY-MM-DD, YYYY-MM, DD/MM/YYYY, or ISO date
+//   sampai         — YYYY-MM-DD, YYYY-MM, DD/MM/YYYY, or ISO date
+//   q              — search by nomorTransaksi or anggota name/code
+//   limit          — max rows to return (default 5000)
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const anggotaId = searchParams.get('anggotaId')
@@ -18,30 +20,54 @@ export async function GET(req: NextRequest) {
   const dari = searchParams.get('dari')
   const sampai = searchParams.get('sampai')
   const q = (searchParams.get('q') || '').trim()
+  const limit = parseInt(searchParams.get('limit') || '5000', 10)
 
   const where: any = {}
   if (anggotaId) where.koperasiAnggotaId = anggotaId
-  if (jenisSimpanan) where.jenisSimpanan = jenisSimpanan
-  if (tipe) where.tipe = tipe
-  if (dari || sampai) {
+  if (jenisSimpanan && jenisSimpanan !== 'all' && jenisSimpanan !== 'Semua') where.jenisSimpanan = jenisSimpanan
+  if (tipe && tipe !== 'all' && tipe !== 'Semua') where.tipe = tipe
+
+  const startDate = parseFilterStartDate(dari)
+  const endDate = parseFilterEndDate(sampai)
+  if (startDate || endDate) {
     where.tanggalTransaksi = {}
-    if (dari) where.tanggalTransaksi.gte = new Date(dari)
-    if (sampai) {
-      const s = new Date(sampai)
-      s.setHours(23, 59, 59, 999)
-      where.tanggalTransaksi.lte = s
-    }
+    if (startDate) where.tanggalTransaksi.gte = startDate
+    if (endDate) where.tanggalTransaksi.lte = endDate
   }
+
   if (q) {
-    where.nomorTransaksi = { contains: q }
+    where.OR = [
+      { nomorTransaksi: { contains: q } },
+      { anggota: { nama: { contains: q } } },
+      { anggota: { nomorAnggota: { contains: q } } },
+    ]
   }
-  const tx = await db.koperasiSimpananTransaksi.findMany({
-    where,
-    orderBy: { tanggalTransaksi: 'desc' },
-    include: { anggota: true },
-    take: 100,
+
+  const [tx, countAgg, sumAgg] = await Promise.all([
+    db.koperasiSimpananTransaksi.findMany({
+      where,
+      orderBy: { tanggalTransaksi: 'desc' },
+      include: { anggota: true },
+      take: limit,
+    }),
+    db.koperasiSimpananTransaksi.count({ where }),
+    db.koperasiSimpananTransaksi.aggregate({ where, _sum: { jumlah: true } }),
+  ])
+
+  const totalCount = countAgg
+  const totalSum = toNumber(sumAgg._sum.jumlah)
+
+  const format = searchParams.get('format')
+  if (format === 'wrapped') {
+    return NextResponse.json({ list: tx, totalCount, totalSum })
+  }
+
+  return NextResponse.json(tx, {
+    headers: {
+      'x-total-count': String(totalCount),
+      'x-total-sum': String(totalSum),
+    },
   })
-  return NextResponse.json(tx)
 }
 
 // POST: setor or tarik simpanan

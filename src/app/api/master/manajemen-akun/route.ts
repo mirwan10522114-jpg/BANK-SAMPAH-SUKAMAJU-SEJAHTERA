@@ -9,7 +9,7 @@ function toNum(v: any): number {
   return isNaN(n) ? 0 : n
 }
 
-// GET: list all users with integration info (balance, koperasi anggota, member codes)
+// GET: list all penggunas with integration info (saldo, koperasi anggota, member codes)
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const q = searchParams.get('q') || ''
@@ -27,16 +27,16 @@ export async function GET(req: NextRequest) {
   }
   if (roleFilter) where.roles = { contains: roleFilter }
 
-  const users = await db.user.findMany({
+  const penggunas = await db.pengguna.findMany({
     where,
     orderBy: { createdAt: 'asc' },
     include: {
-      balance: true,
+      saldo: true,
       koperasiAnggota: { include: { simpananSaldos: true } },
     },
   })
 
-  const rows = users.map((u, idx) => {
+  const rows = penggunas.map((u, idx) => {
     const roles = parseRoles(u.roles)
     return {
       id: u.id,
@@ -46,6 +46,15 @@ export async function GET(req: NextRequest) {
       nik: u.nik,
       phone: u.phone,
       address: u.address,
+      tempatLahir: u.tempatLahir,
+      tanggalLahir: u.tanggalLahir ? new Date(u.tanggalLahir).toISOString().split('T')[0] : null,
+      jenisKelamin: u.jenisKelamin,
+      pekerjaan: u.pekerjaan,
+      rt: u.rt,
+      rw: u.rw,
+      desaKelurahan: u.desaKelurahan,
+      kecamatan: u.kecamatan,
+      fotoKtp: u.fotoKtp,
       memberCode: u.memberCode,
       nomorAnggota: u.koperasiAnggota?.nomorAnggota || null,
       roles,
@@ -53,12 +62,13 @@ export async function GET(req: NextRequest) {
       memberJoinedAt: u.memberJoinedAt,
       emailVerifiedAt: u.emailVerifiedAt,
       isEmailVerified: !!u.emailVerifiedAt,
+      verificationStatus: u.verificationStatus,
       isActive: true,
-      balance: u.balance,
+      saldo: u.saldo,
       koperasiAnggota: u.koperasiAnggota,
-      saldoTertahan: u.balance ? toNum(u.balance.saldoTertahan) : 0,
-      saldoTersedia: u.balance ? toNum(u.balance.saldoTersedia) : 0,
-      points: u.balance?.points || 0,
+      saldoTertahan: u.saldo ? toNum(u.saldo.saldoTertahan) : 0,
+      saldoTersedia: u.saldo ? toNum(u.saldo.saldoTersedia) : 0,
+      points: u.saldo?.points || 0,
       simpananPokok: u.koperasiAnggota?.simpananSaldos?.find((s) => s.jenisSimpanan === 'pokok') ? toNum(u.koperasiAnggota.simpananSaldos.find((s) => s.jenisSimpanan === 'pokok')!.saldo) : 0,
       simpananWajib: u.koperasiAnggota?.simpananSaldos?.find((s) => s.jenisSimpanan === 'wajib') ? toNum(u.koperasiAnggota.simpananSaldos.find((s) => s.jenisSimpanan === 'wajib')!.saldo) : 0,
       simpananSukarela: u.koperasiAnggota?.simpananSaldos?.find((s) => s.jenisSimpanan === 'sukarela') ? toNum(u.koperasiAnggota.simpananSaldos.find((s) => s.jenisSimpanan === 'sukarela')!.saldo) : 0,
@@ -68,7 +78,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(rows)
 }
 
-// POST: create new user with full sync (same logic as PUT update)
+// POST: create new pengguna with full sync (same logic as PUT update)
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { name, email, nik, phone, address, password, emailVerified, roles } = body as {
@@ -87,12 +97,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Check email uniqueness
-  const existing = await db.user.findUnique({ where: { email } })
+  const existing = await db.pengguna.findUnique({ where: { email } })
   if (existing) {
     return NextResponse.json({ error: 'Email sudah terdaftar' }, { status: 400 })
   }
   if (nik) {
-    const existingNik = await db.user.findUnique({ where: { nik } })
+    const existingNik = await db.pengguna.findUnique({ where: { nik } })
     if (existingNik) {
       return NextResponse.json({ error: 'NIK sudah terdaftar' }, { status: 400 })
     }
@@ -103,7 +113,7 @@ export async function POST(req: NextRequest) {
   const hasKoperasi = newRoles.includes('koperasi')
   const syncLog: string[] = []
 
-  // 1. Build user data
+  // 1. Build pengguna data
   const userData: any = {
     name,
     email,
@@ -125,13 +135,13 @@ export async function POST(req: NextRequest) {
     userData.memberJoinedAt = new Date()
   }
 
-  // 3. Create user
-  const user = await db.user.create({ data: userData })
+  // 3. Create pengguna
+  const pengguna = await db.pengguna.create({ data: userData })
 
-  // 4. Create balance record if nasabah
+  // 4. Create saldo record if nasabah
   if (hasNasabah) {
-    await db.balance.create({ data: { userId: user.id } })
-    syncLog.push('Created balance record')
+    await db.saldo.create({ data: { penggunaId: pengguna.id } })
+    syncLog.push('Created saldo record')
   }
 
   // 5. Create anggota koperasi if koperasi role
@@ -152,7 +162,7 @@ export async function POST(req: NextRequest) {
         alamat: address,
         status: 'aktif',
         tanggalBergabung: new Date(),
-        userId: user.id,
+        penggunaId: pengguna.id,
       },
     })
     for (const jenis of ['pokok', 'wajib', 'sukarela'] as const) {
@@ -163,13 +173,13 @@ export async function POST(req: NextRequest) {
     syncLog.push(`Created anggota koperasi: ${nomor} + 3 simpanan saldos`)
   }
 
-  const created = await db.user.findUnique({
-    where: { id: user.id },
-    include: { balance: true, koperasiAnggota: { include: { simpananSaldos: true } } },
+  const created = await db.pengguna.findUnique({
+    where: { id: pengguna.id },
+    include: { saldo: true, koperasiAnggota: { include: { simpananSaldos: true } } },
   })
 
   return NextResponse.json({
-    user: created,
+    pengguna: created,
     syncLog,
     changes: {
       nasabahAdded: hasNasabah,

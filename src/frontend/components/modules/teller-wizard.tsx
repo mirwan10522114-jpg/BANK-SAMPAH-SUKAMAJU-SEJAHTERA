@@ -14,24 +14,362 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { Search, Plus, Trash2, Recycle, HandCoins, Wallet, CheckCircle2, XCircle, Printer, User, Scale, Landmark, CreditCard, Heart, ShieldCheck, ShieldX, AlertCircle, Info, Calendar, Clock, ChevronRight } from 'lucide-react'
+import { Search, Plus, Trash2, Recycle, HandCoins, Wallet, CheckCircle2, XCircle, Printer, User, Scale, Landmark, CreditCard, Heart, ShieldCheck, ShieldX, AlertCircle, Info, Calendar, Clock, ChevronRight, ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { printStruk } from '@/lib/print-struk'
 
 type OpType = 'nabung' | 'sedekah_sampah' | 'setor_simpanan' | 'tarik_sukarela' | 'pengajuan_pinjaman' | 'bayar_angsuran'
 
 interface Item {
-  wasteItemId: string
+  jenisSampahId: string
   quantityBeforeQc: number
   quantityAfterQc?: number
   qcReason?: string
 }
 
 interface SedekahItem {
-  wasteItemId: string
+  jenisSampahId: string
   quantityBeforeQc: number
   quantityAfterQc?: number
   qcReason?: string
+}
+
+const MONTH_NAMES_ID = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+]
+
+function SimpananWajibChecklistPanel({
+  anggota,
+  koperasiSetting,
+  op,
+  onUpdateOp,
+}: {
+  anggota: any
+  koperasiSetting: any
+  op: any
+  onUpdateOp: (patch: Record<string, any>) => void
+}) {
+  const nominalWajib = Number(koperasiSetting?.nominalSimpananWajib || 10000)
+  const saldoWajib = toNumber(anggota?.simpananSaldos?.find((s: any) => s.jenisSimpanan === 'wajib')?.saldo || 0)
+  const monthsCovered = nominalWajib > 0 ? Math.floor(saldoWajib / nominalWajib) : 0
+
+  const saldoPokok = toNumber(anggota?.simpananSaldos?.find((s: any) => s.jenisSimpanan === 'pokok')?.saldo || 0)
+  const nominalPokok = Number(koperasiSetting?.nominalSimpananPokok || 50000)
+  const hasPaidPokok = saldoPokok > 0 && (nominalPokok <= 0 || saldoPokok >= nominalPokok)
+
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() + 1
+
+  const joinDate = anggota?.tanggalBergabung
+    ? new Date(anggota.tanggalBergabung)
+    : (anggota?.createdAt ? new Date(anggota.createdAt) : now)
+  const joinYear = joinDate.getFullYear()
+  const joinMonth = joinDate.getMonth() + 1
+
+  // Buat urutan bulan minimal 16 bulan (mencakup bulan yang sudah lunas + 12 bulan ke depan)
+  const totalMonthsToGenerate = Math.max(16, monthsCovered + 12)
+  const allMonths = Array.from({ length: totalMonthsToGenerate }, (_, i) => {
+    const mYear = joinYear + Math.floor((joinMonth - 1 + i) / 12)
+    const mMonth = ((joinMonth - 1 + i) % 12) + 1
+    const key = `${mYear}-${mMonth}`
+    const isPaid = i < monthsCovered
+    const label = `${MONTH_NAMES_ID[mMonth - 1]} ${mYear}`
+    const isCurrent = mYear === currentYear && mMonth === currentMonth
+    return {
+      index: i,
+      key,
+      year: mYear,
+      month: mMonth,
+      label,
+      isPaid,
+      isCurrent,
+    }
+  })
+
+  const unpaidMonths = allMonths.filter((m) => !m.isPaid)
+  const selectedKeys: string[] = Array.isArray(op.selectedMonths) ? op.selectedMonths : []
+
+  // Default: otomatis centang bulan pertama yang belum lunas
+  useEffect(() => {
+    if (!op.selectedMonths && unpaidMonths.length > 0) {
+      const first = unpaidMonths[0]
+      onUpdateOp({
+        selectedMonths: [first.key],
+        jumlah: nominalWajib,
+        keterangan: `Setor simpanan wajib: ${first.label}`,
+      })
+    }
+  }, [unpaidMonths.length])
+
+  const handleApplySelection = (newSelected: string[]) => {
+    const sorted = allMonths.filter((m) => newSelected.includes(m.key)).map((m) => m.key)
+    const count = sorted.length
+    const totalJumlah = count * nominalWajib
+
+    const names = allMonths
+      .filter((m) => sorted.includes(m.key))
+      .map((m) => m.label)
+
+    let ket = ''
+    if (count === 1) {
+      ket = `Setor simpanan wajib: ${names[0]}`
+    } else if (count > 1) {
+      ket = `Setor simpanan wajib ${count} bulan (${names.join(', ')})`
+    }
+
+    onUpdateOp({
+      selectedMonths: sorted,
+      jumlah: totalJumlah,
+      keterangan: ket,
+    })
+  }
+
+  const toggleMonth = (key: string) => {
+    let next: string[]
+    if (selectedKeys.includes(key)) {
+      next = selectedKeys.filter((k) => k !== key)
+    } else {
+      next = [...selectedKeys, key]
+    }
+    handleApplySelection(next)
+  }
+
+  const selectCountUnpaid = (n: number) => {
+    const toPick = unpaidMonths.slice(0, n).map((m) => m.key)
+    handleApplySelection(toPick)
+  }
+
+  const selectUntilEndOfYear = () => {
+    const toPick = unpaidMonths
+      .filter((m) => m.year === currentYear || m.year < currentYear)
+      .map((m) => m.key)
+    handleApplySelection(toPick.length > 0 ? toPick : unpaidMonths.slice(0, 1).map((m) => m.key))
+  }
+
+  const resetSelection = () => {
+    if (unpaidMonths.length > 0) {
+      handleApplySelection([unpaidMonths[0].key])
+    } else {
+      handleApplySelection([])
+    }
+  }
+
+  const selectedCount = selectedKeys.length
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start pt-1">
+      {/* Kolom Kiri: Form Input & Rincian Nominal */}
+      <div className="lg:col-span-5 space-y-3">
+        <div>
+          <Label className="text-[11px] font-semibold text-teal-800">Jenis Simpanan</Label>
+          <Select
+            value={op.jenisSimpanan}
+            onValueChange={(v) => {
+              const autoNominal = v === 'pokok'
+                ? Number(koperasiSetting?.nominalSimpananPokok || 50000)
+                : v === 'wajib'
+                  ? Number(koperasiSetting?.nominalSimpananWajib || 10000)
+                  : 0
+              const autoKet = v === 'pokok'
+                ? 'Simpanan Pokok awal pendaftaran/registrasi'
+                : v === 'sukarela'
+                  ? 'Setor simpanan sukarela'
+                  : 'Setor simpanan wajib'
+              onUpdateOp({ jenisSimpanan: v, jumlah: autoNominal, selectedMonths: undefined, keterangan: autoKet })
+            }}
+          >
+            <SelectTrigger className="border-teal-200 bg-white font-medium text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pokok">Pokok</SelectItem>
+              <SelectItem value="wajib" disabled={!hasPaidPokok}>
+                Wajib {!hasPaidPokok ? '(Wajib Lunas Pokok Dahulu)' : ''}
+              </SelectItem>
+              <SelectItem value="sukarela" disabled={!hasPaidPokok}>
+                Sukarela {!hasPaidPokok ? '(Wajib Lunas Pokok Dahulu)' : ''}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label className="text-[11px] font-semibold text-teal-800">Jumlah Setor (Rp)</Label>
+          <div className="relative">
+            <Input
+              type="text"
+              value={formatRupiah(op.jumlah || 0)}
+              readOnly
+              className="border-teal-300 bg-teal-50/80 font-mono text-base font-bold text-teal-900 shadow-xs cursor-default"
+            />
+          </div>
+          <p className="text-[10px] text-teal-700 font-medium mt-1">
+            {selectedCount > 0 ? (
+              <span className="text-teal-800 font-semibold">
+                ✓ Otomatis terhitung dari {selectedCount} bulan terpilih ({selectedCount} × {formatRupiah(nominalWajib)})
+              </span>
+            ) : (
+              <span className="text-rose-600 font-semibold">
+                ⚠️ Silakan ceklis minimal 1 bulan di sebelah kanan
+              </span>
+            )}
+          </p>
+        </div>
+
+        <div>
+          <Label className="text-[11px] font-semibold text-teal-800">Keterangan Transaksi</Label>
+          <Input
+            type="text"
+            value={op.keterangan || ''}
+            onChange={(e) => onUpdateOp({ keterangan: e.target.value })}
+            placeholder="Keterangan transaksi..."
+            className="border-teal-200 bg-white text-xs"
+          />
+        </div>
+
+        {/* Ringkasan Saldo Wajib Saat Ini & Proyeksi */}
+        <div className="rounded-xl border border-teal-200/90 bg-white p-3 text-xs text-teal-950 shadow-xs space-y-1.5">
+          <div className="flex justify-between items-center text-[11px]">
+            <span className="text-zinc-500">Saldo Wajib Saat Ini:</span>
+            <strong className="text-teal-800 font-mono">{formatRupiah(saldoWajib)}</strong>
+          </div>
+          <div className="flex justify-between items-center text-[11px]">
+            <span className="text-zinc-500">Bulan Sudah Terbayar:</span>
+            <span className="font-semibold text-emerald-700">{monthsCovered} Bulan</span>
+          </div>
+          <div className="flex justify-between items-center text-[11px] pt-1.5 border-t border-teal-100">
+            <span className="text-zinc-600 font-medium">Saldo Setelah Setor:</span>
+            <strong className="text-teal-950 font-bold font-mono">
+              {formatRupiah(saldoWajib + (op.jumlah || 0))} ({monthsCovered + selectedCount} Bulan)
+            </strong>
+          </div>
+        </div>
+      </div>
+
+      {/* Kolom Kanan: Panel Informasi & Checklist Bulan Simpanan Wajib */}
+      <div className="lg:col-span-7 rounded-xl border border-teal-200 bg-white p-3.5 shadow-xs space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-teal-100">
+          <div>
+            <h4 className="text-xs font-bold text-teal-950 flex items-center gap-1.5">
+              <Calendar className="size-3.5 text-teal-600" /> Jadwal & Status Pembayaran Simpanan Wajib
+            </h4>
+            <p className="text-[10px] text-teal-700">
+              Iuran: <strong>{formatRupiah(nominalWajib)}/bln</strong> · Ceklis bulan yang ingin dibayarkan
+            </p>
+          </div>
+
+          <Badge className="bg-teal-600 hover:bg-teal-600 text-white text-[11px] font-bold px-2.5 py-0.5 shadow-xs">
+            {selectedCount} Bulan ({formatRupiah(op.jumlah || 0)})
+          </Badge>
+        </div>
+
+        {/* Tombol Pintas Pilihan Cepat */}
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] font-semibold text-zinc-500 mr-0.5">Pilih Cepat:</span>
+          <button
+            type="button"
+            onClick={() => selectCountUnpaid(1)}
+            className="px-2 py-0.5 rounded border border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 font-semibold text-[10px] transition-colors"
+          >
+            +1 Bln
+          </button>
+          <button
+            type="button"
+            onClick={() => selectCountUnpaid(3)}
+            className="px-2 py-0.5 rounded border border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 font-semibold text-[10px] transition-colors"
+          >
+            +3 Bln
+          </button>
+          <button
+            type="button"
+            onClick={() => selectCountUnpaid(6)}
+            className="px-2 py-0.5 rounded border border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 font-semibold text-[10px] transition-colors"
+          >
+            +6 Bln
+          </button>
+          <button
+            type="button"
+            onClick={selectUntilEndOfYear}
+            className="px-2 py-0.5 rounded border border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 font-semibold text-[10px] transition-colors"
+          >
+            s/d Des {currentYear}
+          </button>
+          <button
+            type="button"
+            onClick={resetSelection}
+            className="px-2 py-0.5 rounded border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100 font-medium text-[10px] transition-colors ml-auto"
+          >
+            Reset
+          </button>
+        </div>
+
+        {/* Daftar Checklist Bulan (Scrollable List) */}
+        <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 text-xs">
+          {allMonths.map((m) => {
+            const isSelected = selectedKeys.includes(m.key)
+
+            return (
+              <div
+                key={m.key}
+                onClick={() => {
+                  if (!m.isPaid) toggleMonth(m.key)
+                }}
+                className={cn(
+                  'flex items-center justify-between p-2 rounded-lg border transition-all text-xs select-none',
+                  m.isPaid
+                    ? 'border-emerald-200 bg-emerald-50/60 text-emerald-950 cursor-default opacity-85'
+                    : isSelected
+                    ? 'border-teal-500 bg-teal-50/90 text-teal-950 font-semibold ring-1 ring-teal-400 cursor-pointer shadow-xs'
+                    : 'border-zinc-200 bg-white text-zinc-700 hover:border-teal-200 hover:bg-zinc-50/80 cursor-pointer'
+                )}
+              >
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={m.isPaid || isSelected}
+                    disabled={m.isPaid}
+                    onChange={() => {
+                      if (!m.isPaid) toggleMonth(m.key)
+                    }}
+                    className={cn(
+                      'size-4 rounded accent-teal-600 cursor-pointer',
+                      m.isPaid && 'accent-emerald-600 cursor-default'
+                    )}
+                  />
+                  <span className="font-medium text-xs flex items-center gap-1.5">
+                    {m.label}
+                    {m.isCurrent && (
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                        Bulan Ini
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  {m.isPaid ? (
+                    <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+                      <CheckCircle2 className="size-3.5 text-emerald-600" /> Sudah Lunas
+                    </span>
+                  ) : isSelected ? (
+                    <span className="text-[11px] font-bold text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full">
+                      Dipilih (+{formatRupiah(nominalWajib)})
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-zinc-400">
+                      Belum Bayar
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function TellerWizard() {
@@ -40,7 +378,7 @@ export function TellerWizard() {
   const [nasabahResults, setNasabahResults] = useState<any[]>([])
   const [nasabah, setNasabah] = useState<any>(null)
   const [anggota, setAnggota] = useState<any>(null)
-  const [balance, setBalance] = useState<any>(null)
+  const [saldo, setBalance] = useState<any>(null)
   const [barangList, setBarangList] = useState<any[]>([])
   const [produkList] = useState<any[]>([])
   const [items, setItems] = useState<Item[]>([])
@@ -71,10 +409,18 @@ export function TellerWizard() {
   const [pinjamanEligibility, setPinjamanEligibility] = useState<any>(null)
   const [koperasiSetting, setKoperasiSetting] = useState<any>(null)
   const [showEligibilityDetail, setShowEligibilityDetail] = useState(false)
+  const [rupiahPerPointEarn, setRupiahPerPointEarn] = useState(1000)
 
   useEffect(() => {
     api.barang.list().then(setBarangList).catch(() => {})
     api.koperasiSetting.get().then(setKoperasiSetting).catch(() => {})
+    api.aturanPoins.list().then((rules: any[]) => {
+      const active = rules?.find((r) => r.isActive)
+      if (active) {
+        const rp = active.rupiahPerPointEarn || (toNumber(active.pointsPerRupiah) > 0 ? Math.round(1 / toNumber(active.pointsPerRupiah)) : 1000)
+        if (rp > 0) setRupiahPerPointEarn(rp)
+      }
+    }).catch(() => {})
   }, [])
 
   const searchNasabah = useCallback(async (q: string) => {
@@ -91,7 +437,7 @@ export function TellerWizard() {
     setPinjamanList([])
     try {
       const b = await api.operasional.nasabahBalance(u.id)
-      setBalance(b.balance)
+      setBalance(b.saldo)
       // find anggota if koperasi member
       if (u.koperasiAnggota) {
         setAnggota(u.koperasiAnggota)
@@ -105,22 +451,28 @@ export function TellerWizard() {
         api.koperasi.checkPinjamanEligibility(u.koperasiAnggota.id)
           .then(setPinjamanEligibility)
           .catch(() => {})
+        // Refresh full anggota data to ensure tanggalBergabung and fresh simpananSaldos are available
+        api.anggota.get(u.koperasiAnggota.id)
+          .then((fresh: any) => {
+            if (fresh && !fresh.error) setAnggota(fresh)
+          })
+          .catch(() => {})
       }
       else setAnggota(null)
     } catch {}
     setStep(2)
   }
 
-  const addItem = () => setItems([...items, { wasteItemId: '', quantityBeforeQc: 0 }])
+  const addItem = () => setItems([...items, { jenisSampahId: '', quantityBeforeQc: 0 }])
   const updateItem = (i: number, patch: Partial<Item>) => setItems(items.map((it, idx) => idx === i ? { ...it, ...patch } : it))
   const removeItem = (i: number) => setItems(items.filter((_, idx) => idx !== i))
 
-  const addSedekahItem = () => setSedekahItems([...sedekahItems, { wasteItemId: '', quantityBeforeQc: 0 }])
+  const addSedekahItem = () => setSedekahItems([...sedekahItems, { jenisSampahId: '', quantityBeforeQc: 0 }])
   const updateSedekahItem = (i: number, patch: Partial<SedekahItem>) => setSedekahItems(sedekahItems.map((it, idx) => idx === i ? { ...it, ...patch } : it))
   const removeSedekahItem = (i: number) => setSedekahItems(sedekahItems.filter((_, idx) => idx !== i))
 
   const nabungTotal = items.reduce((s, it) => {
-    const wi = barangList.find((b) => b.id === it.wasteItemId)
+    const wi = barangList.find((b) => b.id === it.jenisSampahId)
     if (!wi) return s
     const price = toNumber(wi.prices?.[0]?.pricePerUnit ?? wi.pricePerUnit)
     const qty = applyQc && it.quantityAfterQc != null ? it.quantityAfterQc : it.quantityBeforeQc
@@ -143,14 +495,22 @@ export function TellerWizard() {
     if (!nasabah) { toast.error('Pilih nasabah dulu'); return }
     const ops: any[] = []
     // nabung operation
-    if (items.length > 0 && items.some((i) => i.wasteItemId && i.quantityBeforeQc > 0)) {
-      ops.push({ type: 'nabung', items: items.filter((i) => i.wasteItemId && i.quantityBeforeQc > 0), applyQc, skipQc, qcMode })
+    if (items.length > 0) {
+      if (items.some((i) => !i.jenisSampahId || i.quantityBeforeQc <= 0)) {
+        toast.error('Ada item Nabung yang belum lengkap (Pilih barang & pastikan berat > 0). Lengkapi atau hapus item.')
+        return
+      }
+      ops.push({ type: 'nabung', items, applyQc, skipQc, qcMode })
     }
     // sedekah sampah operation
-    if (sedekahItems.length > 0 && sedekahItems.some((i) => i.wasteItemId && i.quantityBeforeQc > 0)) {
+    if (sedekahItems.length > 0) {
+      if (sedekahItems.some((i) => !i.jenisSampahId || i.quantityBeforeQc <= 0)) {
+        toast.error('Ada item Sedekah yang belum lengkap (Pilih barang & pastikan berat > 0). Lengkapi atau hapus item.')
+        return
+      }
       ops.push({
         type: 'sedekah_sampah',
-        sedekahItems: sedekahItems.filter((i) => i.wasteItemId && i.quantityBeforeQc > 0),
+        sedekahItems,
         applyQc: applySedekahQc,
         skipQc: skipSedekahQc,
         qcMode: sedekahQcMode,
@@ -158,15 +518,33 @@ export function TellerWizard() {
     }
     // other operations
     for (const op of operations) {
-      if (op.type === 'setor_simpanan' && op.jumlah > 0) ops.push({ type: 'setor_simpanan', jenisSimpanan: op.jenisSimpanan, jumlah: op.jumlah, keterangan: op.keterangan })
-      if (op.type === 'tarik_sukarela' && op.jumlah > 0) ops.push({ type: 'tarik_sukarela', jumlah: op.jumlah })
-      if (op.type === 'pengajuan_pinjaman' && op.jumlahPinjaman > 0 && op.tenorBulan > 0) ops.push({ type: 'pengajuan_pinjaman', jumlahPinjaman: op.jumlahPinjaman, tenorBulan: op.tenorBulan, keterangan: op.keterangan })
-      if (op.type === 'bayar_angsuran' && op.pinjamanId) ops.push({ type: 'bayar_angsuran', pinjamanId: op.pinjamanId, jumlahAngsuran: op.jumlahAngsuran })
+      if (op.type === 'setor_simpanan') {
+        if (!op.jumlah || op.jumlah <= 0) { toast.error('Jumlah setor simpanan harus lebih dari 0'); return }
+        ops.push({ type: 'setor_simpanan', jenisSimpanan: op.jenisSimpanan, jumlah: op.jumlah, keterangan: op.keterangan })
+      }
+      if (op.type === 'tarik_sukarela') {
+        if (!op.jumlah || op.jumlah <= 0) { toast.error('Jumlah tarik sukarela harus lebih dari 0'); return }
+        ops.push({ type: 'tarik_sukarela', jumlah: op.jumlah })
+      }
+      if (op.type === 'pengajuan_pinjaman') {
+        if (!op.jumlahPinjaman || op.jumlahPinjaman <= 0 || !op.tenorBulan || op.tenorBulan <= 0) {
+          toast.error('Jumlah dan tenor pengajuan pinjaman harus lebih dari 0')
+          return
+        }
+        ops.push({ type: 'pengajuan_pinjaman', jumlahPinjaman: op.jumlahPinjaman, tenorBulan: op.tenorBulan, keterangan: op.keterangan })
+      }
+      if (op.type === 'bayar_angsuran') {
+        if (!op.pinjamanId || !op.jumlahAngsuran || op.jumlahAngsuran <= 0) {
+          toast.error('Pembayaran angsuran harus memiliki pinjaman valid dan jumlah lebih dari 0')
+          return
+        }
+        ops.push({ type: 'bayar_angsuran', pinjamanId: op.pinjamanId, jumlahAngsuran: op.jumlahAngsuran })
+      }
     }
     if (ops.length === 0) { toast.error('Tidak ada operasi untuk diproses'); return }
     setSubmitting(true)
     try {
-      const res = await api.teller.wizard({ userId: nasabah.id, anggotaId: anggota?.id, operations: ops })
+      const res = await api.teller.wizard({ penggunaId: nasabah.id, anggotaId: anggota?.id, operations: ops })
       setReceipt(res)
       if (res?._meta?.emailDeferredForQc) {
         toast.success('Transaksi berhasil dicatat! Struk akan dikirim ke email nasabah setelah lolos verifikasi QC.')
@@ -175,14 +553,19 @@ export function TellerWizard() {
       }
       // reset
       setItems([]); setSedekahItems([]); setOperations([]); setQcMode('nanti'); setSedekahQcMode('nanti'); setNotes('')
-      // refresh balance
+      // refresh saldo
       const b = await api.operasional.nasabahBalance(nasabah.id)
-      setBalance(b.balance)
-      // refresh pinjaman list
+      setBalance(b.saldo)
+      // refresh pinjaman list & anggota data (saldo simpanan realtime)
       if (anggota) {
         try {
-          const pinjaman = await api.koperasi.pinjamanList(anggota.id, 'berjalan')
+          const [freshAnggota, pinjaman] = await Promise.all([
+            api.anggota.get(anggota.id),
+            api.koperasi.pinjamanList(anggota.id, 'berjalan'),
+          ])
+          if (freshAnggota && !freshAnggota.error) setAnggota(freshAnggota)
           setPinjamanList(pinjaman)
+          api.koperasi.checkPinjamanEligibility(anggota.id).then(setPinjamanEligibility).catch(() => {})
         } catch {}
       }
     } catch (e: any) {
@@ -243,8 +626,21 @@ export function TellerWizard() {
                   {nasabahResults.map((u) => (
                     <button key={u.id} onClick={() => pickNasabah(u)} className="flex w-full items-center justify-between border-b border-emerald-50 px-3 py-2.5 text-left last:border-0 hover:bg-emerald-50">
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-emerald-900 truncate">{u.name} {u.memberCode ? <span className="text-xs font-normal text-emerald-600/70">({u.memberCode})</span> : null}</p>
-                        <p className="text-xs text-emerald-600/70 truncate">{u.nik || 'NIK belum terdaftar'}</p>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="text-sm font-medium text-emerald-900 truncate">{u.name} {u.memberCode ? <span className="text-xs font-normal text-emerald-600/70">({u.memberCode})</span> : null}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {(() => {
+                              let rArr = [];
+                              try { rArr = typeof u.roles === 'string' ? JSON.parse(u.roles) : Array.isArray(u.roles) ? u.roles : []; } catch(e) {}
+                              return rArr.map((r: string) => (
+                                <Badge key={r} variant="outline" className="border-emerald-300 bg-emerald-50 text-[9px] px-1 py-0 h-4 leading-none text-emerald-800 uppercase tracking-wider">{r}</Badge>
+                              ));
+                            })()}
+                          </div>
+                        </div>
+                        <p className="text-xs text-emerald-600/70 truncate">
+                          {u.nik ? `NIK: ${u.nik}` : 'NIK belum terdaftar'} &bull; {u.phone || '-'} {u.email ? `\u2022 ${u.email}` : ''}
+                        </p>
                       </div>
                       <div className="ml-3 text-right min-w-0 flex-1">
                         <p className="text-xs text-gray-500 truncate">{u.address || '-'}</p>
@@ -262,7 +658,12 @@ export function TellerWizard() {
       {/* Step 2: Services */}
       {step === 2 && nasabah && (
         <div className="space-y-6">
-          {/* Nasabah info + balance */}
+          <div className="-mb-2">
+            <Button variant="ghost" size="sm" onClick={reset} className="text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 px-2 -ml-2">
+              <ArrowLeft className="mr-2 h-4 w-4" /> Kembali Ganti Nasabah
+            </Button>
+          </div>
+          {/* Nasabah info + saldo */}
           <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50">
             <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
@@ -271,7 +672,7 @@ export function TellerWizard() {
                 </div>
                 <div>
                   <p className="font-semibold text-emerald-900">{nasabah.name}</p>
-                  <p className="text-xs text-emerald-700">{nasabah.memberCode || '-'} · {nasabah.phone}</p>
+                  <p className="text-xs text-emerald-700">{nasabah.memberCode || '-'} &bull; {nasabah.phone || '-'} {nasabah.email ? `\u2022 ${nasabah.email}` : ''}</p>
                   <div className="mt-1 flex gap-1">
                     {JSON.parse(nasabah.roles || '[]').map((r: string) => (
                       <Badge key={r} variant="outline" className="border-emerald-300 bg-white text-[10px] text-emerald-700">{r}</Badge>
@@ -282,18 +683,20 @@ export function TellerWizard() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-lg bg-white/80 p-3 text-center">
                   <p className="text-[10px] font-medium text-emerald-600">Saldo Tersedia</p>
-                  <p className="text-sm font-bold text-emerald-900">{formatRupiah(toNumber(balance?.saldoTersedia))}</p>
+                  <p className="text-sm font-bold text-emerald-900">{formatRupiah(toNumber(saldo?.saldoTersedia))}</p>
                 </div>
                 <div className="rounded-lg bg-white/80 p-3 text-center">
                   <p className="text-[10px] font-medium text-emerald-600">Poin</p>
-                  <p className="text-sm font-bold text-emerald-900">{formatNumber(toNumber(balance?.points), 0)}</p>
+                  <p className="text-sm font-bold text-emerald-900">{formatNumber(toNumber(saldo?.points), 0)}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Service 1: Nabung Sampah */}
-          <Card className="border-emerald-100">
+          {/* Service 1: Nabung Sampah (only if nasabah) */}
+          {(typeof nasabah.roles === 'string' ? nasabah.roles.includes('nasabah') : Array.isArray(nasabah.roles) ? nasabah.roles.includes('nasabah') : false) && (
+            <>
+              <Card className="border-emerald-100">
             <CardHeader className="flex flex-row items-center justify-between">
               <div className="flex items-center gap-2">
                 <Recycle className="h-5 w-5 text-emerald-600" />
@@ -382,7 +785,7 @@ export function TellerWizard() {
               {/* End QC Mode Selector */}
               {items.length === 0 && <p className="rounded-lg border border-dashed border-emerald-200 p-4 text-center text-xs text-emerald-600/60">Belum ada item sampah. Klik &quot;Tambah Item&quot; untuk menimbang.</p>}
               {items.map((it, i) => {
-                const wi = barangList.find((b) => b.id === it.wasteItemId)
+                const wi = barangList.find((b) => b.id === it.jenisSampahId)
                 const price = wi ? toNumber(wi.prices?.[0]?.pricePerUnit ?? wi.pricePerUnit) : 0
                 const qty = applyQc && it.quantityAfterQc != null ? it.quantityAfterQc : it.quantityBeforeQc
                 return (
@@ -390,7 +793,7 @@ export function TellerWizard() {
                     <div className="grid gap-2 sm:grid-cols-12 sm:items-end">
                       <div className="sm:col-span-4">
                         <Label className="text-[11px] text-emerald-700">Barang Sampah</Label>
-                        <Select value={it.wasteItemId} onValueChange={(v) => updateItem(i, { wasteItemId: v })}>
+                        <Select value={it.jenisSampahId} onValueChange={(v) => updateItem(i, { jenisSampahId: v })}>
                           <SelectTrigger className="border-emerald-200 bg-white"><SelectValue placeholder="Pilih barang" /></SelectTrigger>
                           <SelectContent>{barangList.map((b) => <SelectItem key={b.id} value={b.id}>{b.code} · {b.name} ({formatRupiah(toNumber(b.prices?.[0]?.pricePerUnit ?? b.pricePerUnit))}/{b.unit})</SelectItem>)}</SelectContent>
                         </Select>
@@ -423,7 +826,7 @@ export function TellerWizard() {
                 <Button variant="outline" size="sm" onClick={addItem} className="border-emerald-300 text-emerald-700"><Plus className="h-4 w-4" /> Tambah Item</Button>
                 {items.length > 0 && (
                   <div className="text-right">
-                    <p className="text-xs text-emerald-600">Total {formatNumber(nabungWeight, 2)} kg · Estimasi {Math.floor(nabungTotal / 100)} poin</p>
+                    <p className="text-xs text-emerald-600">Total {formatNumber(nabungWeight, 2)} kg · Estimasi {Math.floor(nabungTotal / (rupiahPerPointEarn || 1000))} poin ({formatRupiah(rupiahPerPointEarn || 1000)}/pt)</p>
                     <p className="text-lg font-bold text-emerald-900">{formatRupiah(nabungTotal)}</p>
                   </div>
                 )}
@@ -522,14 +925,14 @@ export function TellerWizard() {
 
               {sedekahItems.length === 0 && <p className="rounded-lg border border-dashed border-rose-200 p-4 text-center text-xs text-rose-600/60">Belum ada item sedekah. Klik &quot;Tambah Item Sedekah&quot; untuk menambahkan.</p>}
               {sedekahItems.map((it, i) => {
-                const wi = barangList.find((b) => b.id === it.wasteItemId)
+                const wi = barangList.find((b) => b.id === it.jenisSampahId)
                 const qty = applySedekahQc && it.quantityAfterQc != null ? it.quantityAfterQc : it.quantityBeforeQc
                 return (
                   <div key={i} className="rounded-xl border border-rose-100 bg-rose-50/30 p-3">
                     <div className="grid gap-2 sm:grid-cols-12 sm:items-end">
                       <div className="sm:col-span-4">
                         <Label className="text-[11px] text-rose-700">Barang Sampah</Label>
-                        <Select value={it.wasteItemId} onValueChange={(v) => updateSedekahItem(i, { wasteItemId: v })}>
+                        <Select value={it.jenisSampahId} onValueChange={(v) => updateSedekahItem(i, { jenisSampahId: v })}>
                           <SelectTrigger className="border-rose-200 bg-white"><SelectValue placeholder="Pilih barang" /></SelectTrigger>
                           <SelectContent>{barangList.map((b) => <SelectItem key={b.id} value={b.id}>{b.code} · {b.name} ({b.unit})</SelectItem>)}</SelectContent>
                         </Select>
@@ -569,16 +972,18 @@ export function TellerWizard() {
               </div>
             </CardContent>
           </Card>
+          </>
+          )}
 
-          {/* Additional koperasi services (only if anggota) */}
-          {anggota && (
+          {/* Additional koperasi services (only if anggota or has role) */}
+          {(anggota || (nasabah && JSON.parse(nasabah.roles || '[]').includes('koperasi'))) && (
             <Card className="border-emerald-100">
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <HandCoins className="h-5 w-5 text-teal-600" />
                   <div>
                     <CardTitle className="text-base text-emerald-900">Layanan Koperasi</CardTitle>
-                    <CardDescription className="text-xs">Anggota: {anggota.nomorAnggota} — simpanan, pinjaman, angsuran</CardDescription>
+                    <CardDescription className="text-xs">Anggota: {anggota?.nomorAnggota || 'Belum Registrasi'} — simpanan, pinjaman, angsuran</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -608,59 +1013,218 @@ export function TellerWizard() {
                   </div>
                 ))}
 
-                {/* Action buttons */}
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => addOp({ type: 'setor_simpanan', jenisSimpanan: 'wajib', jumlah: Number(koperasiSetting?.nominalSimpananWajib || 0), keterangan: '' })} className="border-teal-300 text-teal-700"><Plus className="h-3.5 w-3.5" /> Setor Simpanan</Button>
-                  <Button variant="outline" size="sm" onClick={() => addOp({ type: 'tarik_sukarela', jumlah: 0 })} className="border-amber-300 text-amber-700"><Wallet className="h-3.5 w-3.5 mr-1" /> Tarik Sukarela</Button>
-                  <Button variant="outline" size="sm" onClick={() => addOp({ type: 'pengajuan_pinjaman', jumlahPinjaman: 0, tenorBulan: 12, keterangan: '' })} disabled={pinjamanEligibility && !pinjamanEligibility.eligible} className="border-blue-300 text-blue-700"><Landmark className="h-3.5 w-3.5 mr-1" /> Pinjaman Koperasi</Button>
-                  {pinjamanEligibility && !pinjamanEligibility.eligible && (
-                    <button
-                      type="button"
-                      onClick={() => setShowEligibilityDetail(true)}
-                      className="group mt-1 flex w-full items-start gap-1.5 rounded-md border border-red-200 bg-red-50/80 px-2.5 py-1.5 text-left text-[11px] text-red-600 transition-colors hover:border-red-300 hover:bg-red-100/80 hover:text-red-700"
-                    >
-                      <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0 text-red-500" />
-                      <span className="flex-1">
-                        <span className="font-semibold">Tidak memenuhi syarat:</span>{' '}
-                        {pinjamanEligibility.reasons?.join('; ') || 'Hubungi admin'}
-                      </span>
-                      <ChevronRight className="mt-px h-3.5 w-3.5 shrink-0 text-red-400 transition-transform group-hover:translate-x-0.5" />
-                    </button>
-                  )}
-                  <Button variant="outline" size="sm" onClick={() => addOp({ type: 'bayar_angsuran', pinjamanId: '', jumlahAngsuran: 1 })} disabled={pinjamanList.length === 0} className="border-purple-300 text-purple-700"><CreditCard className="h-3.5 w-3.5 mr-1" /> Bayar Angsuran {pinjamanList.length === 0 && <span className="ml-1 text-[10px] opacity-60">(belum ada pinjaman aktif)</span>}</Button>
-                </div>
+                {/* Banner & Action buttons */}
+                {(() => {
+                  const saldoPokok = toNumber(anggota?.simpananSaldos?.find((s: any) => s.jenisSimpanan === 'pokok')?.saldo || 0)
+                  const nominalPokok = Number(koperasiSetting?.nominalSimpananPokok || 50000)
+                  const hasPaidPokok = saldoPokok > 0 && (nominalPokok <= 0 || saldoPokok >= nominalPokok)
+
+                  return (
+                    <div className="space-y-2">
+                      {!hasPaidPokok && (
+                        <div className="rounded-xl border-2 border-amber-300 bg-gradient-to-r from-amber-50 via-orange-50/50 to-white p-3 text-xs text-amber-950 shadow-xs flex items-start gap-3">
+                          <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-200 text-amber-800 mt-0.5">
+                            <Landmark className="size-4" />
+                          </div>
+                          <div className="flex-1 space-y-0.5">
+                            <p className="font-bold text-xs text-amber-950">
+                              Langkah Awal: Setor Simpanan Pokok Pendaftaran
+                            </p>
+                            <p className="text-[11px] text-amber-800 leading-relaxed">
+                              Anggota <strong>{anggota?.nomorAnggota || nasabah?.name}</strong> baru mendaftar dan belum membayar Simpanan Pokok ({formatRupiah(nominalPokok)}). Klik tombol <strong>Setor Simpanan Pokok</strong> di bawah untuk memproses deposit keanggotaan.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-2">
+                        {!hasPaidPokok ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addOp({
+                              type: 'setor_simpanan',
+                              jenisSimpanan: 'pokok',
+                              jumlah: nominalPokok,
+                              keterangan: 'Simpanan Pokok awal pendaftaran/registrasi',
+                            })}
+                            className="border-amber-400 bg-amber-100/90 text-amber-950 font-bold hover:bg-amber-200 shadow-xs"
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-1 text-amber-800" />
+                            + Setor Simpanan Pokok ({formatRupiah(nominalPokok)})
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addOp({
+                              type: 'setor_simpanan',
+                              jenisSimpanan: 'wajib',
+                              jumlah: Number(koperasiSetting?.nominalSimpananWajib || 10000),
+                              keterangan: '',
+                            })}
+                            className="border-teal-300 text-teal-700 font-semibold hover:bg-teal-50"
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-1" />
+                            + Setor Simpanan (Wajib / Sukarela)
+                          </Button>
+                        )}
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => addOp({ type: 'tarik_sukarela', jumlah: 0 })}
+                          disabled={!hasPaidPokok}
+                          title={!hasPaidPokok ? 'Wajib melunasi Simpanan Pokok terlebih dahulu' : undefined}
+                          className="border-amber-300 text-amber-700 disabled:opacity-40"
+                        >
+                          <Wallet className="h-3.5 w-3.5 mr-1" /> Tarik Sukarela
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => addOp({ type: 'pengajuan_pinjaman', jumlahPinjaman: 0, tenorBulan: 12, keterangan: '' })}
+                          disabled={!hasPaidPokok || (pinjamanEligibility && !pinjamanEligibility.eligible)}
+                          title={!hasPaidPokok ? 'Wajib melunasi Simpanan Pokok terlebih dahulu' : (pinjamanEligibility && !pinjamanEligibility.eligible ? pinjamanEligibility.reasons?.join('; ') : undefined)}
+                          className="border-blue-300 text-blue-700 disabled:opacity-40"
+                        >
+                          <Landmark className="h-3.5 w-3.5 mr-1" /> Pinjaman Koperasi
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => addOp({ type: 'bayar_angsuran', pinjamanId: '', jumlahAngsuran: 1 })}
+                          disabled={pinjamanList.length === 0}
+                          className="border-purple-300 text-purple-700 disabled:opacity-40"
+                        >
+                          <CreditCard className="h-3.5 w-3.5 mr-1" /> Bayar Angsuran {pinjamanList.length === 0 && <span className="ml-1 text-[10px] opacity-60">(belum ada pinjaman aktif)</span>}
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Editable fields for each added operation */}
-                {operations.map((op) => (
+                {operations.map((op) => {
+                  const saldoPokok = toNumber(anggota?.simpananSaldos?.find((s: any) => s.jenisSimpanan === 'pokok')?.saldo || 0)
+                  const nominalPokok = Number(koperasiSetting?.nominalSimpananPokok || 50000)
+                  const hasPaidPokok = saldoPokok > 0 && (nominalPokok <= 0 || saldoPokok >= nominalPokok)
+
+                  return (
                   <div key={`edit-${op.id}`} className="rounded-lg border border-teal-100 bg-teal-50/20 p-3">
                     {op.type === 'setor_simpanan' && (
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                        <div>
-                          <Label className="text-[11px] text-teal-700">Jenis</Label>
-                          <Select value={op.jenisSimpanan} onValueChange={(v) => {
-                            const autoNominal = v === 'pokok'
-                              ? Number(koperasiSetting?.nominalSimpananPokok || 0)
-                              : v === 'wajib'
-                                ? Number(koperasiSetting?.nominalSimpananWajib || 0)
-                                : 0
-                            setOperations(operations.map((o) => o.id === op.id ? { ...o, jenisSimpanan: v, jumlah: autoNominal } : o))
-                          }}>
-                            <SelectTrigger className="border-teal-200 bg-white"><SelectValue /></SelectTrigger>
-                            <SelectContent><SelectItem value="pokok">Pokok</SelectItem><SelectItem value="wajib">Wajib</SelectItem><SelectItem value="sukarela">Sukarela</SelectItem></SelectContent>
-                          </Select>
+                      op.jenisSimpanan === 'wajib' ? (
+                        <SimpananWajibChecklistPanel
+                          anggota={anggota}
+                          koperasiSetting={koperasiSetting}
+                          op={op}
+                          onUpdateOp={(patch) => {
+                            setOperations(operations.map((o) => o.id === op.id ? { ...o, ...patch } : o))
+                          }}
+                        />
+                      ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start pt-1">
+                          <div className="lg:col-span-5 space-y-3">
+                            <div>
+                              <Label className="text-[11px] font-semibold text-teal-800">Jenis Simpanan</Label>
+                              <Select
+                                value={op.jenisSimpanan}
+                                onValueChange={(v) => {
+                                  const autoNominal = v === 'pokok'
+                                    ? Number(koperasiSetting?.nominalSimpananPokok || 50000)
+                                    : v === 'wajib'
+                                      ? Number(koperasiSetting?.nominalSimpananWajib || 10000)
+                                      : 0
+                                  const autoKet = v === 'pokok'
+                                    ? 'Simpanan Pokok awal pendaftaran/registrasi'
+                                    : v === 'sukarela'
+                                      ? 'Setor simpanan sukarela'
+                                      : 'Setor simpanan wajib'
+                                  setOperations(operations.map((o) => o.id === op.id ? { ...o, jenisSimpanan: v, jumlah: autoNominal, keterangan: autoKet, selectedMonths: undefined } : o))
+                                }}
+                              >
+                                <SelectTrigger className="border-teal-200 bg-white font-medium text-xs"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pokok">Pokok</SelectItem>
+                                  <SelectItem value="wajib" disabled={!hasPaidPokok}>
+                                    Wajib {!hasPaidPokok ? '(Wajib Lunas Pokok Dahulu)' : ''}
+                                  </SelectItem>
+                                  <SelectItem value="sukarela" disabled={!hasPaidPokok}>
+                                    Sukarela {!hasPaidPokok ? '(Wajib Lunas Pokok Dahulu)' : ''}
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="text-[11px] font-semibold text-teal-800">Jumlah (Rp)</Label>
+                              {op.jenisSimpanan === 'sukarela' ? (
+                                <Input type="number" value={op.jumlah || ''} onChange={(e) => setOperations(operations.map((o) => o.id === op.id ? { ...o, jumlah: parseFloat(e.target.value) || 0 } : o))} className="border-teal-200 bg-white" placeholder="Masukkan nominal..." />
+                              ) : (
+                                <Input type="number" value={op.jumlah || ''} readOnly className="border-teal-200 bg-teal-50 cursor-not-allowed text-teal-800 font-semibold" />
+                              )}
+                              {op.jenisSimpanan === 'pokok' && (
+                                <p className="text-[9px] text-teal-500 mt-0.5">Sesuai pengaturan koperasi (Rp {Number(koperasiSetting?.nominalSimpananPokok || 50000).toLocaleString('id-ID')})</p>
+                              )}
+                            </div>
+                            {op.jenisSimpanan === 'pokok' && (
+                              <div>
+                                <Label className="text-[11px] font-semibold text-teal-800">Keterangan</Label>
+                                <Input
+                                  type="text"
+                                  value={op.keterangan || 'Simpanan pokok awal pendaftaran'}
+                                  onChange={(e) => setOperations(operations.map((o) => o.id === op.id ? { ...o, keterangan: e.target.value } : o))}
+                                  className="border-teal-200 bg-white text-xs"
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Informasi di sebelah kanan untuk Pokok dan Sukarela */}
+                          <div className="lg:col-span-7">
+                            {op.jenisSimpanan === 'pokok' ? (
+                              <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 text-xs text-amber-950 space-y-2">
+                                <h4 className="font-bold flex items-center gap-1.5 text-amber-900">
+                                  <Landmark className="size-4 text-amber-700" /> Informasi Simpanan Pokok
+                                </h4>
+                                <p className="text-[11px] text-amber-800 leading-relaxed">
+                                  Simpanan Pokok adalah iuran awal registrasi / deposit anggota sebesar <strong>Rp {Number(koperasiSetting?.nominalSimpananPokok || 50000).toLocaleString('id-ID')}</strong> yang disetor 1 kali saat pendaftaran. Ini merupakan syarat mutlak sebelum melakukan simpanan wajib, sukarela, atau pinjaman.
+                                </p>
+                                <div className="rounded-lg border border-amber-200 bg-white p-2.5 text-[11px] space-y-1">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-zinc-500">Saldo Pokok Saat Ini:</span>
+                                    <strong className="text-amber-950 font-mono">Rp {toNumber(anggota?.simpananSaldos?.find((s: any) => s.jenisSimpanan === 'pokok')?.saldo || 0).toLocaleString('id-ID')}</strong>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-zinc-500">Status Keanggotaan:</span>
+                                    {toNumber(anggota?.simpananSaldos?.find((s: any) => s.jenisSimpanan === 'pokok')?.saldo || 0) >= Number(koperasiSetting?.nominalSimpananPokok || 50000) ? (
+                                      <span className="font-bold text-emerald-700">✓ Sudah Lunas</span>
+                                    ) : (
+                                      <span className="font-bold text-rose-600">⚠️ Belum Lunas (Wajib Disetor)</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3.5 text-xs text-blue-950 space-y-2">
+                                <h4 className="font-bold flex items-center gap-1.5 text-blue-900">
+                                  <Wallet className="size-4 text-blue-700" /> Informasi Simpanan Sukarela
+                                </h4>
+                                <p className="text-[11px] text-blue-800 leading-relaxed">
+                                  Simpanan Sukarela bersifat fleksibel tanpa jadwal bulanan. Anggota bebas menyetor nominal berapapun dan dana dapat ditarik sewaktu-waktu sesuai kebutuhan.
+                                </p>
+                                <div className="rounded-lg border border-blue-200 bg-white p-2.5 text-[11px]">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-zinc-500">Saldo Sukarela Saat Ini:</span>
+                                    <strong className="text-blue-950 font-mono">Rp {toNumber(anggota?.simpananSaldos?.find((s: any) => s.jenisSimpanan === 'sukarela')?.saldo || 0).toLocaleString('id-ID')}</strong>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <Label className="text-[11px] text-teal-700">Jumlah (Rp)</Label>
-                          {op.jenisSimpanan === 'sukarela' ? (
-                            <Input type="number" value={op.jumlah || ''} onChange={(e) => setOperations(operations.map((o) => o.id === op.id ? { ...o, jumlah: parseFloat(e.target.value) || 0 } : o))} className="border-teal-200 bg-white" placeholder="Masukkan nominal..." />
-                          ) : (
-                            <Input type="number" value={op.jumlah || ''} readOnly className="border-teal-200 bg-teal-50 cursor-not-allowed text-teal-800 font-semibold" />
-                          )}
-                          {op.jenisSimpanan !== 'sukarela' && (
-                            <p className="text-[9px] text-teal-500 mt-0.5">Sesuai pengaturan koperasi (tidak bisa diubah)</p>
-                          )}
-                        </div>
-                      </div>
+                      )
                     )}
                     {op.type === 'tarik_sukarela' && (
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -724,12 +1288,56 @@ export function TellerWizard() {
                           <Label className="text-[11px] text-blue-700">Keterangan</Label>
                           <Input value={op.keterangan || ''} onChange={(e) => setOperations(operations.map((o) => o.id === op.id ? { ...o, keterangan: e.target.value } : o))} className="border-blue-200 bg-white" placeholder="Keperluan pinjaman..." />
                         </div>
-                        {op.jumlahPinjaman > 0 && op.tenorBulan > 0 && (
-                          <div className="col-span-full mt-1 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
-                            <p className="text-[11px] text-blue-600">Estimasi angsuran per bulan (flat): <span className="font-bold text-blue-900">{formatRupiah(op.jumlahPinjaman / op.tenorBulan + (op.jumlahPinjaman * 0.12 / 12))}*</span></p>
-                            <p className="text-[10px] text-blue-500 mt-0.5">*Bunga dihitung berdasarkan suku bunga koperasi yang berlaku saat pencairan</p>
-                          </div>
-                        )}
+                        {op.jumlahPinjaman > 0 && op.tenorBulan > 0 && (() => {
+                          const sukuBunga = Number(koperasiSetting?.sukuBungaPinjaman || 0)
+                          const biayaAdmin = Number(koperasiSetting?.biayaAdminPinjaman || 0)
+                          const rawPokok = op.jumlahPinjaman / op.tenorBulan
+                          const pokokPerBulan = Math.ceil(rawPokok / 1000) * 1000
+                          const rawBunga = (op.jumlahPinjaman * (sukuBunga / 100)) / 12
+                          const bungaPerBulan = Math.ceil(rawBunga / 1000) * 1000
+                          const rawAngsuran = pokokPerBulan + bungaPerBulan + biayaAdmin
+                          const angsuranPerBulan = Math.ceil(rawAngsuran / 1000) * 1000
+                          const pembulatanPerBulan = angsuranPerBulan - (Math.round(rawPokok) + Math.round(rawBunga) + biayaAdmin)
+                          const totalPembulatan = pembulatanPerBulan * op.tenorBulan
+                          const totalBunga = bungaPerBulan * op.tenorBulan
+                          const totalBayar = angsuranPerBulan * op.tenorBulan
+                          return (
+                            <div className="col-span-full mt-1 rounded-lg border border-blue-200 bg-blue-50/60 p-3 space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-medium text-blue-700">Estimasi Angsuran per Bulan:</span>
+                                <span className="text-sm font-bold text-blue-950">{formatRupiah(angsuranPerBulan)}</span>
+                              </div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-blue-200/60 pt-1.5 text-[10px] text-blue-800">
+                                <span>Pokok: <strong>{formatRupiah(pokokPerBulan)}</strong>/bln</span>
+                                {bungaPerBulan > 0 ? (
+                                  <span>Bunga ({sukuBunga}%/thn): <strong>{formatRupiah(bungaPerBulan)}</strong>/bln</span>
+                                ) : (
+                                  <span className="text-zinc-500">Bunga: Rp 0</span>
+                                )}
+                                {biayaAdmin > 0 ? (
+                                  <span className="text-amber-800 font-semibold">Biaya Admin: +{formatRupiah(biayaAdmin)}/bln</span>
+                                ) : (
+                                  <span className="text-zinc-500">Biaya Admin: Rp 0</span>
+                                )}
+                              </div>
+                              {pembulatanPerBulan > 0 && (
+                                <div className="border-t border-blue-200/60 pt-1.5 space-y-0.5">
+                                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
+                                    <span className="text-teal-700">📐 Pembulatan: <strong>+{formatRupiah(pembulatanPerBulan)}</strong>/bln</span>
+                                    <span className="text-teal-600">Total pembulatan {op.tenorBulan} bln: <strong>{formatRupiah(totalPembulatan)}</strong></span>
+                                  </div>
+                                  <p className="text-[9px] text-zinc-500 leading-snug">
+                                    Angka dibulatkan ke ribuan terdekat agar mudah dibayar tunai. Selisih pembulatan menjadi pendapatan koperasi.
+                                  </p>
+                                </div>
+                              )}
+                              <div className="border-t border-blue-200/60 pt-1.5 flex flex-wrap gap-x-4 text-[10px] text-zinc-600">
+                                <span>Total bayar {op.tenorBulan} bln: <strong className="text-blue-900">{formatRupiah(totalBayar)}</strong></span>
+                                {totalBunga > 0 && <span>Total bunga: <strong>{formatRupiah(totalBunga)}</strong></span>}
+                              </div>
+                            </div>
+                          )
+                        })()}
                       </div>
                       </div>
                     )}
@@ -795,17 +1403,58 @@ export function TellerWizard() {
                       </div>
                     )}
                   </div>
-                ))}
-                <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-teal-100">
-                  {['pokok', 'wajib', 'sukarela'].map((jenis) => {
-                    const s = anggota.simpananSaldos?.find((sv: any) => sv.jenisSimpanan === jenis)
-                    return (
-                      <div key={jenis} className="rounded bg-teal-50 px-2.5 py-1.5 text-center">
-                        <p className="text-[9px] font-medium text-teal-500 uppercase">{jenis}</p>
-                        <p className="text-xs font-bold text-teal-800">{formatRupiah(toNumber(s?.saldo))}</p>
+                  )
+                })}
+                <div className="flex flex-col gap-3 mt-3 pt-3 border-t border-teal-100">
+                  <div className="flex flex-wrap gap-3">
+                    {['pokok', 'wajib', 'sukarela'].map((jenis) => {
+                      const s = anggota?.simpananSaldos?.find((sv: any) => sv.jenisSimpanan === jenis)
+                      return (
+                        <div key={jenis} className="rounded bg-teal-50 px-2.5 py-1.5 text-center">
+                          <p className="text-[9px] font-medium text-teal-500 uppercase">{jenis}</p>
+                          <p className="text-xs font-bold text-teal-800">{formatRupiah(toNumber(s?.saldo))}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {pinjamanEligibility && (
+                    <div className={cn("rounded border p-2.5 flex items-start gap-2.5", pinjamanEligibility.eligible ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200")}>
+                      {pinjamanEligibility.eligible ? (
+                        <ShieldCheck className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                      ) : (
+                        <ShieldX className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                      )}
+                      <div>
+                        <p className={cn("text-xs font-bold", pinjamanEligibility.eligible ? "text-emerald-800" : "text-red-800")}>
+                          {pinjamanEligibility.eligible ? "Layak Mengajukan Pinjaman" : "Belum Layak Mengajukan Pinjaman"}
+                        </p>
+                        {!pinjamanEligibility.eligible && pinjamanEligibility.reasons && pinjamanEligibility.reasons.length > 0 ? (
+                          <ul className="mt-1 space-y-0.5">
+                            {pinjamanEligibility.reasons.map((r: string, i: number) => (
+                              <li key={i} className="text-[10px] text-red-600 flex items-start gap-1">
+                                <span className="mt-0.5 shrink-0">•</span>
+                                <span>{r}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : pinjamanEligibility.eligible ? (
+                          <p className="text-[10px] text-emerald-600 mt-0.5">Anggota telah memenuhi seluruh persyaratan koperasi (masa keanggotaan minimal {pinjamanEligibility.minimalBulanAnggota} bulan, tidak memiliki tunggakan/pinjaman aktif, dsb).</p>
+                        ) : null}
                       </div>
-                    )
-                  })}
+                    </div>
+                  )}
+                  {pinjamanEligibility?.kasKoperasi != null && (
+                    <div className={cn("rounded border p-2.5 flex items-center justify-between", pinjamanEligibility.kasKoperasi > 0 ? "bg-blue-50 border-blue-200" : "bg-red-50 border-red-200")}>
+                      <div className="flex items-center gap-2">
+                        <Landmark className="h-4 w-4 text-blue-600 shrink-0" />
+                        <span className="text-[11px] text-zinc-700">Saldo Kas Koperasi</span>
+                      </div>
+                      <span className={cn("text-xs font-bold", pinjamanEligibility.kasKoperasi > 0 ? "text-blue-900" : "text-red-600")}>
+                        {formatRupiah(pinjamanEligibility.kasKoperasi)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

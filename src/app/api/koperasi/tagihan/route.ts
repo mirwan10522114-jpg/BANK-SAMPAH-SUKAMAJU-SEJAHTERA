@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       const p = await db.koperasiPinjaman.findUnique({
         where: { id: pinjamanId },
         include: {
-          anggota: { include: { user: { select: { email: true, name: true } } } },
+          anggota: { include: { pengguna: { select: { email: true, name: true } } } },
           angsurans: { orderBy: { angsuranKe: 'asc' } },
         },
       })
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       pinjamans = await db.koperasiPinjaman.findMany({
         where: { status: 'berjalan' },
         include: {
-          anggota: { include: { user: { select: { email: true, name: true } } } },
+          anggota: { include: { pengguna: { select: { email: true, name: true } } } },
           angsurans: { orderBy: { angsuranKe: 'asc' } },
         },
       })
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
 
     for (const p of pinjamans) {
       const agt = p.anggota
-      if (!agt?.user?.email) {
+      if (!agt?.pengguna?.email) {
         failedCount++
         results.push({ nomorPinjaman: p.nomorPinjaman, status: 'skip', error: 'Email tidak tersedia' })
         continue
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
           <div style="background:${headerBg};border-left:4px solid ${headerColor};padding:12px 16px;margin-bottom:20px;border-radius:4px;">
             <p style="margin:0;font-size:14px;color:${headerColor};font-weight:bold;">⚠️ ${statusLabel}</p>
           </div>
-          <p style="margin:0 0 16px 0;font-size:14px;color:#374151;">Halo <strong>${agt.user.name}</strong>,</p>
+          <p style="margin:0 0 16px 0;font-size:14px;color:#374151;">Halo <strong>${agt.pengguna.name}</strong>,</p>
           <p style="margin:0 0 16px 0;font-size:14px;color:#6b7280;line-height:1.6;">
             Ini adalah pengingat resmi untuk pembayaran angsuran pinjaman koperasi Anda. Mohon segera lakukan pembayaran sebelum jatuh tempo.
           </p>
@@ -154,19 +154,19 @@ export async function POST(req: NextRequest) {
 
       try {
         await sendStrukEmail({
-          to: agt.user.email,
+          to: agt.pengguna.email,
           subject: `📌 Tagihan Pinjaman ${p.nomorPinjaman} — ${statusLabel}`,
           strukHtml: html,
         })
         sentCount++
-        results.push({ nomorPinjaman: p.nomorPinjaman, nama: agt.user.name, email: agt.user.email, status: 'sent', statusLabel })
+        results.push({ nomorPinjaman: p.nomorPinjaman, nama: agt.pengguna.name, email: agt.pengguna.email, status: 'sent', statusLabel })
       } catch (e: any) {
         failedCount++
-        results.push({ nomorPinjaman: p.nomorPinjaman, nama: agt.user.name, status: 'failed', error: e.message })
+        results.push({ nomorPinjaman: p.nomorPinjaman, nama: agt.pengguna.name, status: 'failed', error: e.message })
       }
     }
 
-    // Catat ke AdminDailyTaskLog agar checklist harian menandai tugas selesai untuk hari ini
+    // Catat ke LogTugasHarianAdmin agar checklist harian menandai tugas selesai untuk hari ini
     const todayDateString = new Date().toISOString().split('T')[0]
     const { recordDailyTaskLog } = await import('@/backend/lib/daily-task-log')
     await recordDailyTaskLog({
@@ -199,7 +199,7 @@ export async function GET(req: NextRequest) {
   const pinjamans = await db.koperasiPinjaman.findMany({
     where: { status: 'berjalan' },
     include: {
-      anggota: { include: { user: { select: { name: true, email: true, phone: true } } } },
+      anggota: { include: { pengguna: { select: { name: true, email: true, phone: true } } } },
       angsurans: { orderBy: { angsuranKe: 'asc' } },
     },
     orderBy: { createdAt: 'desc' },
@@ -253,10 +253,10 @@ export async function GET(req: NextRequest) {
     return {
       id: p.id,
       nomorPinjaman: p.nomorPinjaman,
-      nama: p.anggota?.nama || p.anggota?.user?.name || '-',
+      nama: p.anggota?.nama || p.anggota?.pengguna?.name || '-',
       nomorAnggota: p.anggota?.nomorAnggota || '-',
-      email: p.anggota?.user?.email || '',
-      phone: p.anggota?.user?.phone || p.anggota?.user?.phone || '',
+      email: p.anggota?.pengguna?.email || '',
+      phone: p.anggota?.pengguna?.phone || p.anggota?.pengguna?.phone || '',
       jumlahPinjaman: toNumber(p.jumlahPinjaman),
       angsuranPerBulan: toNumber(p.angsuranPerBulan),
       sisaPinjaman: toNumber(p.sisaPinjaman),

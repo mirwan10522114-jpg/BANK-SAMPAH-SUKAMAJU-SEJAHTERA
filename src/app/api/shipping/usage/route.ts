@@ -3,12 +3,14 @@ import { getDailyUsage } from '@/lib/rajaongkir'
 
 // GET /api/shipping/usage
 // Returns harian hit count untuk RajaOngkir API.
-// User bisa cek sisa quota lewat endpoint ini.
+// Pengguna bisa cek sisa quota lewat endpoint ini.
 //
 // Limit default RajaOngkir free tier: 100 hits/hari.
 // Reset pukul 00:00 WIB.
 
 const DAILY_LIMIT = 100
+
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const usage = await getDailyUsage()

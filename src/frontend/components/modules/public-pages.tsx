@@ -39,6 +39,12 @@ import {
   Images,
   Image as ImageIcon,
   HandHeart,
+  UserPlus,
+  CheckCircle,
+  PiggyBank,
+  Landmark,
+  Coins,
+  Box,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -58,6 +64,14 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import {
   InputOTP,
   InputOTPGroup,
@@ -326,35 +340,40 @@ export function LandingPage({
         className="w-full border-t border-emerald-900/10"
         style={{ backgroundColor: COLORS.beige }}
       >
-        <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-4 px-4 pb-16 sm:grid-cols-2 lg:grid-cols-5 sm:px-6">
+        <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-3.5 px-4 pb-16 sm:grid-cols-2 lg:grid-cols-5 sm:px-6">
           <StatCard
             label="Nasabah Terdaftar"
-            value={loading ? null : `${formatNumber(nasabahCount, 0)} Nasabah`}
+            value={loading ? null : formatNumber(nasabahCount, 0)}
+            unit="Nasabah"
             accent="green"
             icon={Users}
           />
           <StatCard
             label="Sampah Nabung"
-            value={loading ? null : `${formatNumber(totalNabung, 2)} kg`}
+            value={loading ? null : formatNumber(totalNabung, 2)}
+            unit="kg"
             accent="dark"
             icon={Sprout}
           />
           <StatCard
             label="Sampah Sedekah"
-            value={loading ? null : `${formatNumber(totalSedekah, 2)} kg`}
+            value={loading ? null : formatNumber(totalSedekah, 2)}
+            unit="kg"
             accent="dark"
             icon={HandHeart}
           />
           <StatCard
             label="Konten Edukasi"
-            value={loading ? null : `${formatNumber(edukasiCount, 0)} Artikel`}
+            value={loading ? null : formatNumber(edukasiCount, 0)}
+            unit="Artikel"
             accent="yellow"
             icon={BookOpen}
             onClick={onEdukasi}
           />
           <StatCard
             label="Dokumentasi Kegiatan"
-            value={loading ? null : `${formatNumber(kegiatanCount, 0)} Kegiatan`}
+            value={loading ? null : formatNumber(kegiatanCount, 0)}
+            unit="Kegiatan"
             accent="blue"
             icon={Camera}
             onClick={onKegiatan}
@@ -362,43 +381,114 @@ export function LandingPage({
         </div>
       </section>
 
-      {/* ===== How it works ===== */}
+      {/* ===== Panduan & Tata Cara ===== */}
       <section className="w-full bg-white">
-        <div className="mx-auto w-full max-w-5xl px-4 py-16 sm:px-6">
-          <div className="mb-10 text-center">
+        <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
+          <div className="mb-12 text-center">
             <Badge
               variant="outline"
               className="mb-3 border-[#4caf50]/40 bg-[#4caf50]/10 text-[#2d5016]"
             >
-              Proses Sederhana
+              Panduan Lengkap
             </Badge>
             <h2 className="text-2xl font-bold text-[#2d5016] sm:text-3xl">
-              Cara Kerja
+              Tata Cara Menabung Sampah & Koperasi
             </h2>
             <p className="mt-2 text-sm text-emerald-900/70">
-              Tiga langkah mudah dari sampah jadi saldo.
+              Ikuti langkah-langkah berikut untuk mulai berkontribusi dan menikmati berbagai layanan kami.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            <HowItWorksCard
-              step="1"
-              icon={Scale}
-              title="Timbang & Catat"
-              description="Bawa sampah Anda ke Bank Sampah. Admin akan timbang dan catat ke sistem sesuai harga berlaku."
-            />
-            <HowItWorksCard
-              step="2"
-              icon={Wallet}
-              title="Saldo Terkumpul"
-              description="Nilai sampah jadi saldo Anda. Member juga dapat poin untuk ditukar merchandise."
-            />
-            <HowItWorksCard
-              step="3"
-              icon={Banknote}
-              title="Cairkan"
-              description="Setelah dana siap, admin rilis saldo dan Anda bisa cairkan via cash atau transfer."
-            />
+          <div className="space-y-16">
+            {/* Proses Pendaftaran */}
+            <div>
+              <div className="mb-6 flex items-center gap-3 border-b border-emerald-100 pb-3">
+                <div className="flex size-10 items-center justify-center rounded-lg bg-[#4caf50] text-white">
+                  <UserPlus className="size-5" />
+                </div>
+                <h3 className="text-xl font-bold text-emerald-900">1. Pendaftaran Anggota & Nasabah</h3>
+              </div>
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                <HowItWorksCard
+                  step="1"
+                  icon={UserPlus}
+                  title="Daftar Akun"
+                  description="Registrasi akun baru melalui halaman aplikasi web ini dengan mengisi data diri Anda."
+                />
+                <HowItWorksCard
+                  step="2"
+                  icon={Phone}
+                  title="Verifikasi OTP"
+                  description="Masukkan kode verifikasi (OTP) yang dikirimkan sistem melalui WhatsApp ke nomor Anda."
+                />
+                <HowItWorksCard
+                  step="3"
+                  icon={CheckCircle}
+                  title="Verifikasi Pengurus"
+                  description="Datang ke kantor Bank Sampah untuk verifikasi data tatap muka agar akun Anda diaktifkan secara resmi."
+                />
+              </div>
+            </div>
+
+            {/* Menabung Sampah */}
+            <div>
+              <div className="mb-6 flex items-center gap-3 border-b border-emerald-100 pb-3">
+                <div className="flex size-10 items-center justify-center rounded-lg bg-[#4caf50] text-white">
+                  <Recycle className="size-5" />
+                </div>
+                <h3 className="text-xl font-bold text-emerald-900">2. Menabung Sampah</h3>
+              </div>
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                <HowItWorksCard
+                  step="1"
+                  icon={Box}
+                  title="Pilah Sampah"
+                  description="Pisahkan sampah dari rumah sesuai kategori (plastik, kertas, logam, dll) agar lebih mudah ditimbang."
+                />
+                <HowItWorksCard
+                  step="2"
+                  icon={Scale}
+                  title="Timbang di Lokasi"
+                  description="Bawa sampah ke Bank Sampah. Petugas kami akan melakukan QC (Quality Control) dan menimbangnya."
+                />
+                <HowItWorksCard
+                  step="3"
+                  icon={Wallet}
+                  title="Saldo Bertambah"
+                  description="Hasil konversi timbangan akan otomatis masuk menjadi Saldo Kas dan Poin di akun Anda."
+                />
+              </div>
+            </div>
+
+            {/* Koperasi */}
+            <div>
+              <div className="mb-6 flex items-center gap-3 border-b border-emerald-100 pb-3">
+                <div className="flex size-10 items-center justify-center rounded-lg bg-[#4caf50] text-white">
+                  <Landmark className="size-5" />
+                </div>
+                <h3 className="text-xl font-bold text-emerald-900">3. Layanan Koperasi</h3>
+              </div>
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                <HowItWorksCard
+                  step="1"
+                  icon={PiggyBank}
+                  title="Simpanan"
+                  description="Saldo dari hasil menabung sampah dapat Anda alokasikan untuk Simpanan Pokok, Wajib, dan Sukarela."
+                />
+                <HowItWorksCard
+                  step="2"
+                  icon={Banknote}
+                  title="Pinjaman"
+                  description="Anggota koperasi aktif berhak mengajukan pinjaman uang tunai atau bahan bangunan (perbaikan rumah)."
+                />
+                <HowItWorksCard
+                  step="3"
+                  icon={Coins}
+                  title="Bayar Angsuran"
+                  description="Angsuran pinjaman dapat dibayar dengan uang tunai, atau dipotong langsung dari saldo sampah Anda."
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -613,63 +703,87 @@ export function LandingPage({
 function StatCard({
   label,
   value,
+  unit,
   accent,
   icon: Icon,
   onClick,
 }: {
   label: string
-  value: string | null
+  value: string | number | null
+  unit?: string
   accent: 'green' | 'dark' | 'yellow' | 'blue'
   icon: React.ComponentType<{ className?: string }>
   onClick?: () => void
 }) {
   const accentBg =
     accent === 'green'
-      ? 'bg-[#4caf50]/15 text-[#2d5016]'
+      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/10'
       : accent === 'dark'
-        ? 'bg-[#2d5016]/10 text-[#2d5016]'
+        ? 'bg-[#2d5016]/10 text-[#2d5016] ring-1 ring-[#2d5016]/15'
         : accent === 'blue'
-          ? 'bg-blue-100 text-blue-700'
-          : 'bg-[#ffc107]/20 text-emerald-950'
+          ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-600/10'
+          : 'bg-amber-50 text-amber-800 ring-1 ring-amber-600/10'
   const clickable = !!onClick
+
+  let displayVal: React.ReactNode = value
+  let displayUnit = unit
+
+  if (!unit && typeof value === 'string' && value.includes(' ')) {
+    const parts = value.split(' ')
+    displayVal = parts[0]
+    displayUnit = parts.slice(1).join(' ')
+  }
+
   return (
     <Card
       className={cn(
-        'gap-0 rounded-2xl border-emerald-900/10 bg-white p-5 shadow-sm transition-all',
-        clickable && 'cursor-pointer hover:border-emerald-300 hover:shadow-md hover:ring-1 hover:ring-emerald-200',
+        'group relative flex flex-col justify-between rounded-2xl border border-emerald-900/10 bg-white p-5 shadow-sm transition-all duration-200',
+        clickable
+          ? 'cursor-pointer hover:-translate-y-1 hover:border-emerald-300 hover:shadow-md'
+          : 'hover:shadow-md',
       )}
       onClick={onClick}
       role={clickable ? 'button' : undefined}
       tabIndex={clickable ? 0 : undefined}
       onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick!() } } : undefined}
     >
-      <CardContent className="p-0">
-        <div className="flex items-center gap-3">
+      <CardContent className="flex h-full flex-col justify-between p-0">
+        {/* Top: Icon + Optional clickable pill */}
+        <div className="flex items-center justify-between">
           <div
             className={cn(
-              'flex size-11 items-center justify-center rounded-xl',
+              'flex size-11 items-center justify-center rounded-xl shadow-xs transition-transform duration-200 group-hover:scale-105',
               accentBg,
             )}
           >
             <Icon className="size-5" />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1">
-              <div className="text-xs font-medium uppercase tracking-wide text-emerald-900/60">
-                {label}
-              </div>
-              {clickable && (
-                <ArrowRight className="size-3 text-emerald-400" />
+          {clickable && (
+            <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 opacity-80 transition-colors group-hover:bg-emerald-100 group-hover:opacity-100">
+              Lihat <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
+            </span>
+          )}
+        </div>
+
+        {/* Bottom: Label & Metric Value */}
+        <div className="mt-4">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-900/60">
+            {label}
+          </div>
+          {value === null ? (
+            <Skeleton className="mt-2 h-8 w-24" />
+          ) : (
+            <div className="mt-1 flex items-baseline gap-1.5">
+              <span className="text-2xl sm:text-3xl font-black tracking-tight text-[#2d5016]">
+                {displayVal}
+              </span>
+              {displayUnit && (
+                <span className="text-xs font-bold text-emerald-800/70">
+                  {displayUnit}
+                </span>
               )}
             </div>
-            {value === null ? (
-              <Skeleton className="mt-1 h-6 w-28" />
-            ) : (
-              <div className="mt-0.5 truncate text-lg font-bold text-[#2d5016]">
-                {value}
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -717,7 +831,7 @@ export function LoginPage({
   onRegister,
 }: {
   onBack: () => void
-  onLoginSuccess: (token: string, user: any) => void
+  onLoginSuccess: (token: string, pengguna: any) => void
   onRegister: () => void
 }) {
   const [email, setEmail] = React.useState('')
@@ -725,6 +839,11 @@ export function LoginPage({
   const [remember, setRemember] = React.useState(true)
   const [showPassword, setShowPassword] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
+  
+  const [pendingOtpId, setPendingOtpId] = React.useState<string | null>(null)
+  const [otp, setOtp] = React.useState('')
+  const [verifying, setVerifying] = React.useState(false)
+  const [resending, setResending] = React.useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -736,11 +855,44 @@ export function LoginPage({
     try {
       const res = await api.auth.login(email.trim(), password)
       toast.success('Berhasil masuk. Mengalihkan...')
-      onLoginSuccess(res.token, res.user)
+      onLoginSuccess(res.token, res.pengguna)
     } catch (err: any) {
-      toast.error(err?.message || 'Gagal masuk. Periksa email & password Anda.')
+      if (err.requireOtp) {
+        toast.info('Akun Anda belum verifikasi OTP.')
+        setPendingOtpId(err.penggunaId)
+      } else {
+        toast.error(err?.message || 'Gagal masuk. Periksa email & password Anda.')
+      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleVerifyOtp(e: React.FormEvent) {
+    e.preventDefault()
+    if (otp.length !== 6) return
+    setVerifying(true)
+    try {
+      const res = await api.auth.verifyOtp(pendingOtpId!, otp)
+      toast.success('Verifikasi berhasil! Mengalihkan...')
+      onLoginSuccess(res.token, res.pengguna)
+    } catch (e: any) {
+      toast.error('Gagal verifikasi OTP: ' + e.message)
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  async function handleResendOtp() {
+    if (!pendingOtpId) return
+    setResending(true)
+    try {
+      await api.auth.resendOtp(pendingOtpId)
+      toast.success('OTP baru telah dikirim ke email Anda')
+    } catch (e: any) {
+      toast.error('Gagal mengirim ulang OTP: ' + e.message)
+    } finally {
+      setResending(false)
     }
   }
 
@@ -781,6 +933,34 @@ export function LoginPage({
           </CardHeader>
 
           <CardContent className="px-0">
+            {pendingOtpId ? (
+              <form onSubmit={handleVerifyOtp} className="space-y-6 flex flex-col items-center mt-4">
+                <p className="text-sm text-center text-emerald-900/80 max-w-xs mx-auto">
+                  Silakan masukkan 6 digit kode OTP yang telah kami kirimkan ke email Anda untuk melanjutkan.
+                </p>
+                <InputOTP maxLength={6} value={otp} onChange={setOtp} disabled={verifying}>
+                  <InputOTPGroup>
+                    <InputOTPSlot index={0} />
+                    <InputOTPSlot index={1} />
+                    <InputOTPSlot index={2} />
+                    <InputOTPSlot index={3} />
+                    <InputOTPSlot index={4} />
+                    <InputOTPSlot index={5} />
+                  </InputOTPGroup>
+                </InputOTP>
+                <div className="flex flex-col gap-2 w-full mt-4 px-6">
+                  <Button type="submit" disabled={otp.length !== 6 || verifying} className="w-full bg-[#2d5016] text-white hover:bg-[#2d5016]/90">
+                    {verifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />} Verifikasi OTP
+                  </Button>
+                  <Button type="button" variant="ghost" disabled={resending || verifying} onClick={handleResendOtp} className="w-full text-xs text-[#2d5016]">
+                    {resending ? 'Mengirim ulang...' : 'Kirim Ulang Kode OTP'}
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={() => {setPendingOtpId(null); setOtp('')}} className="w-full text-xs text-zinc-500">
+                    Kembali
+                  </Button>
+                </div>
+              </form>
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <FieldLabel htmlFor="login-email" required>
@@ -871,6 +1051,7 @@ export function LoginPage({
                 )}
               </Button>
             </form>
+            )}
 
             <Separator className="my-6 bg-emerald-900/10" />
 
@@ -927,7 +1108,7 @@ export function RegisterPage({
   onLogin,
 }: {
   onBack: () => void
-  onRegisterSuccess: (token: string, user: any) => void
+  onRegisterSuccess: (token: string, pengguna: any) => void
   onLogin: () => void
 }) {
   const [step, setStep] = React.useState<RegisterStep>('form')
@@ -947,10 +1128,19 @@ export function RegisterPage({
   const [showConfirm, setShowConfirm] = React.useState(false)
 
   // OTP step
-  const [userId, setUserId] = React.useState<string | null>(null)
+  const [penggunaId, setUserId] = React.useState<string | null>(null)
   const [demoOtp, setDemoOtp] = React.useState<string | null>(null)
   const [otp, setOtp] = React.useState('')
   const [verifying, setVerifying] = React.useState(false)
+
+  // Simpanan Pokok Modal step for Koperasi members
+  const [simpananPokokModalOpen, setSimpananPokokModalOpen] = React.useState(false)
+  const [simpananPokokData, setSimpananPokokData] = React.useState<{
+    token: string
+    pengguna: any
+    nominal: number
+    nomorAnggota: string
+  } | null>(null)
 
   function update<K extends keyof RegisterFormState>(
     key: K,
@@ -994,10 +1184,10 @@ export function RegisterPage({
         isNasabah: form.isNasabah,
         isKoperasi: form.isKoperasi,
       })
-      if (!res?.userId) {
+      if (!res?.penggunaId) {
         throw new Error('Respons registrasi tidak valid')
       }
-      setUserId(res.userId)
+      setUserId(res.penggunaId)
       setOtp('')
       if (res.emailSent) {
         toast.success(`Kode OTP telah dikirim ke ${form.email}. Cek inbox email Anda.`)
@@ -1014,7 +1204,7 @@ export function RegisterPage({
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault()
-    if (!userId) {
+    if (!penggunaId) {
       toast.error('Sesi tidak valid. Silakan daftar ulang.')
       setStep('form')
       return
@@ -1025,9 +1215,19 @@ export function RegisterPage({
     }
     setVerifying(true)
     try {
-      const res = await api.auth.verifyOtp(userId, otp)
-      toast.success('Verifikasi berhasil. Mengalihkan...')
-      onRegisterSuccess(res.token, res.user)
+      const res = await api.auth.verifyOtp(penggunaId, otp)
+      if (res.mustPaySimpananPokok || form.isKoperasi) {
+        setSimpananPokokData({
+          token: res.token,
+          pengguna: res.pengguna,
+          nominal: res.nominalSimpananPokok || 50000,
+          nomorAnggota: res.nomorAnggotaKoperasi || res.pengguna?.nomorAnggota || 'KP001',
+        })
+        setSimpananPokokModalOpen(true)
+      } else {
+        toast.success('Verifikasi berhasil. Mengalihkan...')
+        onRegisterSuccess(res.token, res.pengguna)
+      }
     } catch (err: any) {
       toast.error(err?.message || 'Kode OTP salah atau sudah kedaluwarsa.')
     } finally {
@@ -1036,7 +1236,7 @@ export function RegisterPage({
   }
 
   async function handleResend() {
-    if (!userId) {
+    if (!penggunaId) {
       toast.error('Sesi tidak valid. Silakan daftar ulang.')
       setStep('form')
       return
@@ -1045,7 +1245,7 @@ export function RegisterPage({
       const res = await fetch('/api/auth/resend-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ penggunaId }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -1058,23 +1258,106 @@ export function RegisterPage({
     }
   }
 
+  const renderSimpananPokokDialog = () => (
+    <Dialog open={simpananPokokModalOpen} onOpenChange={() => {}}>
+      <DialogContent className="max-w-md border-emerald-200 bg-white p-6 sm:rounded-2xl" onPointerDownOutside={(e) => e.preventDefault()}>
+        <DialogHeader className="text-center sm:text-left">
+          <div className="mx-auto sm:mx-0 flex size-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 mb-2 shadow-xs">
+            <Building2 className="size-6" />
+          </div>
+          <DialogTitle className="text-lg font-black text-emerald-950">
+            Pendaftaran Anggota Koperasi Berhasil!
+          </DialogTitle>
+          <DialogDescription className="text-xs text-zinc-600 leading-relaxed pt-1">
+            Akun Anda telah terverifikasi dan resmi terdaftar di Koperasi Simpan Pinjam Sukamaju Sejahtera.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2">
+          {/* Alert Box Simpanan Pokok Wajib */}
+          <div className="rounded-xl border-2 border-emerald-400/80 bg-gradient-to-br from-emerald-50 via-teal-50/50 to-white p-4 shadow-xs">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="size-5 shrink-0 text-emerald-700 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-800">
+                  Kewajiban Pembayaran Simpanan Pokok
+                </h4>
+                <p className="text-sm font-black text-zinc-900 mt-1 leading-snug">
+                  Anda harus melakukan pembayaran simpanan pokok terlebih dahulu sebesar{' '}
+                  <span className="text-emerald-700 underline underline-offset-2">
+                    {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(simpananPokokData?.nominal || 50000)}
+                  </span>{' '}
+                  (sesuai aturan koperasi).
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Member Details */}
+          <div className="rounded-xl border border-zinc-200/80 bg-zinc-50/70 p-3 text-xs space-y-1.5">
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Nama Lengkap:</span>
+              <span className="font-semibold text-zinc-900">{simpananPokokData?.pengguna?.name || form.name}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Nomor Anggota Koperasi:</span>
+              <span className="font-mono font-bold text-emerald-700">{simpananPokokData?.nomorAnggota}</span>
+            </div>
+            <div className="flex justify-between border-t border-zinc-200/60 pt-1.5">
+              <span className="text-zinc-500">Biaya Registrasi (Simpanan Pokok):</span>
+              <span className="font-bold text-emerald-800">
+                {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(simpananPokokData?.nominal || 50000)}
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-amber-50/80 border border-amber-200/80 p-3 text-[11px] text-amber-900 leading-relaxed">
+            💡 <strong>Catatan:</strong> Pembayaran simpanan pokok ini merupakan biaya registrasi/deposit awal keanggotaan koperasi. Pembayaran ini wajib diselesaikan terlebih dahulu agar Anda dapat melakukan simpanan-simpanan selanjutnya (Simpanan Wajib & Sukarela) maupun pengajuan pinjaman.
+          </div>
+
+          <p className="text-[11px] text-zinc-500 text-center">
+            📧 Rincian dan instruksi pembayaran ini juga telah dikirimkan ke email Anda: <strong>{form.email}</strong>
+          </p>
+        </div>
+
+        <DialogFooter>
+          <Button
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 shadow-xs"
+            onClick={() => {
+              if (simpananPokokData) {
+                setSimpananPokokModalOpen(false)
+                toast.success('Pendaftaran selesai. Selamat datang!')
+                onRegisterSuccess(simpananPokokData.token, simpananPokokData.pengguna)
+              }
+            }}
+          >
+            Saya Mengerti & Lanjutkan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
   // ============ Render ============
   if (step === 'otp') {
     return (
-      <OtpVerifyView
-        email={form.email}
-        demoOtp={demoOtp}
-        otp={otp}
-        setOtp={setOtp}
-        verifying={verifying}
-        onVerify={handleVerify}
-        onResend={handleResend}
-        onBackToForm={() => {
-          setStep('form')
-          setOtp('')
-        }}
-        onBack={onBack}
-      />
+      <>
+        <OtpVerifyView
+          email={form.email}
+          demoOtp={demoOtp}
+          otp={otp}
+          setOtp={setOtp}
+          verifying={verifying}
+          onVerify={handleVerify}
+          onResend={handleResend}
+          onBackToForm={() => {
+            setStep('form')
+            setOtp('')
+          }}
+          onBack={onBack}
+        />
+        {renderSimpananPokokDialog()}
+      </>
     )
   }
 

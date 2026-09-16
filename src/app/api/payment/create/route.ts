@@ -16,7 +16,7 @@ import { reduceProductStock } from '@/lib/business'
 // POST /api/payment/create
 // ---------------------------------------------------------------------
 // Body:
-//   items:    Array<{ productId: string; quantity: number }>
+//   items:    Array<{ produkId: string; quantity: number }>
 //   buyer:    { name: string; phone: string; email?: string }
 //   shipping: {
 //     provinceId, province, cityId, city, districtId, district,
@@ -26,14 +26,14 @@ import { reduceProductStock } from '@/lib/business'
 // Steps:
 //   1. Validate input (zod, no `any`)
 //   2. Validate TokoSetting exists & tokoOnlineAktif=true
-//   3. Validate products (exist, active, dijualOnline, stock sufficient)
+//   3. Validate produks (exist, active, dijualOnline, stock sufficient)
 //   4. Compute subtotal + total weight
 //   5. Compute ongkir via RajaOngkir (with fallback to TokoSetting)
 //   6. grand_total = subtotal + ongkir
-//   7. Create TokoOrder in DB with status menunggu
+//   7. Create PesananToko in DB with status menunggu
 //   8. Create Midtrans Snap token with grand_total as gross_amount
 //      (NO enabled_payments restriction → all dashboard methods active)
-//   9. Save snapToken to TokoOrder
+//   9. Save snapToken to PesananToko
 //  10. Return { orderId, snapToken, grossAmount, breakdown }
 //
 // If Midtrans is not configured, return error so caller can fall back
@@ -42,7 +42,7 @@ import { reduceProductStock } from '@/lib/business'
 
 // Zod schemas — strict validation, no `any` leaking
 const ItemSchema = z.object({
-  productId: z.string().min(1),
+  produkId: z.string().min(1),
   quantity: z.number().int().positive(),
 })
 
@@ -84,7 +84,7 @@ async function generateOrderNumber(): Promise<string> {
   const prefix = `TKO / ${ddmmyyyy} / `
   const oldYmd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
   const oldPrefix = `TKO-${oldYmd}-`
-  const last = await db.tokoOrder.findFirst({
+  const last = await db.pesananToko.findFirst({
     where: { orderNumber: { startsWith: prefix } },
     select: { orderNumber: true },
     orderBy: { orderNumber: 'desc' },
@@ -94,7 +94,7 @@ async function generateOrderNumber(): Promise<string> {
     const m = last.orderNumber.replace(prefix, '').match(/^0*(\d+)/)
     if (m) seq = parseInt(m[1], 10) + 1
   } else {
-    const oldLast = await db.tokoOrder.findFirst({
+    const oldLast = await db.pesananToko.findFirst({
       where: { orderNumber: { startsWith: oldPrefix } },
       select: { orderNumber: true },
       orderBy: { orderNumber: 'desc' },
@@ -120,7 +120,7 @@ function generateMidtransOrderId(orderNumber: string): string {
 
 // Extract origin URL dari request headers.
 // Cek urutan: Origin header → Referer header → x-forwarded-host → host.
-// Ini supaya callback URL Midtrans selalu benar tergantung dari mana user
+// Ini supaya callback URL Midtrans selalu benar tergantung dari mana pengguna
 // akses website (preview URL berbeda-beda, jadi jangan hardcode domain).
 function getOriginFromRequest(req: NextRequest): string {
   // 1. Origin header (paling reliable — dikirim browser untuk CORS requests)
@@ -191,47 +191,47 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 3) Fetch products & validate
-    const productIds = items.map((i) => i.productId)
-    const products = await db.product.findMany({
+    // 3) Fetch produks & validate
+    const productIds = items.map((i) => i.produkId)
+    const produks = await db.produk.findMany({
       where: { id: { in: productIds } },
     })
 
     for (const item of items) {
-      const product = products.find((p) => p.id === item.productId)
-      if (!product) {
+      const produk = produks.find((p) => p.id === item.produkId)
+      if (!produk) {
         return NextResponse.json(
-          { error: `Produk ${item.productId} tidak ditemukan` },
+          { error: `Produk ${item.produkId} tidak ditemukan` },
           { status: 400 }
         )
       }
-      if (!product.dijualOnline) {
+      if (!produk.dijualOnline) {
         return NextResponse.json(
-          { error: `Produk "${product.name}" tidak dijual online` },
+          { error: `Produk "${produk.name}" tidak dijual online` },
           { status: 400 }
         )
       }
-      if (!product.isActive) {
+      if (!produk.isActive) {
         return NextResponse.json(
-          { error: `Produk "${product.name}" tidak aktif` },
+          { error: `Produk "${produk.name}" tidak aktif` },
           { status: 400 }
         )
       }
-      if (toNumber(product.stock) < item.quantity) {
+      if (toNumber(produk.stock) < item.quantity) {
         return NextResponse.json(
-          { error: `Stok "${product.name}" tidak mencukupi (tersedia: ${product.stock})` },
+          { error: `Stok "${produk.name}" tidak mencukupi (tersedia: ${produk.stock})` },
           { status: 400 }
         )
       }
-      if (item.quantity < product.minOrderQty) {
+      if (item.quantity < produk.minOrderQty) {
         return NextResponse.json(
-          { error: `Minimal pembelian "${product.name}" adalah ${product.minOrderQty}` },
+          { error: `Minimal pembelian "${produk.name}" adalah ${produk.minOrderQty}` },
           { status: 400 }
         )
       }
-      if (product.maxOrderQty > 0 && item.quantity > product.maxOrderQty) {
+      if (produk.maxOrderQty > 0 && item.quantity > produk.maxOrderQty) {
         return NextResponse.json(
-          { error: `Maksimal pembelian "${product.name}" adalah ${product.maxOrderQty}` },
+          { error: `Maksimal pembelian "${produk.name}" adalah ${produk.maxOrderQty}` },
           { status: 400 }
         )
       }
@@ -241,19 +241,19 @@ export async function POST(req: NextRequest) {
     let subtotalProduk = 0
     let totalWeightGram = 0
     const orderItems = items.map((item) => {
-      const product = products.find((p) => p.id === item.productId)!
-      const price = toNumber(product.price)
+      const produk = produks.find((p) => p.id === item.produkId)!
+      const price = toNumber(produk.price)
       const qty = item.quantity
       const subtotal = price * qty
       subtotalProduk += subtotal
-      totalWeightGram += (product.weightGram || 0) * qty
+      totalWeightGram += (produk.weightGram || 0) * qty
       return {
-        productId: product.id,
-        productNameSnapshot: product.name,
-        unitSnapshot: product.unit,
+        produkId: produk.id,
+        productNameSnapshot: produk.name,
+        unitSnapshot: produk.unit,
         pricePerUnitSnapshot: price,
         quantity: qty,
-        weightGramSnapshot: product.weightGram || 0,
+        weightGramSnapshot: produk.weightGram || 0,
         subtotal,
       }
     })
@@ -282,8 +282,8 @@ export async function POST(req: NextRequest) {
       item_count: items.length,
     })
 
-    // 7) Create TokoOrder in DB
-    const order = await db.tokoOrder.create({
+    // 7) Create PesananToko in DB
+    const order = await db.pesananToko.create({
       data: {
         orderNumber,
         buyerName: buyer.name,
@@ -302,9 +302,9 @@ export async function POST(req: NextRequest) {
       },
       include: { items: true },
     })
-    // 7.5) Reserve product stock (PENTING!)
+    // 7.5) Reserve produk stock (PENTING!)
     // Stok di-reserve saat order dibuat, agar tidak bisa dibeli orang lain
-    // saat user masih dalam proses pembayaran.
+    // saat pengguna masih dalam proses pembayaran.
     // Jika pembayaran gagal/expire, webhook akan release reserve ini.
     // Jika pembayaran sukses (settlement), webhook akan:
     //   1) Release reserve ini
@@ -312,7 +312,7 @@ export async function POST(req: NextRequest) {
     for (const item of orderItems) {
       try {
         await reduceProductStock(
-          item.productId,
+          item.produkId,
           item.quantity,
           'online_reserve',
           'toko_order',
@@ -322,7 +322,7 @@ export async function POST(req: NextRequest) {
         )
       } catch (e: any) {
         // Jika stok tidak mencukupi, hapus order yang baru dibuat
-        await db.tokoOrder.delete({ where: { id: order.id } })
+        await db.pesananToko.delete({ where: { id: order.id } })
         return NextResponse.json(
           { error: `Gagal reservasi stok: ${e.message}` },
           { status: 400 }
@@ -372,9 +372,9 @@ export async function POST(req: NextRequest) {
       name: it.productNameSnapshot.slice(0, 50),
       price: toNumber(it.pricePerUnitSnapshot),
       quantity: it.quantity,
-      category: 'Product',
+      category: 'Produk',
     }))
-    // Add shipping as a line item so gross_amount breakdown is clear to user
+    // Add shipping as a line item so gross_amount breakdown is clear to pengguna
     if (ongkir > 0) {
       itemDetails.push({
         id: 'SHIPPING',
@@ -397,7 +397,7 @@ export async function POST(req: NextRequest) {
       orderId: midtransOrderId,
       grossAmount: grandTotal,
       customerDetails,
-      // Callback URLs — Midtrans akan redirect user ke URL ini setelah
+      // Callback URLs — Midtrans akan redirect pengguna ke URL ini setelah
       // pembayaran selesai / pending / error. Halaman return akan poll
       // status dari DB (yang diupdate via webhook) dan tampilkan hasil.
       finishUrl: returnUrl,
@@ -407,7 +407,7 @@ export async function POST(req: NextRequest) {
     })
 
     // 10) Save snap token to order
-    await db.tokoOrder.update({
+    await db.pesananToko.update({
       where: { id: order.id },
       data: { midtransSnapToken: snap.token },
     })

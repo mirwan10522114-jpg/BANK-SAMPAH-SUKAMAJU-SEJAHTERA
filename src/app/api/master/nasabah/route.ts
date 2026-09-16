@@ -16,12 +16,12 @@ export async function GET(req: NextRequest) {
     ]
   }
   if (role) where.roles = { contains: role }
-  const users = await db.user.findMany({
+  const penggunas = await db.pengguna.findMany({
     where,
     orderBy: { createdAt: 'desc' },
-    include: { balance: true, koperasiAnggota: true },
+    include: { saldo: true, koperasiAnggota: true },
   })
-  return NextResponse.json(users)
+  return NextResponse.json(penggunas)
 }
 
 export async function POST(req: NextRequest) {
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   const actor = await getActingUser(req)
   const roles = body.roles || ['nasabah']
   const isKoperasi = roles.includes('koperasi')
-  const user = await db.user.create({
+  const pengguna = await db.pengguna.create({
     data: {
       memberCode: body.memberCode || (await nextMemberCode('BS')),
       name: body.name,
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       password: 'password',
     },
   })
-  await db.balance.create({ data: { userId: user.id } })
+  await db.saldo.create({ data: { penggunaId: pengguna.id } })
   // If koperasi member, create anggota record + saldos
   if (isKoperasi) {
     const counter = await db.koperasiAnggota.count()
@@ -51,13 +51,13 @@ export async function POST(req: NextRequest) {
     const agt = await db.koperasiAnggota.create({
       data: {
         nomorAnggota: nomor,
-        nama: user.name,
-        noKtp: user.nik || '',
-        noTelepon: user.phone,
-        alamat: user.address,
+        nama: pengguna.name,
+        noKtp: pengguna.nik || '',
+        noTelepon: pengguna.phone,
+        alamat: pengguna.address,
         status: 'aktif',
         tanggalBergabung: new Date(),
-        userId: user.id,
+        penggunaId: pengguna.id,
       },
     })
     for (const jenis of ['pokok', 'wajib', 'sukarela']) {
@@ -66,5 +66,5 @@ export async function POST(req: NextRequest) {
       })
     }
   }
-  return NextResponse.json(user, { status: 201 })
+  return NextResponse.json(pengguna, { status: 201 })
 }

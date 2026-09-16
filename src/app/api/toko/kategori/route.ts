@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-// GET: Public list of product categories (for catalog filter on the merchandise page)
+// GET: Public list of produk categories (for catalog filter on the merchandise page)
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
-  const categories = await db.productCategory.findMany({
+  const categories = await db.kategoriProduk.findMany({
     where: { isActive: true },
     orderBy: { name: 'asc' },
     select: {
@@ -11,7 +13,7 @@ export async function GET() {
       name: true,
       slug: true,
       image: true,
-      _count: { select: { products: { where: { isActive: true, dijualOnline: true } } } },
+      _count: { select: { produks: { where: { isActive: true, dijualOnline: true } } } },
     },
   })
 
@@ -20,7 +22,7 @@ export async function GET() {
     name: c.name,
     slug: c.slug,
     image: c.image,
-    productCount: c._count.products,
+    productCount: c._count.produks,
   }))
 
   return NextResponse.json(result)

@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Filter, RotateCcw, ShoppingBag, Store, Globe, TrendingUp, Receipt, MousePointerClick, Search } from 'lucide-react'
+import { Filter, RotateCcw, ShoppingBag, Store, Globe, TrendingUp, Receipt, MousePointerClick, Search, Banknote, ArrowUpRight } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts'
@@ -31,12 +31,12 @@ const PERIODE_OPTIONS = [
 export function DashboardPenjualanProduk() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [periode, setPeriode] = useState('bulan_ini')
+  const [periode, setPeriode] = useState('1thn')
   const [dari, setDari] = useState('')
   const [sampai, setSampai] = useState('')
   const [detailModal, setDetailModal] = useState<any>(null)
 
-  // ===== Chart trend: separate period filter =====
+  // ===== Chart trend: synchronized with dashboard period =====
   const [chartPeriode, setChartPeriode] = useState('1thn')
   const [chartDari, setChartDari] = useState('')
   const [chartSampai, setChartSampai] = useState('')
@@ -62,6 +62,10 @@ export function DashboardPenjualanProduk() {
         sampai: periode === 'custom' ? sampai : undefined,
       })
       setData(d)
+      if (d.trend) {
+        setChartData(d.trend)
+        setChartKey((k) => k + 1)
+      }
     } catch (e) {
       // ignore
     } finally {
@@ -71,7 +75,7 @@ export function DashboardPenjualanProduk() {
 
   useEffect(() => { load() }, [load])
 
-  // ===== Load chart trend data (separate API call with its own period) =====
+  // ===== Load chart trend data if pengguna explicitly changes chart filter =====
   const loadChart = useCallback(async () => {
     setChartLoading(true)
     try {
@@ -81,7 +85,7 @@ export function DashboardPenjualanProduk() {
         sampai: chartPeriode === 'custom' ? chartSampai : undefined,
       })
       setChartData(d.trend || [])
-      setChartKey((k) => k + 1) // force BarChart to re-render
+      setChartKey((k) => k + 1)
     } catch (e) {
       // ignore
     } finally {
@@ -89,7 +93,17 @@ export function DashboardPenjualanProduk() {
     }
   }, [chartPeriode, chartDari, chartSampai])
 
-  useEffect(() => { loadChart() }, [loadChart])
+  // Sync chart with main dashboard period
+  const handleMainPeriodChange = (newPeriod: string) => {
+    setPeriode(newPeriod)
+    setChartPeriode(newPeriod)
+    if (newPeriod !== 'custom') {
+      setDari('')
+      setSampai('')
+      setChartDari('')
+      setChartSampai('')
+    }
+  }
 
   // ===== Load recent transactions with filters =====
   const loadTransactions = useCallback(async () => {
@@ -106,7 +120,7 @@ export function DashboardPenjualanProduk() {
       const sep = qs ? '&' : '?'
       const url = `/api/toko/admin/penjualan${qs ? '?' + qs : ''}${actingUser ? sep + 'actingUser=' + actingUser : ''}`
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (actingUser) headers['x-acting-user'] = actingUser
+      if (actingUser) headers['x-acting-pengguna'] = actingUser
       const res = await fetch(url, { headers })
       if (res.ok) {
         const json = await res.json()
@@ -125,15 +139,11 @@ export function DashboardPenjualanProduk() {
   useEffect(() => { loadTransactions() }, [loadTransactions])
 
   const reset = () => {
-    setPeriode('bulan_ini')
-    setDari('')
-    setSampai('')
+    handleMainPeriodChange('1thn')
   }
 
   const resetChartFilter = () => {
-    setChartPeriode('1thn')
-    setChartDari('')
-    setChartSampai('')
+    handleMainPeriodChange('1thn')
   }
 
   const resetTxFilter = () => {
@@ -200,7 +210,7 @@ export function DashboardPenjualanProduk() {
       sub: `${formatNumber(metrics.countOffline, 0)} transaksi`,
       detail: {
         title: 'Detail Penjualan Offline',
-        description: 'Transaksi kasir offline (ProductSale) yang telah dibayar.',
+        description: 'Transaksi kasir offline (PenjualanProduk) yang telah dibayar.',
         apiPath: '/toko/admin/penjualan',
         responsePath: 'orders',
         columns: penjualanColumns,
@@ -213,7 +223,7 @@ export function DashboardPenjualanProduk() {
       sub: `${formatNumber(metrics.countOnline, 0)} order`,
       detail: {
         title: 'Detail Penjualan Online',
-        description: 'Order online (TokoOrder) yang telah dibayar.',
+        description: 'Order online (PesananToko) yang telah dibayar.',
         apiPath: '/toko/admin/penjualan',
         responsePath: 'orders',
         columns: penjualanColumns,
@@ -235,7 +245,7 @@ export function DashboardPenjualanProduk() {
     },
     {
       label: 'Total Transaksi', value: formatNumber(metrics.countOffline + metrics.countOnline, 0), icon: Receipt, color: 'purple',
-      sub: `${formatNumber(metrics.totalUnitTerjual, 0)} unit terjual`,
+      sub: `${formatNumber(metrics.totalUnitTerjual, 0)} pcs terjual`,
       detail: {
         title: 'Detail Transaksi Penjualan',
         description: 'Seluruh transaksi penjualan offline & online yang telah dibayar.',
@@ -255,38 +265,118 @@ export function DashboardPenjualanProduk() {
 
   return (
     <div className="space-y-5">
-      {/* ===== PERIOD FILTER BAR (for metrics) ===== */}
+      {/* ===== PERIOD FILTER BAR ===== */}
       <Card className="border-0 bg-white shadow-sm ring-1 ring-zinc-100">
-        <CardContent className="flex flex-wrap items-end gap-3 p-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Periode Metrik</label>
-            <Select value={periode} onValueChange={setPeriode}>
-              <SelectTrigger className="h-9 w-40 border-zinc-200 text-sm"><SelectValue /></SelectTrigger>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-zinc-600 mr-1">Filter Periode:</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleMainPeriodChange('1thn')}
+              className={cn("h-8 px-3 text-xs rounded-lg transition-all", periode === '1thn' && "bg-purple-100 text-purple-800 border-purple-300 font-bold shadow-sm")}
+            >
+              1 Tahun (2026)
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleMainPeriodChange('bulan_ini')}
+              className={cn("h-8 px-3 text-xs rounded-lg transition-all", periode === 'bulan_ini' && "bg-purple-100 text-purple-800 border-purple-300 font-bold shadow-sm")}
+            >
+              Bulan Ini (September)
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleMainPeriodChange('3bul')}
+              className={cn("h-8 px-3 text-xs rounded-lg transition-all", periode === '3bul' && "bg-purple-100 text-purple-800 border-purple-300 font-bold shadow-sm")}
+            >
+              3 Bulan Terakhir
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleMainPeriodChange('6bul')}
+              className={cn("h-8 px-3 text-xs rounded-lg transition-all", periode === '6bul' && "bg-purple-100 text-purple-800 border-purple-300 font-bold shadow-sm")}
+            >
+              6 Bulan Terakhir
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={periode} onValueChange={handleMainPeriodChange}>
+              <SelectTrigger className="h-8 w-36 border-zinc-200 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {PERIODE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
               </SelectContent>
             </Select>
+            {periode === 'custom' && (
+              <>
+                <Input type="date" value={dari} onChange={(e) => setDari(e.target.value)} className="h-8 w-32 border-zinc-200 text-xs" />
+                <Input type="date" value={sampai} onChange={(e) => setSampai(e.target.value)} className="h-8 w-32 border-zinc-200 text-xs" />
+              </>
+            )}
+            <Button size="sm" onClick={load} className="h-8 bg-purple-600 text-white shadow-sm hover:bg-purple-700 text-xs">
+              <Filter className="mr-1 h-3 w-3" /> Terapkan
+            </Button>
+            <Button size="sm" onClick={reset} variant="outline" className="h-8 border-zinc-200 text-xs text-zinc-600">
+              <RotateCcw className="mr-1 h-3 w-3" /> Reset
+            </Button>
           </div>
-          {periode === 'custom' && (
-            <>
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Dari</label>
-                <Input type="date" value={dari} onChange={(e) => setDari(e.target.value)} className="h-9 w-40 border-zinc-200 text-sm" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Sampai</label>
-                <Input type="date" value={sampai} onChange={(e) => setSampai(e.target.value)} className="h-9 w-40 border-zinc-200 text-sm" />
-              </div>
-            </>
-          )}
-          <Button onClick={load} className="h-9 bg-purple-600 text-white shadow-sm hover:bg-purple-700">
-            <Filter className="mr-1.5 h-4 w-4" /> Terapkan
-          </Button>
-          <Button onClick={reset} variant="outline" className="h-9 border-zinc-200 text-sm text-zinc-600">
-            <RotateCcw className="mr-1.5 h-4 w-4" /> Reset
-          </Button>
         </CardContent>
       </Card>
+
+      {/* ===== RINGKASAN HARI INI ===== */}
+      {data.todaySummary && (
+        <Card 
+          className="border-0 bg-gradient-to-r from-purple-600 to-fuchsia-700 shadow-lg text-white cursor-pointer hover:shadow-xl transition-shadow"
+          onClick={() => {
+            const today = new Date()
+            const todayYMD = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+            setDetailModal({
+              title: 'Detail Penjualan Hari Ini',
+              description: 'Seluruh transaksi penjualan (offline & online) yang tercatat hari ini.',
+              apiPath: '/toko/admin/penjualan',
+              responsePath: 'orders',
+              columns: penjualanColumns,
+              sumField: 'totalValue', sumLabel: 'Total Penjualan', sumFormat: 'currency',
+              baseParams: { dari: todayYMD, sampai: todayYMD }
+            })
+          }}
+        >
+          <CardContent className="p-4 sm:p-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none">
+              <ShoppingBag className="w-32 h-32 transform rotate-12 translate-x-8 -translate-y-8" />
+            </div>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+              <div>
+                <h3 className="font-bold text-lg flex items-center gap-2">
+                  <Banknote className="size-5" /> Ringkasan Penjualan Hari Ini
+                </h3>
+                <p className="text-purple-100 text-xs mt-1">Total pendapatan kotor dari penjualan online dan offline khusus hari ini. (Otomatis reset besok)</p>
+                <div className="mt-3 inline-flex items-center gap-1 rounded-md bg-white/20 px-2 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
+                  <MousePointerClick className="h-3 w-3" /> Klik untuk melihat daftar produk terjual hari ini
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3 sm:gap-6">
+                <div className="bg-white/10 rounded-xl p-3 px-4 backdrop-blur-sm border border-white/20">
+                  <p className="text-[10px] uppercase font-bold text-purple-100 mb-1 flex items-center gap-1"><ArrowUpRight className="size-3" /> Pemasukan Hari Ini</p>
+                  <p className="font-black text-xl">{formatRupiah(data.todaySummary.totalPenjualan)}</p>
+                  <div className="flex gap-3 mt-1 text-[10px] text-purple-200">
+                    <span>Offline: {formatRupiah(data.todaySummary.offline)}</span>
+                    <span>Online: {formatRupiah(data.todaySummary.online)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ===== 5 METRIC CARDS (clickable) ===== */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -333,7 +423,7 @@ export function DashboardPenjualanProduk() {
               <div className="flex flex-wrap items-end gap-2">
                 <div className="flex flex-col gap-0.5">
                   <label className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400">Filter Waktu</label>
-                  <Select value={chartPeriode} onValueChange={setChartPeriode}>
+                  <Select value={chartPeriode} onValueChange={handleMainPeriodChange}>
                     <SelectTrigger className="h-8 w-32 border-zinc-200 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {PERIODE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
@@ -385,7 +475,7 @@ export function DashboardPenjualanProduk() {
           </CardContent>
         </Card>
 
-        {/* Top products */}
+        {/* Top produks */}
         <Card className="border-0 bg-white shadow-sm ring-1 ring-zinc-100">
           <CardContent className="p-5">
             <div className="mb-4">
@@ -410,7 +500,7 @@ export function DashboardPenjualanProduk() {
                         <p className="truncate text-sm font-medium text-zinc-900">{p.name}</p>
                         <p className="text-sm font-bold text-purple-600">{formatRupiah(p.revenue)}</p>
                       </div>
-                      <p className="text-[11px] text-zinc-400">{formatNumber(p.qty, 0)} unit · margin {formatNumber(p.margin, 1)}%</p>
+                      <p className="text-[11px] text-zinc-400">{formatNumber(p.qty, 0)} pcs · margin {formatNumber(p.margin, 1)}%</p>
                     </div>
                   </div>
                 ))}

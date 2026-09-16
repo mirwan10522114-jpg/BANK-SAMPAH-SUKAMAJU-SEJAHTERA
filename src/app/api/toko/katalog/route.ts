@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/format'
 
-// GET: Public catalog — products where dijualOnline=true AND isActive=true
+// GET: Public catalog — produks where dijualOnline=true AND isActive=true
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const q = url.searchParams.get('q') || ''
@@ -22,15 +22,15 @@ export async function GET(req: NextRequest) {
   if (kategoriId) {
     // UUIDs start with 'cmr' in this app — treat anything else as a name
     if (/^cmr/.test(kategoriId) && kategoriId.length > 15) {
-      where.productCategoryId = kategoriId
+      where.kategoriProdukId = kategoriId
     } else {
       // Otherwise treat as category name and look up the ID
-      const cat = await db.productCategory.findFirst({
+      const cat = await db.kategoriProduk.findFirst({
         where: { name: kategoriId },
         select: { id: true },
       })
       if (cat) {
-        where.productCategoryId = cat.id
+        where.kategoriProdukId = cat.id
       } else {
         // No matching category — return empty
         return NextResponse.json([])
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   if (sort === 'termahal' || sort === 'price_desc') orderBy = { price: 'desc' }
   if (sort === 'terbaru') orderBy = { createdAt: 'desc' }
 
-  const products = await db.product.findMany({
+  const produks = await db.produk.findMany({
     where,
     orderBy,
     include: {
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  const result = products.map((p) => {
+  const result = produks.map((p) => {
     // Parse images: DB stores as JSON string, frontend expects array
     let parsedImages: string[] = []
     if (p.images) {

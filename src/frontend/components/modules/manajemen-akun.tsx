@@ -27,6 +27,7 @@ import {
 
 import { api } from '@/lib/api'
 import { formatRupiah, formatNumber, toNumber } from '@/lib/format'
+import { sanitizeName, sanitizeNumber } from '@/lib/validation'
 import { cn } from '@/lib/utils'
 
 // Role card config
@@ -84,13 +85,33 @@ export function ManajemenAkunTab() {
   }
 
   const handleDelete = async (row: any) => {
-    if (!confirm(`Hapus user "${row.name}"? Data terkait (saldo, keanggotaan koperasi) akan ditandai keluar.`)) return
+    if (!confirm(`Hapus pengguna "${row.name}"? Data terkait (saldo, keanggotaan koperasi) akan ditandai keluar.`)) return
     try {
       await api.manajemenAkun.delete(row.id)
-      toast.success('User dihapus & data terkait disinkronisasi')
+      toast.success('Pengguna dihapus & data terkait disinkronisasi')
       load()
     } catch (e: any) {
       toast.error('Gagal hapus: ' + e.message)
+    }
+  }
+
+  const handleApprove = async (row: any) => {
+    if (!confirm(`Setujui pengguna "${row.name}" secara manual?`)) return
+    try {
+      await api.manajemenAkun.update(row.id, {
+        name: row.name,
+        email: row.email,
+        nik: row.nik,
+        phone: row.phone,
+        address: row.address,
+        roles: row.roles,
+        emailVerified: true,
+        verificationStatus: 'verified',
+      })
+      toast.success('Pengguna berhasil disetujui')
+      load()
+    } catch (e: any) {
+      toast.error('Gagal menyetujui: ' + e.message)
     }
   }
 
@@ -102,14 +123,14 @@ export function ManajemenAkunTab() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
               <ShieldCheck className="h-5 w-5" />
             </div>
-            Manajemen User
+            Manajemen Pengguna
           </CardTitle>
           <CardDescription className="mt-1 text-xs text-zinc-500">
             Pusat kontrol multi-entitas (Nasabah & Koperasi). Perubahan tersinkronisasi realtime.
           </CardDescription>
         </div>
         <Button onClick={openCreate} className="bg-emerald-600 text-white hover:bg-emerald-700">
-          <Plus className="mr-1.5 h-4 w-4" /> Tambah User
+          <Plus className="mr-1.5 h-4 w-4" /> Tambah Pengguna
         </Button>
       </CardHeader>
       <CardContent className="space-y-4 p-4">
@@ -164,7 +185,7 @@ export function ManajemenAkunTab() {
                       <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-100">
                         <UserCircle className="h-6 w-6 text-zinc-400" />
                       </div>
-                      <p className="text-sm text-zinc-500">Belum ada user terdaftar.</p>
+                      <p className="text-sm text-zinc-500">Belum ada pengguna terdaftar.</p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -206,19 +227,36 @@ export function ManajemenAkunTab() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      {u.isEmailVerified ? (
-                        <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] font-medium text-emerald-700">
-                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" /> Terverifikasi
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] font-medium text-amber-700">
-                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500" /> Belum
-                        </Badge>
-                      )}
-                    </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1 items-start">
+                          {u.verificationStatus === 'pending_admin' ? (
+                            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] font-medium text-amber-700">
+                              Data harus di verifikasi
+                            </Badge>
+                          ) : u.verificationStatus === 'pending_otp' ? (
+                            <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[10px] font-medium text-rose-700">
+                              Pending OTP
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] font-medium text-emerald-700">
+                              <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" /> Terverifikasi
+                            </Badge>
+                          )}
+                          
+                          {u.roles.includes('koperasi') && u.simpananPokok === 0 && (
+                            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] font-medium text-amber-700">
+                              Belum Bayar Pokok
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-1">
+                        {['pending_admin', 'pending_otp'].includes(u.verificationStatus) && (
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:bg-amber-50" onClick={() => handleApprove(u)} title="Setujui Admin">
+                            <BadgeCheck className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:bg-blue-50" onClick={() => openEdit(u)} title="Edit & Sinkronisasi">
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -238,7 +276,7 @@ export function ManajemenAkunTab() {
         {!loading && rows.length > 0 && (
           <div className="grid gap-3 sm:grid-cols-4">
             <div className="rounded-lg bg-zinc-50 p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Total User</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Total Pengguna</p>
               <p className="mt-1 text-lg font-bold text-zinc-900">{rows.length}</p>
             </div>
             <div className="rounded-lg bg-blue-50/60 p-3 ring-1 ring-blue-100">
@@ -257,10 +295,10 @@ export function ManajemenAkunTab() {
         )}
       </CardContent>
 
-      {/* User Form Modal (Create + Edit with Sync) */}
+      {/* Pengguna Form Modal (Create + Edit with Sync) */}
       {open && (
         <UserFormModal
-          user={editing}
+          pengguna={editing}
           isCreate={isCreate}
           open={open}
           onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setIsCreate(false) } }}
@@ -272,25 +310,25 @@ export function ManajemenAkunTab() {
 }
 
 // ============================================================
-// User Form Modal (Create + Edit) with Sync
+// Pengguna Form Modal (Create + Edit) with Sync
 // ============================================================
 function UserFormModal({
-  user, isCreate, open, onOpenChange, onUpdated,
+  pengguna, isCreate, open, onOpenChange, onUpdated,
 }: {
-  user: any | null
+  pengguna: any | null
   isCreate: boolean
   open: boolean
   onOpenChange: (o: boolean) => void
   onUpdated: () => void
 }) {
-  const [name, setName] = useState(user?.name || '')
-  const [email, setEmail] = useState(user?.email || '')
-  const [nik, setNik] = useState(user?.nik || '')
-  const [phone, setPhone] = useState(user?.phone || '')
+  const [name, setName] = useState(pengguna?.name || '')
+  const [email, setEmail] = useState(pengguna?.email || '')
+  const [nik, setNik] = useState(pengguna?.nik || '')
+  const [phone, setPhone] = useState(pengguna?.phone || '')
   const [password, setPassword] = useState('')
-  const [address, setAddress] = useState(user?.address || '')
-  const [emailVerified, setEmailVerified] = useState(user?.isEmailVerified ?? true)
-  const [roles, setRoles] = useState<string[]>(user?.roles || [])
+  const [address, setAddress] = useState(pengguna?.address || '')
+  const [emailVerified, setEmailVerified] = useState(pengguna?.isEmailVerified ?? true)
+  const [roles, setRoles] = useState<string[]>(pengguna?.roles || [])
   const [saving, setSaving] = useState(false)
   const [syncResult, setSyncResult] = useState<any>(null)
 
@@ -313,15 +351,17 @@ function UserFormModal({
           emailVerified,
           roles,
         })
-        toast.success('User ditambahkan & tersinkronisasi')
+        toast.success('Pengguna ditambahkan & tersinkronisasi')
       } else {
-        res = await api.manajemenAkun.update(user.id, {
+        const verifyObj = ['pending_admin', 'pending_otp'].includes(pengguna.verificationStatus) ? { verificationStatus: 'verified' } : {}
+        res = await api.manajemenAkun.update(pengguna.id, {
           name, email, nik, phone, address,
           password: password || undefined,
-          emailVerified,
+          emailVerified: ['pending_admin', 'pending_otp'].includes(pengguna.verificationStatus) ? true : emailVerified,
           roles,
+          ...verifyObj,
         })
-        toast.success('User diperbarui & tersinkronisasi')
+        toast.success(['pending_admin', 'pending_otp'].includes(pengguna.verificationStatus) ? 'Pengguna diverifikasi & tersinkronisasi' : 'Pengguna diperbarui & tersinkronisasi')
       }
       setSyncResult(res)
       setTimeout(() => {
@@ -353,7 +393,7 @@ function UserFormModal({
           </DialogTitle>
           <DialogDescription className="text-xs text-zinc-500">
             {isCreate
-              ? 'User baru akan otomatis tersinkronisasi ke modul Bank Sampah & Koperasi sesuai role.'
+              ? 'Pengguna baru akan otomatis tersinkronisasi ke modul Bank Sampah & Koperasi sesuai role.'
               : 'Perubahan akan disinkronisasi ke modul Bank Sampah & Koperasi.'}
           </DialogDescription>
         </DialogHeader>
@@ -370,10 +410,52 @@ function UserFormModal({
         )}
 
         <div className="space-y-4">
+          {['pending_admin', 'pending_otp'].includes(pengguna?.verificationStatus || '') && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <h3 className="mb-3 flex items-center text-sm font-bold text-amber-800">
+                <BadgeCheck className="mr-2 h-4 w-4" /> Detail Pendaftaran Baru
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-4 text-xs text-amber-900/90">
+                <div className="flex flex-col">
+                  <span className="font-semibold text-amber-700 mb-0.5">Tempat & Tgl Lahir</span>
+                  <span>
+                    {(pengguna.tempatLahir ? pengguna.tempatLahir.charAt(0).toUpperCase() + pengguna.tempatLahir.slice(1) : '-')}
+                    , {pengguna.tanggalLahir ? new Date(pengguna.tanggalLahir).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-semibold text-amber-700 mb-0.5">Jenis Kelamin</span>
+                  <span>{pengguna.jenisKelamin === 'L' || pengguna.jenisKelamin?.toLowerCase() === 'laki-laki' ? 'Laki-laki' : pengguna.jenisKelamin === 'P' || pengguna.jenisKelamin?.toLowerCase() === 'perempuan' ? 'Perempuan' : pengguna.jenisKelamin || '-'}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-semibold text-amber-700 mb-0.5">Pekerjaan</span>
+                  <span className="capitalize">{pengguna.pekerjaan || '-'}</span>
+                </div>
+                <div className="flex flex-col md:col-span-2">
+                  <span className="font-semibold text-amber-700 mb-0.5">Alamat Lengkap</span>
+                  <span className="capitalize">
+                    {pengguna.address || '-'} 
+                    {pengguna.rt || pengguna.rw ? ` (RT ${pengguna.rt || '-'} / RW ${pengguna.rw || '-'})` : ''}
+                    {pengguna.desaKelurahan ? `, Kel/Desa. ${pengguna.desaKelurahan}` : ''}
+                    {pengguna.kecamatan ? `, Kec. ${pengguna.kecamatan}` : ''}
+                  </span>
+                </div>
+                {pengguna.fotoKtp && (
+                  <div className="flex flex-col md:col-span-2 mt-2">
+                    <span className="font-semibold text-amber-700 mb-1">Scan KTP</span>
+                    <div className="flex h-48 w-full max-w-sm items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-amber-300 bg-amber-100 p-2">
+                      <img src={pengguna.fotoKtp} alt="KTP" className="h-full w-full object-contain hover:scale-150 transition-transform duration-300 cursor-zoom-in" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Nama Lengkap */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium text-zinc-700">Nama Lengkap <span className="text-red-500">*</span></Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="border-zinc-200 text-sm" placeholder="Nama lengkap" />
+            <Input value={name} onChange={(e) => setName(sanitizeName(e.target.value))} className="border-zinc-200 text-sm" placeholder="Nama lengkap" />
           </div>
 
           {/* Email */}
@@ -386,11 +468,11 @@ function UserFormModal({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-zinc-700">NIK KTP <span className="text-zinc-400">(Optional)</span></Label>
-              <Input value={nik} onChange={(e) => setNik(e.target.value)} className="border-zinc-200 text-sm" placeholder="16 digit NIK" maxLength={16} />
+              <Input value={nik} onChange={(e) => setNik(sanitizeNumber(e.target.value))} className="border-zinc-200 text-sm" placeholder="16 digit NIK" maxLength={16} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-zinc-700">No Telepon <span className="text-zinc-400">(Optional)</span></Label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="border-zinc-200 text-sm" placeholder="08xxxxxxxxxx" />
+              <Input value={phone} onChange={(e) => setPhone(sanitizeNumber(e.target.value))} className="border-zinc-200 text-sm" placeholder="08xxxxxxxxxx" />
             </div>
           </div>
 
@@ -399,7 +481,7 @@ function UserFormModal({
             <Label className="text-xs font-medium text-zinc-700">
               {isCreate ? 'Password' : 'Password Baru'} {isCreate ? <span className="text-red-500">*</span> : <span className="text-zinc-400">(opsional)</span>}
             </Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="border-zinc-200 text-sm" placeholder={isCreate ? 'Password untuk user baru' : 'Kosongkan jika tidak diubah'} />
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="border-zinc-200 text-sm" placeholder={isCreate ? 'Password untuk pengguna baru' : 'Kosongkan jika tidak diubah'} />
             {isCreate && <p className="text-[10px] text-zinc-400">Default: "password" jika dikosongkan</p>}
           </div>
 
@@ -413,7 +495,7 @@ function UserFormModal({
           <div className="flex items-start justify-between gap-3 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3">
             <div>
               <p className="text-xs font-medium text-zinc-700">Email Terverifikasi</p>
-              <p className="mt-0.5 text-[11px] text-zinc-500">Matikan untuk mewajibkan user validasi via OTP email.</p>
+              <p className="mt-0.5 text-[11px] text-zinc-500">Matikan untuk mewajibkan pengguna validasi via OTP email.</p>
             </div>
             <Switch checked={emailVerified} onCheckedChange={setEmailVerified} />
           </div>
@@ -455,24 +537,24 @@ function UserFormModal({
                 <Wallet className="h-3.5 w-3.5 text-blue-500" /> Integrasi yang akan disinkronisasi:
               </p>
               <ul className="mt-1 space-y-0.5">
-                <li>• {roles.includes('nasabah') ? '✅ Profil Bank Sampah aktif' : '⛔ Profil Bank Sampah tidak aktif'}{!isCreate && user?.memberCode && ` (kode: ${user.memberCode})`}{isCreate && roles.includes('nasabah') && ' (kode akan dibuat otomatis)'}</li>
-                <li>• {roles.includes('koperasi') ? '✅ Buku Koperasi aktif' : '⛔ Buku Koperasi tidak aktif'}{!isCreate && user?.nomorAnggota && ` (no: ${user.nomorAnggota})`}{isCreate && roles.includes('koperasi') && ' (no anggota akan dibuat otomatis)'}</li>
+                <li>• {roles.includes('nasabah') ? '✅ Profil Bank Sampah aktif' : '⛔ Profil Bank Sampah tidak aktif'}{!isCreate && pengguna?.memberCode && ` (kode: ${pengguna.memberCode})`}{isCreate && roles.includes('nasabah') && ' (kode akan dibuat otomatis)'}</li>
+                <li>• {roles.includes('koperasi') ? '✅ Buku Koperasi aktif' : '⛔ Buku Koperasi tidak aktif'}{!isCreate && pengguna?.nomorAnggota && ` (no: ${pengguna.nomorAnggota})`}{isCreate && roles.includes('koperasi') && ' (no anggota akan dibuat otomatis)'}</li>
               </ul>
             </div>
           </div>
 
-          {/* Current balance/simpanan info (read-only, edit mode only) */}
-          {!isCreate && user && (user.saldoTersedia > 0 || user.simpananPokok + user.simpananWajib + user.simpananSukarela > 0) && (
+          {/* Current saldo/simpanan info (read-only, edit mode only) */}
+          {!isCreate && pengguna && (pengguna.saldoTersedia > 0 || pengguna.simpananPokok + pengguna.simpananWajib + pengguna.simpananSukarela > 0) && (
             <div className="grid grid-cols-2 gap-2 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3 text-[11px]">
               <div>
                 <p className="font-medium text-zinc-500">Saldo Tersedia (BS)</p>
-                <p className="font-bold text-zinc-900">{formatRupiah(user.saldoTersedia)}</p>
-                <p className="mt-0.5 text-zinc-400">Poin: {formatNumber(toNumber(user.points), 0)}</p>
+                <p className="font-bold text-zinc-900">{formatRupiah(pengguna.saldoTersedia)}</p>
+                <p className="mt-0.5 text-zinc-400">Poin: {formatNumber(toNumber(pengguna.points), 0)}</p>
               </div>
               <div>
                 <p className="font-medium text-zinc-500">Simpanan Koperasi</p>
-                <p className="font-bold text-zinc-900">{formatRupiah(user.simpananPokok + user.simpananWajib + user.simpananSukarela)}</p>
-                <p className="mt-0.5 text-zinc-400">Pokok {formatRupiah(user.simpananPokok)} · Wajib {formatRupiah(user.simpananWajib)} · Sukarela {formatRupiah(user.simpananSukarela)}</p>
+                <p className="font-bold text-zinc-900">{formatRupiah(pengguna.simpananPokok + pengguna.simpananWajib + pengguna.simpananSukarela)}</p>
+                <p className="mt-0.5 text-zinc-400">Pokok {formatRupiah(pengguna.simpananPokok)} · Wajib {formatRupiah(pengguna.simpananWajib)} · Sukarela {formatRupiah(pengguna.simpananSukarela)}</p>
               </div>
             </div>
           )}
@@ -488,7 +570,7 @@ function UserFormModal({
             ) : (
               <>
                 {isCreate ? <Plus className="mr-1.5 h-4 w-4" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}
-                {isCreate ? 'Tambah & Sinkronisasi' : 'Perbarui & Sinkronisasi'}
+                {isCreate ? 'Tambah & Sinkronisasi' : ['pending_admin', 'pending_otp'].includes(pengguna?.verificationStatus || '') ? 'Verifikasi & Simpan Data' : 'Perbarui & Sinkronisasi'}
               </>
             )}
           </Button>

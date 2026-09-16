@@ -12,7 +12,7 @@ import { getRajaOngkirRates } from '@/lib/rajaongkir'
 // }
 //
 // Dipakai oleh frontend CheckoutView untuk menampilkan estimasi ongkir
-// live saat user sudah pilih kecamatan. Angka yang dikembalikan di sini
+// live saat pengguna sudah pilih kecamatan. Angka yang dikembalikan di sini
 // SAMA PERSIS dengan yang akan dibebankan ke totalBayar di /toko/checkout,
 // karena keduanya memanggil getRajaOngkirRates() yang sama.
 

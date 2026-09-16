@@ -2,15 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { getAuthToken, getAuthUser, setAuth, clearAuth, isAdmin, type AuthUser } from '@/lib/auth'
-import { LandingPage, LoginPage, RegisterPage } from '@/components/modules/public-pages'
+import { LandingPage, LoginPage } from '@/components/modules/public-pages'
+import { RegisterPage } from '@/components/modules/register-page'
 import { MerchandisePage } from '@/components/modules/merchandise-page'
 import { EdukasiPage } from '@/components/modules/edukasi-page'
 import { KegiatanPage } from '@/components/modules/kegiatan-page'
-import { UserDashboard } from '@/components/modules/user-dashboard'
+import { UserDashboard } from '@/components/modules/pengguna-dashboard'
 import { AdminPanel } from '@/components/modules/admin-panel'
 import { PaymentReturnView } from '@/components/modules/payment-return-view'
 
-type View = 'landing' | 'login' | 'register' | 'user' | 'admin' | 'merchandise' | 'merchandise-tracking' | 'edukasi' | 'kegiatan' | 'loading' | 'payment-return'
+type View = 'landing' | 'login' | 'register' | 'pengguna' | 'admin' | 'merchandise' | 'merchandise-tracking' | 'edukasi' | 'kegiatan' | 'loading' | 'payment-return'
 
 export default function Home() {
   const [view, setView] = useState<View>('loading')
@@ -21,7 +22,7 @@ export default function Home() {
     // ============================================================
     // Detect payment_return parameter dari URL
     // ------------------------------------------------------------
-    // Midtrans redirect user kembali ke URL ini setelah pembayaran.
+    // Midtrans redirect pengguna kembali ke URL ini setelah pembayaran.
     // Kita pakai query parameter ?payment_return=ORDER_NUMBER
     // (bukan route /payment/return terpisah) karena preview
     // environment hanya support route "/".
@@ -40,27 +41,27 @@ export default function Home() {
 
     // Check existing auth on mount
     const token = getAuthToken()
-    const user = getAuthUser()
+    const pengguna = getAuthUser()
     Promise.resolve().then(() => {
-      if (token && user) {
-        setAuthUser(user)
-        setView(isAdmin(user) ? 'admin' : 'user')
+      if (token && pengguna) {
+        setAuthUser(pengguna)
+        setView(isAdmin(pengguna) ? 'admin' : 'pengguna')
       } else {
         setView('landing')
       }
     })
   }, [])
 
-  const handleLoginSuccess = (token: string, user: AuthUser) => {
-    setAuth(token, user)
-    setAuthUser(user)
-    setView(isAdmin(user) ? 'admin' : 'user')
+  const handleLoginSuccess = (token: string, pengguna: AuthUser) => {
+    setAuth(token, pengguna)
+    setAuthUser(pengguna)
+    setView(isAdmin(pengguna) ? 'admin' : 'pengguna')
   }
 
-  const handleRegisterSuccess = (token: string, user: AuthUser) => {
-    setAuth(token, user)
-    setAuthUser(user)
-    setView(isAdmin(user) ? 'admin' : 'user')
+  const handleRegisterSuccess = (token: string, pengguna: AuthUser) => {
+    setAuth(token, pengguna)
+    setAuthUser(pengguna)
+    setView(isAdmin(pengguna) ? 'admin' : 'pengguna')
   }
 
   const handleLogout = () => {
@@ -139,14 +140,14 @@ export default function Home() {
     )
   }
 
-  // User dashboard (nasabah/anggota)
-  if (view === 'user' && authUser) {
-    return <UserDashboard user={authUser} onLogout={handleLogout} onSettings={() => {}} />
+  // Pengguna dashboard (nasabah/anggota)
+  if (view === 'pengguna' && authUser) {
+    return <UserDashboard pengguna={authUser} onLogout={handleLogout} onSettings={() => {}} />
   }
 
   // Admin panel
   if (view === 'admin' && authUser) {
-    return <AdminPanel user={authUser} onLogout={handleLogout} />
+    return <AdminPanel pengguna={authUser} onLogout={handleLogout} />
   }
 
   // Fallback

@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, Fragment } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Search, Filter, RotateCcw, MousePointerClick } from 'lucide-react'
+import { Search, Filter, RotateCcw, MousePointerClick, ChevronDown, ChevronUp, Package } from 'lucide-react'
 import { getActingUserHeader } from '@/lib/api'
 import { formatRupiah, formatNumber, toNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -49,6 +49,7 @@ export interface DashboardDetailModalProps {
   initialDari?: string
   initialSampai?: string
   dateFieldLabel?: string
+  expandableItems?: boolean
 }
 
 function getNestedValue(obj: any, path: string): any {
@@ -78,6 +79,7 @@ export function DashboardDetailModal({
   initialDari = '',
   initialSampai = '',
   dateFieldLabel = 'Tanggal Transaksi',
+  expandableItems = false,
 }: DashboardDetailModalProps) {
   // Pending filter state
   const [dariInput, setDariInput] = useState(initialDari)
@@ -90,7 +92,11 @@ export function DashboardDetailModal({
   const [q, setQ] = useState('')
   const [extra, setExtra] = useState<Record<string, string>>({})
 
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
+
   const [rows, setRows] = useState<any[]>([])
+  const [serverTotal, setServerTotal] = useState<number | null>(null)
+  const [serverCount, setServerCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fetchIdRef = useRef(0)
@@ -105,6 +111,7 @@ export function DashboardDetailModal({
       setQInput(''); setExtraInput({})
       setDari(initialDari); setSampai(initialSampai)
       setQ(''); setExtra({})
+      setServerTotal(null); setServerCount(null)
     }
   }, [open, initialDari, initialSampai])
 
@@ -119,6 +126,8 @@ export function DashboardDetailModal({
       if (dari) params.set('dari', dari)
       if (sampai) params.set('sampai', sampai)
       if (q) params.set('q', q)
+      // fetch up to 5000 rows for complete list
+      params.set('limit', '5000')
       // extra filters — may map to multiple params via paramMap
       for (const ef of extraFilters) {
         const val = extra[ef.key]
@@ -134,7 +143,7 @@ export function DashboardDetailModal({
       const pathWithQs = `${apiPath}${qs ? '?' + qs : ''}`
       const actingUser = getActingUserHeader()
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (actingUser) headers['x-acting-user'] = actingUser
+      if (actingUser) headers['x-acting-pengguna'] = actingUser
       const sep = pathWithQs.includes('?') ? '&' : '?'
       const url = actingUser ? `/api${pathWithQs}${sep}actingUser=${actingUser}` : `/api${pathWithQs}`
       const res = await fetch(url, { headers })
@@ -148,11 +157,25 @@ export function DashboardDetailModal({
       const extracted = responsePath ? (getNestedValue(json, responsePath) || []) : (Array.isArray(json) ? json : (json.list || json.orders || []))
       setError(null)
       setRows(extracted)
+
+      // Check header or json total
+      const hCount = res.headers.get('x-total-count')
+      const hSum = res.headers.get('x-total-sum')
+      if (hCount) setServerCount(parseInt(hCount, 10))
+      else if (json.totalCount !== undefined) setServerCount(toNumber(json.totalCount))
+      else setServerCount(null)
+
+      if (hSum) setServerTotal(parseFloat(hSum))
+      else if (json.totalSum !== undefined) setServerTotal(toNumber(json.totalSum))
+      else setServerTotal(null)
+
       setLoading(false)
     } catch (e: any) {
       if (myId !== fetchIdRef.current) return
       setError(e.message || 'Gagal memuat data')
       setRows([])
+      setServerTotal(null)
+      setServerCount(null)
       setLoading(false)
     }
   }, [apiPath, baseParamsKey, extraFiltersKey, JSON.stringify(extra), dari, sampai, q, responsePath])
@@ -173,7 +196,30 @@ export function DashboardDetailModal({
     setDari(''); setSampai(''); setQ(''); setExtra({})
   }
 
-  const total = sumField ? rows.reduce((s, r) => s + toNumber(getNestedValue(r, sumField)), 0) : 0
+  const setQuickPeriod = (type: 'all' | 'month' | 'year') => {
+    const now = new Date()
+    if (type === 'all') {
+      setDariInput(''); setSampaiInput('')
+      setDari(''); setSampai('')
+    } else if (type === 'month') {
+      const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+      const start = `${ym}-01`
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+      const end = `${ym}-${String(lastDay).padStart(2, '0')}`
+      setDariInput(start); setSampaiInput(end)
+      setDari(start); setSampai(end)
+    } else if (type === 'year') {
+      const y = now.getFullYear()
+      const start = `${y}-01-01`
+      const end = `${y}-12-31`
+      setDariInput(start); setSampaiInput(end)
+      setDari(start); setSampai(end)
+    }
+  }
+
+  const computedTotal = sumField ? rows.reduce((s, r) => s + toNumber(getNestedValue(r, sumField)), 0) : 0
+  const effectiveTotal = serverTotal !== null ? serverTotal : computedTotal
+  const effectiveCount = serverCount !== null ? serverCount : rows.length
   const hasActiveFilters = !!(dari || sampai || q || Object.values(extra).some((v) => v && v !== 'all'))
 
   return (
@@ -183,6 +229,38 @@ export function DashboardDetailModal({
           <DialogTitle className="text-lg font-bold text-zinc-900">{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
+
+        {/* ===== QUICK PERIOD BUTTONS ===== */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <span className="text-[11px] font-semibold text-zinc-500 mr-1">Periode Cepat:</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setQuickPeriod('all')}
+            className={cn("h-7 px-2.5 text-xs rounded-lg", !dari && !sampai && "bg-emerald-50 text-emerald-700 border-emerald-300 font-semibold")}
+          >
+            Semua Data
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setQuickPeriod('month')}
+            className={cn("h-7 px-2.5 text-xs rounded-lg", dari.endsWith('-01') && !dari.endsWith('-01-01') && "bg-emerald-50 text-emerald-700 border-emerald-300 font-semibold")}
+          >
+            Bulan Ini
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setQuickPeriod('year')}
+            className={cn("h-7 px-2.5 text-xs rounded-lg", dari.endsWith('-01-01') && sampai.endsWith('-12-31') && "bg-emerald-50 text-emerald-700 border-emerald-300 font-semibold")}
+          >
+            Tahun 2026
+          </Button>
+        </div>
 
         {/* ===== FILTER BAR ===== */}
         <div className="rounded-xl border border-zinc-100 bg-zinc-50/60 p-3">
@@ -239,11 +317,16 @@ export function DashboardDetailModal({
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div className="rounded-xl bg-zinc-50 p-4 ring-1 ring-zinc-100">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Total Transaksi</p>
-              <p className="mt-1 text-xl font-bold text-zinc-900">{formatNumber(rows.length, 0)}</p>
+              <p className="mt-1 text-xl font-bold text-zinc-900">
+                {formatNumber(effectiveCount, 0)}
+                {rows.length < effectiveCount && (
+                  <span className="ml-1.5 text-xs font-normal text-zinc-400">(memuat {formatNumber(rows.length, 0)})</span>
+                )}
+              </p>
             </div>
             <div className="rounded-xl bg-emerald-50/60 p-4 ring-1 ring-emerald-100 sm:col-span-2">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">{sumLabel || 'Total'}</p>
-              <p className="mt-1 text-xl font-bold text-emerald-700">{formatSum(total, sumFormat)}</p>
+              <p className="mt-1 text-xl font-bold text-emerald-700">{formatSum(effectiveTotal, sumFormat)}</p>
             </div>
           </div>
         )}
@@ -267,6 +350,7 @@ export function DashboardDetailModal({
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-zinc-50">
                 <tr>
+                  {expandableItems && <th className="w-10 px-3 py-2.5"></th>}
                   {columns.map((c) => (
                     <th
                       key={c.key}
@@ -284,24 +368,70 @@ export function DashboardDetailModal({
               </thead>
               <tbody className="divide-y divide-zinc-50">
                 {rows.map((r, i) => (
-                  <tr key={r.id || i} className="hover:bg-zinc-50/50">
-                    {columns.map((c) => {
-                      const raw = getNestedValue(r, c.key)
-                      const formatted = c.format ? c.format(raw, r) : (raw == null ? '-' : String(raw))
-                      return (
-                        <td
-                          key={c.key}
-                          className={cn(
-                            'whitespace-nowrap px-3 py-2.5 text-xs text-zinc-600',
-                            c.align === 'right' && 'text-right',
-                            c.align === 'center' && 'text-center',
-                          )}
-                        >
-                          {formatted}
+                  <Fragment key={r.id || i}>
+                    <tr className="hover:bg-zinc-50/50">
+                      {expandableItems && (
+                        <td className="px-3 py-2.5 text-center">
+                          {r.items && r.items.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedRows(prev => ({ ...prev, [r.id]: !prev[r.id] }))}
+                              className="inline-flex items-center justify-center rounded-md p-1 hover:bg-zinc-100 text-zinc-500"
+                            >
+                              {expandedRows[r.id] ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            </button>
+                          ) : null}
                         </td>
-                      )
-                    })}
-                  </tr>
+                      )}
+                      {columns.map((c) => {
+                        const raw = getNestedValue(r, c.key)
+                        const formatted = c.format ? c.format(raw, r) : (raw == null ? '-' : String(raw))
+                        return (
+                          <td
+                            key={c.key}
+                            className={cn(
+                              'whitespace-nowrap px-3 py-2.5 text-xs text-zinc-600',
+                              c.align === 'right' && 'text-right',
+                              c.align === 'center' && 'text-center',
+                            )}
+                          >
+                            {formatted}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                    {expandableItems && expandedRows[r.id] && r.items && r.items.length > 0 && (
+                      <tr className="bg-zinc-50/30">
+                        <td colSpan={columns.length + 1} className="px-6 py-4">
+                          <div className="rounded-md border border-zinc-200 bg-white shadow-sm overflow-hidden">
+                            <table className="w-full text-xs">
+                              <thead className="bg-zinc-50/80 text-zinc-500 border-b border-zinc-200">
+                                <tr>
+                                  <th className="px-3 py-2 text-left font-medium">Barang</th>
+                                  <th className="px-3 py-2 text-left font-medium">Kategori</th>
+                                  <th className="px-3 py-2 text-right font-medium">Berat Bersih</th>
+                                  <th className="px-3 py-2 text-right font-medium">Susut</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-zinc-100">
+                                {r.items.map((it: any, idx: number) => (
+                                  <tr key={it.id || idx}>
+                                    <td className="px-3 py-2 flex items-center gap-2">
+                                      <Package className="h-3 w-3 text-zinc-400" />
+                                      {it.itemNameSnapshot || it.jenisSampah?.name || '-'}
+                                    </td>
+                                    <td className="px-3 py-2 text-zinc-600">{it.categoryNameSnapshot || it.jenisSampah?.category?.name || '-'}</td>
+                                    <td className="px-3 py-2 text-right font-medium text-emerald-700">{formatNumber(toNumber(it.quantityAfterQc ?? it.quantity))} kg</td>
+                                    <td className="px-3 py-2 text-right text-zinc-500">{formatNumber(toNumber(it.susutQc ?? 0))} kg</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

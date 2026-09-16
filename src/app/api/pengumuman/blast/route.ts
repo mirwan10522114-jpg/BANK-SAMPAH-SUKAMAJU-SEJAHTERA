@@ -17,8 +17,8 @@ export async function POST(req: NextRequest) {
   if (!pesan?.trim()) return NextResponse.json({ error: 'Pesan wajib diisi' }, { status: 400 })
 
   try {
-    // Ambil semua user yang punya email & sudah verifikasi
-    const users = await db.user.findMany({
+    // Ambil semua pengguna yang punya email & sudah verifikasi
+    const penggunas = await db.pengguna.findMany({
       where: {
         email: { not: '' },
         emailVerifiedAt: { not: null },
@@ -26,8 +26,8 @@ export async function POST(req: NextRequest) {
       select: { email: true, name: true },
     })
 
-    if (users.length === 0) {
-      return NextResponse.json({ error: 'Tidak ada user dengan email terverifikasi' }, { status: 400 })
+    if (penggunas.length === 0) {
+      return NextResponse.json({ error: 'Tidak ada pengguna dengan email terverifikasi' }, { status: 400 })
     }
 
     const { sendStrukEmail } = await import('@/lib/email')
@@ -105,12 +105,12 @@ export async function POST(req: NextRequest) {
 </body>
 </html>`
 
-    // Kirim email ke semua user (batch)
+    // Kirim email ke semua pengguna (batch)
     let sentCount = 0
     let failedCount = 0
     const failures: string[] = []
 
-    for (const u of users) {
+    for (const u of penggunas) {
       try {
         await sendStrukEmail({
           to: u.email,
@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
       success: true,
       sentCount,
       failedCount,
-      total: users.length,
+      total: penggunas.length,
       failures: failures.slice(0, 10),
     })
   } catch (error: any) {

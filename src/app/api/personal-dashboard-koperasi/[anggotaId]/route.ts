@@ -12,7 +12,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ang
   const anggota = await db.koperasiAnggota.findUnique({
     where: { id: anggotaId },
     include: {
-      user: true,
+      pengguna: true,
       simpananSaldos: true,
       simpananTx: { orderBy: { tanggalTransaksi: 'desc' }, take: 50 },
       pinjamans: {
@@ -84,6 +84,42 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ang
     ? Math.max(0, (now.getFullYear() - anggota.tanggalBergabung.getFullYear()) * 12 + (now.getMonth() - anggota.tanggalBergabung.getMonth()))
     : 0
 
+  const setting = await db.koperasiSetting.findFirst()
+  const nominalWajib = setting ? toNumber(setting.nominalSimpananWajib) : 10000
+  const totalMonthsCovered = nominalWajib > 0 ? Math.floor(simpananWajib / nominalWajib) : 0
+
+  const joinDate = anggota.tanggalBergabung ? new Date(anggota.tanggalBergabung) : (anggota.createdAt ? new Date(anggota.createdAt) : now)
+  const joinYear = joinDate.getFullYear()
+  const joinMonth = joinDate.getMonth() + 1
+
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() + 1
+
+  const MONTH_NAMES_ID = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  ]
+  const totalMonthsToGenerate = Math.max(12, totalMonthsCovered + 6)
+  const jadwalSimpananWajib = Array.from({ length: totalMonthsToGenerate }, (_, i) => {
+    const mYear = joinYear + Math.floor((joinMonth - 1 + i) / 12)
+    const mMonth = ((joinMonth - 1 + i) % 12) + 1
+    const isPaid = i < totalMonthsCovered
+    const isPastOrCurrent = (mYear < currentYear) || (mYear === currentYear && mMonth <= currentMonth)
+    const isCurrent = mYear === currentYear && mMonth === currentMonth
+
+    return {
+      monthIndex: i + 1,
+      year: mYear,
+      month: mMonth,
+      label: `${MONTH_NAMES_ID[mMonth - 1]} ${mYear}`,
+      isPaid,
+      status: isPaid ? 'lunas' : (isPastOrCurrent ? 'tertunggak' : 'belum_tempo'),
+      statusText: isPaid ? 'Sudah Lunas' : (isPastOrCurrent ? 'Belum Bayar' : 'Belum Jatuh Tempo'),
+      nominal: nominalWajib,
+      isCurrent,
+    }
+  })
+
   return NextResponse.json({
     profile: {
       id: anggota.id,
@@ -95,13 +131,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ang
       status: anggota.status,
       tanggalBergabung: anggota.tanggalBergabung,
       lamaBulan,
-      email: anggota.user?.email,
+      email: anggota.pengguna?.email,
     },
     simpanan: {
       pokok: simpananPokok,
       wajib: simpananWajib,
       sukarela: simpananSukarela,
       totalKasTersimpan,
+    },
+    simpananWajibInfo: {
+      nominalWajib,
+      saldoWajib: simpananWajib,
+      totalMonthsCovered,
+      lunasSampaiBulan: totalMonthsCovered > 0 ? jadwalSimpananWajib[totalMonthsCovered - 1]?.label : null,
+      jadwal: jadwalSimpananWajib,
     },
     pinjaman: {
       pinjamanAktifCount: pinjamanAktif.length,

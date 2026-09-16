@@ -3,11 +3,11 @@ import { db } from '@/lib/db'
 import { parseRoles, toNumber } from '@/lib/format'
 import { nextMemberCode } from '@/lib/business'
 
-// PUT: update user + SYNC everything (roles → create/delete anggota koperasi, balance, member code)
+// PUT: update pengguna + SYNC everything (roles → create/delete anggota koperasi, saldo, member code)
 // When "Perbarui & Sinkronisasi" is clicked:
-// - Update user fields (name, email, nik, phone, address, password, emailVerified, roles)
-// - If 'nasabah' role ADDED: ensure balance exists + generate member code BS***
-// - If 'nasabah' role REMOVED: clear member code, keep balance (for history)
+// - Update pengguna fields (name, email, nik, phone, address, password, emailVerified, roles)
+// - If 'nasabah' role ADDED: ensure saldo exists + generate member code BS***
+// - If 'nasabah' role REMOVED: clear member code, keep saldo (for history)
 // - If 'koperasi' role ADDED: create KoperasiAnggota (KP***) + 3 simpanan saldos + set isMember
 // - If 'koperasi' role REMOVED: mark anggota as 'keluar' (soft delete to preserve history)
 // - isMember flag synced with koperasi role
@@ -24,12 +24,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     password?: string
     emailVerified: boolean
     roles: string[]
+    verificationStatus?: string
   }
 
-  const user = await db.user.findUnique({ where: { id }, include: { koperasiAnggota: true, balance: true } })
-  if (!user) return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 })
+  const pengguna = await db.pengguna.findUnique({ where: { id }, include: { koperasiAnggota: true, saldo: true } })
+  if (!pengguna) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
 
-  const oldRoles = parseRoles(user.roles)
+  const oldRoles = parseRoles(pengguna.roles)
   const newRoles = roles || []
   const hadNasabah = oldRoles.includes('nasabah')
   const hasNasabah = newRoles.includes('nasabah')
@@ -38,7 +39,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const syncLog: string[] = []
 
-  // 1. Update user basic fields
   const updateData: any = {
     name,
     email,
@@ -47,36 +47,44 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     address: address || null,
     roles: JSON.stringify(newRoles),
     isMember: hasKoperasi,
-    emailVerifiedAt: emailVerified ? (user.emailVerifiedAt || new Date()) : null,
+    emailVerifiedAt: emailVerified ? (pengguna.emailVerifiedAt || new Date()) : null,
   }
+  
+  if (body.verificationStatus) {
+    updateData.verificationStatus = body.verificationStatus
+    if (body.verificationStatus === 'verified' && pengguna.verificationStatus !== 'verified') {
+      updateData.adminVerifiedAt = new Date()
+    }
+  }
+
   if (password && password.trim()) {
     updateData.password = password
   }
-  if (hasKoperasi && !user.memberJoinedAt) {
+  if (hasKoperasi && !pengguna.memberJoinedAt) {
     updateData.memberJoinedAt = new Date()
   }
 
-  // 2. Nasabah sync — ensure balance + member code whenever nasabah role is present
+  // 2. Nasabah sync — ensure saldo + member code whenever nasabah role is present
   if (hasNasabah) {
-    if (!user.balance) {
-      await db.balance.create({ data: { userId: id } })
-      syncLog.push('Created balance record')
+    if (!pengguna.saldo) {
+      await db.saldo.create({ data: { penggunaId: id } })
+      syncLog.push('Created saldo record')
     }
-    if (!user.memberCode) {
+    if (!pengguna.memberCode) {
       updateData.memberCode = await nextMemberCode('BS')
       syncLog.push(`Generated member code BS: ${updateData.memberCode}`)
     }
   }
   if (!hasNasabah && hadNasabah) {
-    // Removed nasabah role → clear member code (keep balance for history)
-    if (user.memberCode) {
+    // Removed nasabah role → clear member code (keep saldo for history)
+    if (pengguna.memberCode) {
       updateData.memberCode = null
       syncLog.push('Cleared member code (nasabah role removed)')
     }
   }
 
   // 3. Koperasi sync — create anggota whenever koperasi role is present but anggota missing
-  if (hasKoperasi && !user.koperasiAnggota) {
+  if (hasKoperasi && !pengguna.koperasiAnggota) {
     // First check if there's an existing pasif anggota with same noKtp or nama — reactivate it instead of creating new
     const existingPasif = await db.koperasiAnggota.findFirst({
       where: {
@@ -96,7 +104,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         data: {
           status: 'aktif',
           tanggalKeluar: null,
-          userId: id,
+          penggunaId: id,
           nama: name,
           noKtp: nik || '',
           noTelepon: phone,
@@ -135,7 +143,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           alamat: address,
           status: 'aktif',
           tanggalBergabung: new Date(),
-          userId: id,
+          penggunaId: id,
         },
       })
       for (const jenis of ['pokok', 'wajib', 'sukarela'] as const) {
@@ -146,25 +154,25 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       syncLog.push(`Created anggota koperasi: ${nomor} + 3 simpanan saldos`)
     }
   }
-  if (!hasKoperasi && hadKoperasi && user.koperasiAnggota) {
+  if (!hasKoperasi && hadKoperasi && pengguna.koperasiAnggota) {
     // Removed koperasi role → mark anggota as 'pasif' (inactive) to preserve history & allow reactivation
     await db.koperasiAnggota.update({
-      where: { id: user.koperasiAnggota.id },
-      data: { status: 'pasif', userId: null },
+      where: { id: pengguna.koperasiAnggota.id },
+      data: { status: 'pasif', penggunaId: null },
     })
     syncLog.push('Menonaktifkan anggota koperasi (status: pasif)')
   }
-  if (hasKoperasi && user.koperasiAnggota && user.koperasiAnggota.status !== 'aktif') {
+  if (hasKoperasi && pengguna.koperasiAnggota && pengguna.koperasiAnggota.status !== 'aktif') {
     // Reactivate anggota if it was pasif/keluar
     await db.koperasiAnggota.update({
-      where: { id: user.koperasiAnggota.id },
-      data: { status: 'aktif', tanggalKeluar: null, userId: id, nama: name, noKtp: nik || '', noTelepon: phone, alamat: address },
+      where: { id: pengguna.koperasiAnggota.id },
+      data: { status: 'aktif', tanggalKeluar: null, penggunaId: id, nama: name, noKtp: nik || '', noTelepon: phone, alamat: address },
     })
     syncLog.push('Mengaktifkan kembali anggota koperasi')
-  } else if (hasKoperasi && user.koperasiAnggota && user.koperasiAnggota.status === 'aktif') {
+  } else if (hasKoperasi && pengguna.koperasiAnggota && pengguna.koperasiAnggota.status === 'aktif') {
     // Update anggota info (name, phone, address) to keep in sync
     await db.koperasiAnggota.update({
-      where: { id: user.koperasiAnggota.id },
+      where: { id: pengguna.koperasiAnggota.id },
       data: {
         nama: name,
         noKtp: nik || '',
@@ -174,15 +182,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     })
   }
 
-  // 4. Execute user update
-  const updated = await db.user.update({
+  // 4. Execute pengguna update
+  const updated = await db.pengguna.update({
     where: { id },
     data: updateData,
-    include: { balance: true, koperasiAnggota: { include: { simpananSaldos: true } } },
+    include: { saldo: true, koperasiAnggota: { include: { simpananSaldos: true } } },
   })
 
   return NextResponse.json({
-    user: updated,
+    pengguna: updated,
     syncLog,
     changes: {
       rolesChanged: JSON.stringify(oldRoles.sort()) !== JSON.stringify(newRoles.sort()),
@@ -196,20 +204,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const user = await db.user.findUnique({ where: { id }, include: { koperasiAnggota: true, balance: true } })
-  if (!user) return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 })
-  if (user.email === 'admin@gmail.com') return NextResponse.json({ error: 'Admin utama tidak dapat dihapus' }, { status: 400 })
+  const pengguna = await db.pengguna.findUnique({ where: { id }, include: { koperasiAnggota: true, saldo: true } })
+  if (!pengguna) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
+  if (pengguna.email === 'admin@gmail.com') return NextResponse.json({ error: 'Admin utama tidak dapat dihapus' }, { status: 400 })
 
   // Cleanup related records
-  if (user.koperasiAnggota) {
+  if (pengguna.koperasiAnggota) {
     await db.koperasiAnggota.update({
-      where: { id: user.koperasiAnggota.id },
-      data: { status: 'keluar', tanggalKeluar: new Date(), userId: null },
+      where: { id: pengguna.koperasiAnggota.id },
+      data: { status: 'keluar', tanggalKeluar: new Date(), penggunaId: null },
     })
   }
-  if (user.balance) {
-    await db.balance.delete({ where: { userId: id } })
+  if (pengguna.saldo) {
+    await db.saldo.delete({ where: { penggunaId: id } })
   }
-  await db.user.delete({ where: { id } })
+  await db.pengguna.delete({ where: { id } })
   return NextResponse.json({ ok: true })
 }

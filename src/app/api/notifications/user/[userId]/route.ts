@@ -3,30 +3,30 @@ import { db } from '@/lib/db'
 import { toNumber } from '@/lib/format'
 import { formatRupiah, formatDate } from '@/lib/format'
 
-// GET: Aggregated notifications for a user
-// Returns two kinds of notifications:
-//   1. "transaction" — proof/receipt that user did a transaction
+// GET: Aggregated notifikasis for a pengguna
+// Returns two kinds of notifikasis:
+//   1. "transaction" — proof/receipt that pengguna did a transaction
 //      (nabung, sedekah, koperasi simpanan/pinjaman/angsuran, toko orders)
 //   2. "reminder" — H-7 reminder & overdue alert for angsuran & simpanan wajib
 //
 // Query params:
-//   - limit (default 30) — max number of transaction notifications to return
+//   - limit (default 30) — max number of transaction notifikasis to return
 //   - type (optional) — 'transaction' | 'reminder' to filter
 export async function GET(req: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
-  const { userId } = await params
+  const { userId: penggunaId } = await params
   const url = new URL(req.url)
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '30', 10) || 30, 100)
   const typeFilter = url.searchParams.get('type') || ''
 
-  const user = await db.user.findUnique({
-    where: { id: userId },
+  const pengguna = await db.pengguna.findUnique({
+    where: { id: penggunaId },
     include: {
-      savingTransactions: {
+      transaksiNabungs: {
         orderBy: { transactedAt: 'desc' },
         take: 50,
         include: { items: true },
       },
-      sedekahTransactions: {
+      transaksiSedekahs: {
         orderBy: { transactedAt: 'desc' },
         take: 50,
         include: { items: true },
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
         orderBy: { createdAt: 'desc' },
         take: 50,
       },
-      redemptions: {
+      penukaranPoins: {
         orderBy: { redeemedAt: 'desc' },
         take: 50,
       },
@@ -56,28 +56,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
     },
   })
 
-  if (!user) return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 })
+  if (!pengguna) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
 
   // Also fetch TokoOrders — online orders are matched by buyerPhone or buyerEmail or createdBy
-  const phoneMatch = user.phone ? { buyerPhone: user.phone } : null
-  const emailMatch = user.email ? { buyerEmail: user.email } : null
+  const phoneMatch = pengguna.phone ? { buyerPhone: pengguna.phone } : null
+  const emailMatch = pengguna.email ? { buyerEmail: pengguna.email } : null
   const orClauses: any[] = []
   if (phoneMatch) orClauses.push(phoneMatch)
   if (emailMatch) orClauses.push(emailMatch)
-  orClauses.push({ createdById: user.id })
+  orClauses.push({ createdById: pengguna.id })
 
-  const tokoOrders = await db.tokoOrder.findMany({
+  const pesananTokos = await db.pesananToko.findMany({
     where: { OR: orClauses },
     orderBy: { createdAt: 'desc' },
     take: 50,
     include: { items: true },
   })
 
-  // Also fetch offline ProductSales recorded for this user (matched by phone or createdBy)
+  // Also fetch offline ProductSales recorded for this pengguna (matched by phone or createdBy)
   const posOrClauses: any[] = []
-  if (user.phone) posOrClauses.push({ buyerPhone: user.phone })
-  posOrClauses.push({ createdById: user.id })
-  const productSales = await db.productSale.findMany({
+  if (pengguna.phone) posOrClauses.push({ buyerPhone: pengguna.phone })
+  posOrClauses.push({ createdById: pengguna.id })
+  const penjualanProduks = await db.penjualanProduk.findMany({
     where: {
       OR: posOrClauses,
       channel: 'offline',
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
   const txNotifs: TxNotif[] = []
 
   // 1. Saving transactions (nabung)
-  for (const t of user.savingTransactions) {
+  for (const t of pengguna.transaksiNabungs) {
     const totalNilai = t.items.reduce((s, it) => s + toNumber(it.subtotal), 0)
     const totalBerat = t.items.reduce((s, it) => s + toNumber(it.quantity), 0)
     txNotifs.push({
@@ -116,7 +116,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
   }
 
   // 2. Sedekah transactions
-  for (const t of user.sedekahTransactions) {
+  for (const t of pengguna.transaksiSedekahs) {
     const beratBersih = t.totalWeightBersih != null ? toNumber(t.totalWeightBersih) : toNumber(t.totalWeight)
     txNotifs.push({
       id: `sedekah-${t.id}`,
@@ -131,7 +131,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
   }
 
   // 3. Penarikan Saldo transactions (Withdrawals)
-  for (const w of user.withdrawals || []) {
+  for (const w of pengguna.withdrawals || []) {
     txNotifs.push({
       id: `penarikan-${w.id}`,
       category: 'bank_sampah',
@@ -144,8 +144,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
     })
   }
 
-  // 4. Pelepasan Saldo Tertahan (Balance Releases)
-  for (const r of user.balanceReleasesAsUser || []) {
+  // 4. Pelepasan Saldo Tertahan (Saldo Releases)
+  for (const r of pengguna.balanceReleasesAsUser || []) {
     txNotifs.push({
       id: `release-${r.id}`,
       category: 'bank_sampah',
@@ -159,7 +159,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
   }
 
   // 5. Penukaran Poin Reward (Redemptions)
-  for (const rd of user.redemptions || []) {
+  for (const rd of pengguna.penukaranPoins || []) {
     txNotifs.push({
       id: `penukaran-${rd.id}`,
       category: 'bank_sampah',
@@ -173,8 +173,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
   }
 
   // 6. Koperasi simpanan transactions
-  if (user.koperasiAnggota) {
-    for (const tx of user.koperasiAnggota.simpananTx) {
+  if (pengguna.koperasiAnggota) {
+    for (const tx of pengguna.koperasiAnggota.simpananTx) {
       const isSetor = tx.tipe === 'setor'
       txNotifs.push({
         id: `simpanan-${tx.id}`,
@@ -184,12 +184,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
         message: `${isSetor ? 'Setor' : 'Tarik'} simpanan ${tx.jenisSimpanan} sebesar ${formatRupiah(toNumber(tx.jumlah))}. Saldo: ${formatRupiah(toNumber(tx.saldoSesudah))}.`,
         amount: toNumber(tx.jumlah),
         timestamp: tx.tanggalTransaksi.toISOString(),
-        status: 'completed',
+        status: 'sukses',
       })
     }
 
     // 4. Koperasi pinjaman (pemberian pinjaman langsung berjalan)
-    for (const loan of user.koperasiAnggota.pinjamans) {
+    for (const loan of pengguna.koperasiAnggota.pinjamans) {
       txNotifs.push({
         id: `pinjaman-${loan.id}`,
         category: 'koperasi',
@@ -217,8 +217,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
     }
   }
 
-  // 6. Toko orders (online product purchases)
-  for (const o of tokoOrders) {
+  // 6. Toko orders (online produk purchases)
+  for (const o of pesananTokos) {
     const itemCount = o.items.reduce((s, it) => s + toNumber(it.quantity), 0)
     let title = 'Pesanan Produk Dibuat'
     let message = `Pesanan ${o.orderNumber}: ${itemCount} item, total ${formatRupiah(toNumber(o.totalBayar))}.`
@@ -251,7 +251,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
   }
 
   // 7. Offline ProductSales
-  for (const s of productSales) {
+  for (const s of penjualanProduks) {
     txNotifs.push({
       id: `pos-${s.id}`,
       category: 'penjualan_produk',
@@ -264,11 +264,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
     })
   }
 
-  // Sort transaction notifications by timestamp desc
+  // Sort transaction notifikasis by timestamp desc
   txNotifs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
   // ============================
-  // REMINDERS (due-date notifications)
+  // REMINDERS (due-date notifikasis)
   // ============================
   type ReminderNotif = {
     id: string
@@ -285,9 +285,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
 
   const reminders: ReminderNotif[] = []
 
-  if (user.koperasiAnggota) {
+  if (pengguna.koperasiAnggota) {
     // Angsuran reminders for active loans
-    for (const loan of user.koperasiAnggota.pinjamans) {
+    for (const loan of pengguna.koperasiAnggota.pinjamans) {
       if (loan.status !== 'berjalan') continue
       if (!loan.tanggalPencairan) continue
       const sudahBayar = loan.angsurans?.length || 0
@@ -319,7 +319,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
     }
 
     // Simpanan wajib reminder — due date = last setor + 1 month
-    const wajibTx = user.koperasiAnggota.simpananTx
+    const wajibTx = pengguna.koperasiAnggota.simpananTx
       .filter((t) => t.jenisSimpanan === 'wajib' && t.tipe === 'setor')
       .sort((a, b) => b.tanggalTransaksi.getTime() - a.tanggalTransaksi.getTime())
     const lastWajib = wajibTx[0]

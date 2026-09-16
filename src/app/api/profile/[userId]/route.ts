@@ -7,9 +7,9 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const { userId } = await params
-    const user = await db.user.findUnique({
-      where: { id: userId },
+    const { userId: penggunaId } = await params
+    const pengguna = await db.pengguna.findUnique({
+      where: { id: penggunaId },
       select: {
         id: true,
         memberCode: true,
@@ -25,10 +25,10 @@ export async function GET(
         createdAt: true,
       },
     })
-    if (!user) {
-      return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 })
+    if (!pengguna) {
+      return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
     }
-    return NextResponse.json({ user })
+    return NextResponse.json({ pengguna })
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'Gagal memuat profil' }, { status: 500 })
   }
@@ -40,7 +40,7 @@ export async function PATCH(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const { userId } = await params
+    const { userId: penggunaId } = await params
     const body = await req.json()
     const { name, phone, address, nik, currentPassword, newPassword } = body as {
       name?: string
@@ -51,10 +51,10 @@ export async function PATCH(
       newPassword?: string
     }
 
-    // Fetch existing user (with password for verification)
-    const existing = await db.user.findUnique({ where: { id: userId } })
+    // Fetch existing pengguna (with password for verification)
+    const existing = await db.pengguna.findUnique({ where: { id: penggunaId } })
     if (!existing) {
-      return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 })
+      return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
     }
 
     const updateData: any = {}
@@ -64,11 +64,11 @@ export async function PATCH(
     if (nik !== undefined && nik.trim()) {
       // Check uniqueness if changing
       if (nik.trim() !== existing.nik) {
-        const conflict = await db.user.findFirst({
-          where: { nik: nik.trim(), NOT: { id: userId } },
+        const conflict = await db.pengguna.findFirst({
+          where: { nik: nik.trim(), NOT: { id: penggunaId } },
         })
         if (conflict) {
-          return NextResponse.json({ error: 'NIK sudah digunakan user lain' }, { status: 400 })
+          return NextResponse.json({ error: 'NIK sudah digunakan pengguna lain' }, { status: 400 })
         }
         updateData.nik = nik.trim()
       }
@@ -89,8 +89,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Tidak ada perubahan untuk disimpan' }, { status: 400 })
     }
 
-    const updated = await db.user.update({
-      where: { id: userId },
+    const updated = await db.pengguna.update({
+      where: { id: penggunaId },
       data: updateData,
       select: {
         id: true,
@@ -105,7 +105,7 @@ export async function PATCH(
       },
     })
 
-    return NextResponse.json({ user: updated, message: 'Profil berhasil diperbarui' })
+    return NextResponse.json({ pengguna: updated, message: 'Profil berhasil diperbarui' })
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'Gagal memperbarui profil' }, { status: 500 })
   }

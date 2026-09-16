@@ -21,8 +21,8 @@ import {
 import { toast } from 'sonner'
 import {
   FileBarChart, TrendingUp, TrendingDown, Wallet, Banknote, HandCoins,
-  ShoppingBag, Package, Recycle, Landmark, ArrowUpRight, ArrowDownRight,
-  Coins, AlertCircle, Printer, Leaf, PiggyBank, Store, CheckCircle2, XCircle,
+  ShoppingBag, Package, Recycle, Info, Landmark, ArrowUpRight, ArrowDownRight,
+  Coins, AlertCircle, Printer, Leaf, PiggyBank, Store, CheckCircle2, XCircle, LineChart,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -185,6 +185,7 @@ function LaporanBankSampah() {
   const [periode, setPeriode] = useState('1thn')
   const [dari, setDari] = useState('')
   const [sampai, setSampai] = useState('')
+  const [buku, setBuku] = useState('utama')
   const [expandedMitraTx, setExpandedMitraTx] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -194,6 +195,7 @@ function LaporanBankSampah() {
         periode,
         dari: periode === 'custom' ? dari : undefined,
         sampai: periode === 'custom' ? sampai : undefined,
+        buku,
       })
       setData(d)
     } catch (e: any) {
@@ -201,27 +203,44 @@ function LaporanBankSampah() {
     } finally {
       setLoading(false)
     }
-  }, [periode, dari, sampai])
+  }, [periode, dari, sampai, buku])
 
   useEffect(() => { load() }, [load])
 
   if (loading || !data) return <ReportSkeleton />
 
   const r = data.ringkasan
-  const isProfit = r.labaRugiOperasional >= 0
+  const op = data.operasional
+
+  // Kalkulasi Hasil Usaha (Keuntungan)
+  // Keuntungan = Penjualan ke Mitra - Nilai Beli Sampah dari Nasabah - Biaya Operasional
+  const nilaiSampahBeli = Number(op.penjualanMitra?.totalBeliNasabah || 0)
+  const penjualanMitra = Number(op.penjualanMitra?.totalJualMitra || 0)
+  const marginKotor = penjualanMitra - nilaiSampahBeli
+  const keuntungan = marginKotor - r.bebanOperasional
 
   return (
     <div id="printable-laporan" className="space-y-4">
+      {/* TAB FILTER: UTAMA / NASABAH */}
+      <div className="print:hidden bg-emerald-50/50 p-2 rounded-xl border border-emerald-100 w-fit">
+        <Tabs value={buku} onValueChange={setBuku}>
+          <TabsList className="h-auto p-1 bg-white border border-emerald-100">
+            <TabsTrigger value="utama" className="px-4 py-2 text-xs sm:text-sm data-[state=active]:bg-emerald-600 data-[state=active]:text-white">Kas Utama</TabsTrigger>
+            <TabsTrigger value="nasabah" className="px-4 py-2 text-xs sm:text-sm data-[state=active]:bg-emerald-600 data-[state=active]:text-white">Kas Nasabah</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
       {/* Header card (print:hidden) */}
       <Card className="border-emerald-200 print:hidden">
         <CardHeader className="pb-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-emerald-900">
-                <Recycle className="size-5" /> Laporan Bank Sampah
+                <Recycle className="size-5" /> Laporan Kas Operasional
               </CardTitle>
               <CardDescription className="mt-1">
-                Periode: {formatDate(data.periode.start)} — {formatDate(data.periode.end)}
+                Ringkasan uang masuk, uang keluar, dan hasil kegiatan Bank Sampah
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-end gap-2">
@@ -236,321 +255,312 @@ function LaporanBankSampah() {
 
       {/* Print header */}
       <div className="hidden print:block print-header">
-        <h1 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '4px' }}>LAPORAN BANK SAMPAH</h1>
+        <h1 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '4px' }}>LAPORAN KAS OPERASIONAL</h1>
         <p style={{ fontSize: '12px', marginBottom: '2px' }}>Bank Sampah Sukamaju Sejahtera</p>
         <p style={{ fontSize: '11px', color: '#555' }}>Periode: {formatDate(data.periode.start)} — {formatDate(data.periode.end)}</p>
         <hr style={{ margin: '8px 0', border: 'none', borderTop: '1px solid #999' }} />
       </div>
 
-      {/* HASIL UTAMA: Untung atau Rugi */}
-      <ResultCard
-        isProfit={isProfit}
-        label={isProfit ? '✓ BANK SAMPAH UNTUNG' : '✗ BANK SAMPAH RUGI'}
-        amount={formatRupiah(Math.abs(r.labaRugiOperasional))}
-        sub={isProfit
-          ? `Pendapatan (${formatRupiah(r.totalPendapatan)}) lebih besar dari biaya (${formatRupiah(r.bebanOperasional)})`
-          : `Biaya (${formatRupiah(r.bebanOperasional)}) lebih besar dari pendapatan (${formatRupiah(r.totalPendapatan)})`
-        }
-      />
-
-      {/* ANALISIS RUGI (hanya muncul saat rugi) */}
-      {!isProfit && (
-        <Card className="border-rose-300 bg-rose-50/40">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base text-rose-900">
-              <AlertCircle className="size-4" /> Kenapa Rugi? Analisis Singkat
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 space-y-2">
-            <div className="rounded-lg border border-rose-200 bg-white/60 p-3 text-sm">
-              <p className="text-zinc-700">
-                <span className="font-semibold text-rose-700">Biaya operasional terlalu besar:</span>{' '}
-                {formatRupiah(r.bebanOperasional)} vs pendapatan {formatRupiah(r.totalPendapatan)}.
-                Selisih rugi = <span className="font-bold text-rose-700">{formatRupiah(Math.abs(r.labaRugiOperasional))}</span>.
-              </p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
-                <p className="text-xs font-bold uppercase text-amber-700">Saran: Kurangi Biaya</p>
-                <ul className="mt-1 space-y-0.5 text-[12px] text-amber-800">
-                  <li>• Cek apakah ada pengeluaran yang bisa ditunda</li>
-                  <li>• Negosiasi ulang biaya listrik/transport</li>
-                  <li>• Efisiensikan jam operasional</li>
-                </ul>
-              </div>
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
-                <p className="text-xs font-bold uppercase text-emerald-700">Saran: Tingkatkan Pendapatan</p>
-                <ul className="mt-1 space-y-0.5 text-[12px] text-emerald-800">
-                  <li>• Tingkatkan volume jual sampah ke mitra</li>
-                  <li>• Cari pengepul baru dengan harga lebih baik</li>
-                  <li>• Aktifkan penjualan produk olahan (margin tinggi)</li>
-                </ul>
-              </div>
-            </div>
-            {r.saldoKas < 0 && (
-              <div className="rounded-lg border-2 border-rose-400 bg-rose-100 p-3 text-sm">
-                <p className="font-bold text-rose-900">⚠ PERHATIAN: Kas Minus ({formatRupiah(r.saldoKas)})!</p>
-                <p className="mt-0.5 text-[12px] text-rose-800">Uang di kas tidak cukup. Segera lakukan top-up kas atau evaluasi pengeluaran mendesak.</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Ringkasan 3 angka penting */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className={cn('rounded-xl border p-4', isProfit ? 'border-emerald-200 bg-emerald-50/50' : 'border-zinc-200 bg-zinc-50')}>
+      {/* 4 CARD RINGKASAN UTAMA */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Total Uang Masuk */}
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
           <div className="flex items-center gap-2 text-emerald-700">
             <ArrowUpRight className="size-4" />
-            <p className="text-xs font-semibold uppercase">Uang Masuk</p>
+            <p className="text-xs font-semibold uppercase">Total Uang Masuk</p>
           </div>
-          <p className="mt-1 text-2xl font-black text-emerald-900">{formatRupiah(r.totalPendapatan)}</p>
-          <p className="text-[11px] text-emerald-600">{data.operasional.penjualanMitra.count} kali jual sampah ke mitra</p>
+          <p className="mt-1 text-2xl font-black text-emerald-900" title="Total seluruh kas masuk">
+            {formatRupiah(r.totalPendapatan)}
+          </p>
+          <p className="text-[11px] text-emerald-600 mt-1">Seluruh uang masuk (pendapatan & setoran)</p>
         </div>
-        <div className={cn('rounded-xl border p-4', !isProfit ? 'border-rose-300 bg-rose-50/50' : 'border-rose-200 bg-rose-50/50')}>
+
+        {/* Total Uang Keluar */}
+        <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4">
           <div className="flex items-center gap-2 text-rose-700">
             <ArrowDownRight className="size-4" />
-            <p className="text-xs font-semibold uppercase">Uang Keluar (Biaya)</p>
+            <p className="text-xs font-semibold uppercase">Total Uang Keluar</p>
           </div>
-          <p className="mt-1 text-2xl font-black text-rose-900">{formatRupiah(r.bebanOperasional)}</p>
-          <p className="text-[11px] text-rose-600">biaya operasional Bank Sampah</p>
+          <p className="mt-1 text-2xl font-black text-rose-900" title="Total seluruh kas keluar">
+            {formatRupiah(r.totalPengeluaran)}
+          </p>
+          <p className="text-[11px] text-rose-600 mt-1">Seluruh pengeluaran (biaya & penarikan nasabah)</p>
         </div>
-        <div className={cn('rounded-xl border p-4', r.saldoKas < 0 ? 'border-rose-300 bg-rose-50/50' : 'border-blue-200 bg-blue-50/50')}>
-          <div className={cn('flex items-center gap-2', r.saldoKas < 0 ? 'text-rose-700' : 'text-blue-700')}>
+
+        {/* Dynamic Card 3: Keuntungan (Utama) OR Kewajiban (Nasabah) */}
+        {buku === 'utama' ? (
+          <div className={cn('rounded-xl border p-4', keuntungan >= 0 ? 'border-blue-200 bg-blue-50/50' : 'border-amber-300 bg-amber-50/50')}>
+            <div className={cn('flex items-center gap-2', keuntungan >= 0 ? 'text-blue-700' : 'text-amber-700')}>
+              <LineChart className="size-4" />
+              <p className="text-xs font-semibold uppercase">Laba Rugi Jual Beli</p>
+            </div>
+            <p className={cn('mt-1 text-2xl font-black', keuntungan >= 0 ? 'text-blue-900' : 'text-amber-900')} title="Hasil jual sampah dikurangi nilai beli dan biaya operasional">
+              {formatRupiah(keuntungan)}
+            </p>
+            <p className={cn('text-[11px] mt-1', keuntungan >= 0 ? 'text-blue-600' : 'text-amber-700')}>
+              Hasil bersih operasional (Margin - Beban)
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4">
+            <div className="flex items-center gap-2 text-purple-700">
+              <Wallet className="size-4" />
+              <p className="text-xs font-semibold uppercase">Total Saldo Nasabah</p>
+            </div>
+            <p className="mt-1 text-2xl font-black text-purple-900" title="Total seluruh utang ke nasabah">
+              {formatRupiah(r.totalUtangNasabah)}
+            </p>
+            <p className="text-[11px] text-purple-600 mt-1">Seluruh kewajiban bayar koperasi ke nasabah</p>
+          </div>
+        )}
+
+        {/* Sisa Uang di Kas */}
+        <div className={cn('rounded-xl border p-4', r.saldoKas < 0 ? 'border-rose-300 bg-rose-50/50' : 'border-teal-200 bg-teal-50/50')}>
+          <div className={cn('flex items-center gap-2', r.saldoKas < 0 ? 'text-rose-700' : 'text-teal-700')}>
             <Wallet className="size-4" />
             <p className="text-xs font-semibold uppercase">Sisa Uang di Kas</p>
           </div>
-          <p className={cn('mt-1 text-2xl font-black', r.saldoKas < 0 ? 'text-rose-900' : 'text-blue-900')}>{formatRupiah(r.saldoKas)}</p>
-          <p className={cn('text-[11px]', r.saldoKas < 0 ? 'text-rose-600' : 'text-blue-600')}>{r.saldoKas < 0 ? '⚠ Kas minus!' : `utang ke nasabah: ${formatRupiah(r.totalUtangNasabah)}`}</p>
+          <p className={cn('mt-1 text-2xl font-black', r.saldoKas < 0 ? 'text-rose-900' : 'text-teal-900')} title="Saldo fisik kas saat ini">
+            {formatRupiah(r.saldoKas)}
+          </p>
+          <p className={cn('text-[11px] mt-1', r.saldoKas < 0 ? 'text-rose-600' : 'text-teal-600')}>
+            {r.saldoKas < 0 ? '⚠️ Kas fisik minus' : 'Uang tunai yang tersedia'}
+          </p>
         </div>
       </div>
 
-      {/* Rincian Pendapatan & Biaya */}
+      {r.saldoKas < 0 && (
+        <div className="rounded-lg border-2 border-rose-400 bg-rose-100 p-3 text-sm">
+          <p className="font-bold text-rose-900">⚠️ PERHATIAN: Kas Fisik Minus ({formatRupiah(r.saldoKas)})!</p>
+          <p className="mt-0.5 text-[12px] text-rose-800">Uang yang ada di kas tidak cukup. Lakukan penyesuaian saldo awal atau cek riwayat kas keluar.</p>
+        </div>
+      )}
+
+      {/* Info tambahan jika Kas Nasabah */}
+      {buku === 'nasabah' && (
+        <div className="rounded-lg border border-purple-200 bg-white p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 mt-4">
+          <div>
+            <h4 className="font-bold text-purple-900 flex items-center gap-2">
+              <Info className="size-4" /> Mengapa Total Saldo Nasabah {r.totalUtangNasabah > r.saldoKas ? 'lebih besar' : 'berbeda'} dari Sisa Uang di Kas?
+            </h4>
+            <p className="text-sm text-zinc-600 mt-1 max-w-3xl">
+              Uang di <b>Kas Nasabah</b> hanya bertambah ketika Bank Sampah <b>menjual sampah ke pengepul/mitra</b>. 
+              Sedangkan <b>Total Saldo Nasabah</b> langsung bertambah ketika nasabah <b>menabung sampah</b> (meskipun belum dijual).
+            </p>
+          </div>
+          <div className="shrink-0 bg-purple-50 p-3 rounded-lg border border-purple-100 min-w-[14rem]">
+            <div className="flex justify-between items-center text-sm mb-1">
+              <span className="text-zinc-600">Sisa Uang Tunai:</span>
+              <span className="font-bold text-teal-700">{formatRupiah(r.saldoKas)}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm mb-2 pb-2 border-b border-purple-200">
+              <span className="text-zinc-600">Est. Nilai Gudang:</span>
+              <span className="font-bold text-amber-600">+{formatRupiah(r.inventoryValueNasabah || 0)}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="font-bold text-purple-900">Total Proyeksi Aset:</span>
+              <span className="font-bold text-purple-900">{formatRupiah(r.saldoKas + (r.inventoryValueNasabah || 0))}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rincian Masuk & Keluar */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Dari mana uang masuk */}
         <Card className="border-emerald-200">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base text-emerald-900">
-              <ArrowUpRight className="size-4" /> Dari Mana Uang Masuk? (Rincian)
+          <CardHeader className="pb-2 border-b border-emerald-100/50">
+            <CardTitle className="flex items-center justify-between text-base text-emerald-900">
+              <div className="flex items-center gap-2">
+                <ArrowUpRight className="size-4" /> Dari Mana Uang Masuk?
+              </div>
+              <span className="text-sm font-bold">{formatRupiah(r.totalPendapatan)}</span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-0">
-            {/* Detail: Jual sampah ke mitra */}
-            <div className="py-2 border-b border-zinc-100">
+          <CardContent className="pt-3">
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Store className="size-4 text-emerald-500" />
-                  <div>
-                    <p className="text-sm font-medium text-zinc-900">Jual sampah ke pengepul/mitra</p>
-                    <p className="text-[11px] text-zinc-500">{data.operasional.penjualanMitra.count} transaksi · {formatNumber(data.operasional.penjualanMitra.totalWeight)} kg terjual</p>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-zinc-900">Penjualan ke Mitra</p>
+                    <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[9px] h-4 px-1.5 rounded-sm">Pendapatan Usaha</Badge>
                   </div>
+                  <p className="text-[11px] text-zinc-500">Hasil jual sampah ke pengepul</p>
                 </div>
                 <span className="text-sm font-semibold text-emerald-700">{formatRupiah(data.pendapatan.penjualanMitra)}</span>
               </div>
-            </div>
-            {/* Detail: Setoran awal */}
-            <div className="py-2 border-b border-zinc-100">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <PiggyBank className="size-4 text-emerald-500" />
-                  <div>
-                    <p className="text-sm font-medium text-zinc-900">Setoran awal kas</p>
-                    <p className="text-[11px] text-zinc-500">modal awal pendirian Bank Sampah</p>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-zinc-900">Modal / Setoran Awal</p>
+                    <Badge variant="outline" className="border-zinc-200 bg-zinc-50 text-zinc-600 text-[9px] h-4 px-1.5 rounded-sm">Bukan Keuntungan</Badge>
                   </div>
+                  <p className="text-[11px] text-zinc-500">Uang modal untuk operasional</p>
                 </div>
                 <span className="text-sm font-semibold text-emerald-700">{formatRupiah(data.pendapatan.setoranAwal)}</span>
               </div>
-            </div>
-            {data.pendapatan.penyesuaianPositif > 0 && (
-              <div className="py-2 border-b border-zinc-100">
+              {data.pendapatan.penyesuaianPositif > 0 && (
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="size-4 text-emerald-500" />
-                    <p className="text-sm font-medium text-zinc-900">Penyesuaian positif</p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-zinc-900">Penerimaan Lainnya</p>
+                      <Badge variant="outline" className="border-zinc-200 bg-zinc-50 text-zinc-600 text-[9px] h-4 px-1.5 rounded-sm">Lain-lain</Badge>
+                    </div>
+                    <p className="text-[11px] text-zinc-500">Penyesuaian kas sistem</p>
                   </div>
                   <span className="text-sm font-semibold text-emerald-700">{formatRupiah(data.pendapatan.penyesuaianPositif)}</span>
                 </div>
-              </div>
-            )}
-            {data.pendapatan.lainnya > 0 && (
-              <div className="py-2 border-b border-zinc-100">
+              )}
+              {data.pendapatan.lainnya > 0 && (
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Coins className="size-4 text-emerald-500" />
-                    <p className="text-sm font-medium text-zinc-900">Pendapatan lainnya</p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-zinc-900">Pendapatan Lainnya</p>
+                      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[9px] h-4 px-1.5 rounded-sm">Lain-lain</Badge>
+                    </div>
                   </div>
                   <span className="text-sm font-semibold text-emerald-700">{formatRupiah(data.pendapatan.lainnya)}</span>
                 </div>
-              </div>
-            )}
-            {/* Catatan: penjualan produk dipisah */}
+              )}
+            </div>
             {r.pendapatanProdukDipisah > 0 && (
-              <div className="mt-2 rounded-md border border-purple-200 bg-purple-50/50 px-3 py-2 text-[11px] text-purple-800">
+              <div className="mt-4 rounded-md border border-purple-200 bg-purple-50/50 px-3 py-2 text-[11px] text-purple-800">
                 <ShoppingBag className="mr-1 inline size-3" />
-                <span className="font-semibold">+ Penjualan produk olahan: {formatRupiah(r.pendapatanProdukDipisah)}</span> — dilaporkan terpisah di tab Penjualan Produk (agar tidak dobel hitung).
+                Ada <span className="font-semibold">{formatRupiah(r.pendapatanProdukDipisah)}</span> masuk dari penjualan barang olahan. Ini bisa dilihat terpisah di tab "Penjualan".
               </div>
             )}
-            <MoneyRow label="TOTAL UANG MASUK" value={r.totalPendapatan} tone="total" />
           </CardContent>
         </Card>
 
         {/* Ke mana uang keluar */}
         <Card className="border-rose-200">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base text-rose-900">
-              <ArrowDownRight className="size-4" /> Ke Mana Uang Keluar? (Rincian)
+          <CardHeader className="pb-2 border-b border-rose-100/50">
+            <CardTitle className="flex items-center justify-between text-base text-rose-900">
+              <div className="flex items-center gap-2">
+                <ArrowDownRight className="size-4" /> Ke Mana Uang Keluar?
+              </div>
+              <span className="text-sm font-bold">{formatRupiah(r.totalPengeluaran)}</span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-0">
-            {/* Detail: Biaya operasional */}
-            <div className="py-2 border-b border-zinc-100">
+          <CardContent className="pt-3">
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Coins className="size-4 text-rose-500" />
-                  <div>
-                    <p className="text-sm font-medium text-zinc-900">Biaya operasional</p>
-                    <p className="text-[11px] text-zinc-500">listrik, gaji, transport, pembelian alat, renovasi, dll</p>
-                  </div>
-                </div>
-                <span className={cn('text-sm font-semibold', data.pengeluaran.biayaOperasional > r.totalPendapatan ? 'text-rose-700 font-bold' : 'text-rose-700')}>{formatRupiah(data.pengeluaran.biayaOperasional)}</span>
-              </div>
-              {data.pengeluaran.biayaOperasional > r.totalPendapatan && (
-                <p className="mt-1 text-[11px] text-rose-600">⚠ Biaya ini lebih besar dari total pendapatan!</p>
-              )}
-            </div>
-            {/* Detail: Penarikan nasabah */}
-            <div className="py-2 border-b border-zinc-100">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Wallet className="size-4 text-zinc-400" />
-                  <div>
-                    <p className="text-sm font-medium text-zinc-900">Penarikan saldo nasabah</p>
-                    <p className="text-[11px] text-zinc-500">pelunasan utang ke nasabah (bukan kerugian)</p>
-                  </div>
-                </div>
-                <span className="text-sm font-semibold text-zinc-500">{formatRupiah(data.pengeluaran.penarikanNasabah)}</span>
-              </div>
-            </div>
-            {data.pengeluaran.penyesuaianNegatif > 0 && (
-              <div className="py-2 border-b border-zinc-100">
-                <div className="flex items-center justify-between">
+                <div>
                   <div className="flex items-center gap-2">
-                    <AlertCircle className="size-4 text-rose-500" />
-                    <p className="text-sm font-medium text-zinc-900">Penyesuaian negatif</p>
+                    <p className="text-sm font-medium text-zinc-900">Pembayaran ke Nasabah</p>
+                    <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 text-[9px] h-4 px-1.5 rounded-sm">Pengembalian Hak</Badge>
+                  </div>
+                  <p className="text-[11px] text-zinc-500">Penarikan uang hasil menabung nasabah</p>
+                </div>
+                <span className="text-sm font-semibold text-rose-700">{formatRupiah(data.pengeluaran.penarikanNasabah)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-zinc-900">Biaya Operasional</p>
+                    <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700 text-[9px] h-4 px-1.5 rounded-sm">Pengurang Keuntungan</Badge>
+                  </div>
+                  <p className="text-[11px] text-zinc-500">Gaji, listrik, bensin, operasional lainnya</p>
+                </div>
+                <span className="text-sm font-semibold text-rose-700">{formatRupiah(data.pengeluaran.biayaOperasional)}</span>
+              </div>
+              {data.pengeluaran.penyesuaianNegatif > 0 && (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-zinc-900">Penyesuaian Negatif</p>
+                      <Badge variant="outline" className="border-zinc-200 bg-zinc-50 text-zinc-600 text-[9px] h-4 px-1.5 rounded-sm">Lain-lain</Badge>
+                    </div>
                   </div>
                   <span className="text-sm font-semibold text-rose-700">{formatRupiah(data.pengeluaran.penyesuaianNegatif)}</span>
                 </div>
-              </div>
-            )}
-            {data.pengeluaran.lainnya > 0 && (
-              <div className="py-2 border-b border-zinc-100">
+              )}
+              {data.pengeluaran.lainnya > 0 && (
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Coins className="size-4 text-rose-500" />
-                    <p className="text-sm font-medium text-zinc-900">Pengeluaran lainnya</p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-zinc-900">Pengeluaran Lainnya</p>
+                      <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700 text-[9px] h-4 px-1.5 rounded-sm">Lain-lain</Badge>
+                    </div>
                   </div>
                   <span className="text-sm font-semibold text-rose-700">{formatRupiah(data.pengeluaran.lainnya)}</span>
                 </div>
-              </div>
-            )}
-            <MoneyRow label="TOTAL UANG KELUAR" value={r.totalPengeluaran} tone="total" />
-            <div className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-              <AlertCircle className="mr-1 inline size-3" />
-              Catatan: penarikan nasabah bukan kerugian — itu uang yang memang jadi hak nasabah yang sudah menabung.
+              )}
+            </div>
+            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2 text-[11px] text-amber-900">
+              <Wallet className="mr-1 inline size-3" />
+              <span className="font-semibold">Penting:</span> Pembayaran ke Nasabah BUKAN biaya kerugian Bank Sampah, melainkan uang simpanan yang diambil oleh mereka.
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* DETAIL MARGIN PENJUALAN MITRA */}
+      {/* Rincian Hasil Usaha */}
+      <Card className="border-blue-200">
+        <CardHeader className="pb-3 border-b border-blue-100/50">
+          <CardTitle className="flex items-center gap-2 text-base text-blue-900">
+            <LineChart className="size-4" /> Perhitungan Hasil Usaha (Keuntungan Bersih)
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Menghitung hasil murni dari aktivitas jual beli sampah dikurangi biaya operasional.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <div className="max-w-2xl bg-white rounded-lg border border-zinc-100 overflow-hidden">
+            <div className="flex justify-between p-3 border-b border-zinc-100">
+              <span className="text-sm text-zinc-600">Pemasukan Penjualan ke Mitra</span>
+              <span className="text-sm font-semibold text-emerald-700">{formatRupiah(penjualanMitra)}</span>
+            </div>
+            <div className="flex justify-between p-3 border-b border-zinc-100">
+              <span className="text-sm text-zinc-600">Dikurangi: Nilai Sampah (Beli dari Nasabah)</span>
+              <span className="text-sm font-semibold text-rose-700">- {formatRupiah(nilaiSampahBeli)}</span>
+            </div>
+            <div className="flex justify-between p-3 bg-zinc-50 border-b border-zinc-200">
+              <span className="text-sm font-medium text-zinc-800">Hasil Jual Sampah</span>
+              <span className="text-sm font-bold text-zinc-900">{formatRupiah(marginKotor)}</span>
+            </div>
+            <div className="flex justify-between p-3 border-b border-zinc-100">
+              <span className="text-sm text-zinc-600">Dikurangi: Biaya Operasional</span>
+              <span className="text-sm font-semibold text-rose-700">- {formatRupiah(r.bebanOperasional)}</span>
+            </div>
+            <div className={cn("flex justify-between p-4", keuntungan >= 0 ? "bg-emerald-50" : "bg-rose-50")}>
+              <span className={cn("text-base font-bold", keuntungan >= 0 ? "text-emerald-900" : "text-rose-900")}>
+                Keuntungan Bersih Bank Sampah
+              </span>
+              <span className={cn("text-lg font-black", keuntungan >= 0 ? "text-emerald-700" : "text-rose-700")}>
+                {formatRupiah(keuntungan)}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* DETAIL PENJUALAN MITRA (Tabel Margin lama) */}
       {data.penjualanMitraDetail && data.penjualanMitraDetail.length > 0 && (
-        <Card className="border-emerald-200">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base text-emerald-900">
-              <Store className="size-4" /> Detail Margin Penjualan Mitra
+        <Card className="border-zinc-200">
+          <CardHeader className="pb-2 border-b border-zinc-100">
+            <CardTitle className="flex items-center justify-between text-base text-zinc-800">
+              <div className="flex items-center gap-2">
+                <Store className="size-4" /> Rincian Penjualan per Transaksi
+              </div>
             </CardTitle>
-            <CardDescription className="text-[11px]">
-              Analisis margin (laba) per transaksi penjualan sampah ke mitra/pengepul. Modal = harga beli ke nasabah, Pendapatan = harga jual ke mitra.
+            <CardDescription className="text-xs">
+              Rincian keuntungan dari tiap penjualan ke mitra/pengepul.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 pt-0">
-            {/* Summary row */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-lg border border-amber-100 bg-amber-50/50 p-3">
-                <p className="text-[11px] font-semibold uppercase text-amber-700">Modal (Beli ke Nasabah)</p>
-                <p className="mt-1 text-lg font-bold text-amber-900">{formatRupiah(data.operasional.penjualanMitra.totalBeliNasabah ?? 0)}</p>
-              </div>
-              <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3">
-                <p className="text-[11px] font-semibold uppercase text-emerald-700">Pendapatan (Jual ke Mitra)</p>
-                <p className="mt-1 text-lg font-bold text-emerald-900">{formatRupiah(data.operasional.penjualanMitra.totalJualMitra ?? 0)}</p>
-              </div>
-              <div className={cn(
-                'rounded-lg border p-3',
-                (data.operasional.penjualanMitra.totalMargin ?? 0) >= 0
-                  ? 'border-emerald-200 bg-emerald-50/50'
-                  : 'border-rose-200 bg-rose-50/50',
-              )}>
-                <p className={cn(
-                  'text-[11px] font-semibold uppercase',
-                  (data.operasional.penjualanMitra.totalMargin ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700',
-                )}>Margin/Laba</p>
-                <p className={cn(
-                  'mt-1 text-lg font-bold',
-                  (data.operasional.penjualanMitra.totalMargin ?? 0) >= 0 ? 'text-emerald-900' : 'text-rose-900',
-                )}>{formatRupiah(data.operasional.penjualanMitra.totalMargin ?? 0)}</p>
-              </div>
-              <div className={cn(
-                'flex flex-col justify-between rounded-lg border p-3',
-                (data.operasional.penjualanMitra.totalMargin ?? 0) >= 0
-                  ? 'border-emerald-200 bg-emerald-50/50'
-                  : 'border-rose-200 bg-rose-50/50',
-              )}>
-                <div>
-                  <p className={cn(
-                    'text-[11px] font-semibold uppercase',
-                    (data.operasional.penjualanMitra.totalMargin ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700',
-                  )}>Margin %</p>
-                  <p className={cn(
-                    'mt-1 text-lg font-bold',
-                    (data.operasional.penjualanMitra.totalMargin ?? 0) >= 0 ? 'text-emerald-900' : 'text-rose-900',
-                  )}>{(Number(data.operasional.penjualanMitra.totalMarginPersen ?? 0)).toFixed(2)}%</p>
-                </div>
-                {data.operasional.penjualanMitra.isProfit === false ? (
-                  <Badge className="mt-1 w-fit bg-rose-500 text-white hover:bg-rose-500">
-                    <XCircle className="mr-1 size-3" /> RUGI
-                  </Badge>
-                ) : (
-                  <Badge className="mt-1 w-fit bg-emerald-500 text-white hover:bg-emerald-500">
-                    <CheckCircle2 className="mr-1 size-3" /> UNTUNG
-                  </Badge>
-                )}
-              </div>
-            </div>
-
-            {/* Warning if loss */}
-            {data.operasional.penjualanMitra.isProfit === false && (
-              <div className="flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-100 p-3 text-sm text-rose-900">
-                <AlertCircle className="mt-0.5 size-4 shrink-0 text-rose-600" />
-                <span>
-                  <span className="font-bold">⚠ Penjualan ke mitra RUGI!</span>{' '}
-                  Harga jual ke mitra lebih rendah dari harga beli ke nasabah. Tinjau kembali harga jual.
-                </span>
-              </div>
-            )}
-
-            {/* Transaction table */}
-            <div className="overflow-x-auto rounded-lg border border-emerald-100">
+          <CardContent className="pt-4">
+            <div className="overflow-x-auto rounded-lg border border-zinc-200">
               <Table>
-                <TableHeader className="bg-emerald-50/70">
+                <TableHeader className="bg-zinc-50">
                   <TableRow>
-                    <TableHead className="text-emerald-800">Tanggal</TableHead>
-                    <TableHead className="text-emerald-800">Mitra</TableHead>
-                    <TableHead className="text-right text-emerald-800">Berat (kg)</TableHead>
-                    <TableHead className="text-right text-emerald-800">Modal (Beli)</TableHead>
-                    <TableHead className="text-right text-emerald-800">Jual (Mitra)</TableHead>
-                    <TableHead className="text-right text-emerald-800">Margin</TableHead>
-                    <TableHead className="text-right text-emerald-800">Margin %</TableHead>
-                    <TableHead className="text-center text-emerald-800">Detail</TableHead>
+                    <TableHead className="text-zinc-600 text-xs">Tanggal</TableHead>
+                    <TableHead className="text-zinc-600 text-xs">Mitra</TableHead>
+                    <TableHead className="text-right text-zinc-600 text-xs">Berat (kg)</TableHead>
+                    <TableHead className="text-right text-zinc-600 text-xs">Nilai Sampah</TableHead>
+                    <TableHead className="text-right text-zinc-600 text-xs">Jual (Mitra)</TableHead>
+                    <TableHead className="text-right text-zinc-600 text-xs">Keuntungan</TableHead>
+                    <TableHead className="text-right text-zinc-600 text-xs">%</TableHead>
+                    <TableHead className="text-center text-zinc-600 text-xs">Item</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -560,23 +570,23 @@ function LaporanBankSampah() {
                     const isExpanded = expandedMitraTx === tx.id
                     return (
                       <Fragment key={tx.id}>
-                        <TableRow className={cn('border-emerald-50', !isTxProfit && 'bg-rose-50/30')}>
-                          <TableCell className="text-zinc-700">{formatDate(tx.tanggal)}</TableCell>
-                          <TableCell className="font-medium text-zinc-900">{tx.partner?.name ?? tx.partner ?? '-'}</TableCell>
-                          <TableCell className="text-right text-zinc-700">{formatNumber(tx.totalWeight ?? 0, 2)}</TableCell>
-                          <TableCell className="text-right text-amber-700">{formatRupiah(tx.totalBeliNasabah ?? 0)}</TableCell>
-                          <TableCell className="text-right text-emerald-700">{formatRupiah(tx.totalJualMitra ?? 0)}</TableCell>
-                          <TableCell className={cn('text-right font-bold', isTxProfit ? 'text-emerald-900' : 'text-rose-900')}>
+                        <TableRow className={cn('border-zinc-100', !isTxProfit && 'bg-rose-50/30')}>
+                          <TableCell className="text-zinc-700 text-xs">{formatDate(tx.tanggal)}</TableCell>
+                          <TableCell className="font-medium text-zinc-900 text-xs">{tx.mitra?.name ?? tx.mitra ?? '-'}</TableCell>
+                          <TableCell className="text-right text-zinc-700 text-xs">{formatNumber(tx.totalWeight ?? 0, 2)}</TableCell>
+                          <TableCell className="text-right text-amber-700 text-xs">{formatRupiah(tx.totalBeliNasabah ?? 0)}</TableCell>
+                          <TableCell className="text-right text-emerald-700 text-xs">{formatRupiah(tx.totalJualMitra ?? 0)}</TableCell>
+                          <TableCell className={cn('text-right font-bold text-xs', isTxProfit ? 'text-emerald-700' : 'text-rose-700')}>
                             {formatRupiah(margin)}
                           </TableCell>
-                          <TableCell className={cn('text-right', isTxProfit ? 'text-emerald-700' : 'text-rose-700')}>
-                            {(Number(tx.totalMarginPersen ?? 0)).toFixed(2)}%
+                          <TableCell className={cn('text-right text-xs', isTxProfit ? 'text-emerald-600' : 'text-rose-600')}>
+                            {(Number(tx.totalMarginPersen ?? 0)).toFixed(1)}%
                           </TableCell>
                           <TableCell className="text-center">
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-7 px-2 text-emerald-700 hover:bg-emerald-50"
+                              className="h-7 px-2 text-zinc-600 hover:bg-zinc-100 text-[11px]"
                               onClick={() => setExpandedMitraTx(isExpanded ? null : tx.id)}
                             >
                               {isExpanded ? 'Tutup' : 'Lihat'}
@@ -584,21 +594,19 @@ function LaporanBankSampah() {
                           </TableCell>
                         </TableRow>
                         {isExpanded && tx.items && tx.items.length > 0 && (
-                          <TableRow className="bg-emerald-50/30">
+                          <TableRow className="bg-zinc-50/50">
                             <TableCell colSpan={8} className="p-3">
-                              <div className="overflow-x-auto rounded-lg border border-emerald-100 bg-white">
+                              <div className="overflow-x-auto rounded-md border border-zinc-200 bg-white">
                                 <Table>
-                                  <TableHeader className="bg-emerald-50/60">
+                                  <TableHeader className="bg-zinc-50">
                                     <TableRow>
-                                      <TableHead className="text-xs text-emerald-800">Kode</TableHead>
-                                      <TableHead className="text-xs text-emerald-800">Nama</TableHead>
-                                      <TableHead className="text-right text-xs text-emerald-800">Qty</TableHead>
-                                      <TableHead className="text-right text-xs text-emerald-800">Hrg Beli/kg</TableHead>
-                                      <TableHead className="text-right text-xs text-emerald-800">Hrg Jual/kg</TableHead>
-                                      <TableHead className="text-right text-xs text-emerald-800">Margin/kg</TableHead>
-                                      <TableHead className="text-right text-xs text-emerald-800">Sub. Beli</TableHead>
-                                      <TableHead className="text-right text-xs text-emerald-800">Sub. Jual</TableHead>
-                                      <TableHead className="text-right text-xs text-emerald-800">Margin</TableHead>
+                                      <TableHead className="text-[10px] text-zinc-500">Nama Barang</TableHead>
+                                      <TableHead className="text-right text-[10px] text-zinc-500">Jumlah</TableHead>
+                                      <TableHead className="text-right text-[10px] text-zinc-500">Hrg Nasabah</TableHead>
+                                      <TableHead className="text-right text-[10px] text-zinc-500">Hrg Mitra</TableHead>
+                                      <TableHead className="text-right text-[10px] text-zinc-500">Total Nilai</TableHead>
+                                      <TableHead className="text-right text-[10px] text-zinc-500">Total Jual</TableHead>
+                                      <TableHead className="text-right text-[10px] text-zinc-500">Keuntungan</TableHead>
                                     </TableRow>
                                   </TableHeader>
                                   <TableBody>
@@ -607,24 +615,17 @@ function LaporanBankSampah() {
                                       const itProfit = it.isProfit !== false
                                       return (
                                         <TableRow key={it.id ?? idx}>
-                                          <TableCell className="font-mono text-xs text-zinc-600">{it.itemCode ?? it.itemCodeSnapshot}</TableCell>
-                                          <TableCell className="text-xs font-medium text-zinc-900">
+                                          <TableCell className="text-[11px] font-medium text-zinc-800">
                                             {it.itemName ?? it.itemNameSnapshot}
-                                            {it.categoryName && (
-                                              <span className="block text-[10px] text-zinc-500">{it.categoryName}</span>
-                                            )}
                                           </TableCell>
-                                          <TableCell className="text-right text-xs text-zinc-700">
+                                          <TableCell className="text-right text-[11px] text-zinc-600">
                                             {formatNumber(it.qty ?? 0, 2)} {it.unit ?? ''}
                                           </TableCell>
-                                          <TableCell className="text-right text-xs text-amber-700">{formatRupiah(it.hargaBeliNasabah ?? 0)}</TableCell>
-                                          <TableCell className="text-right text-xs text-emerald-700">{formatRupiah(it.hargaJualMitra ?? 0)}</TableCell>
-                                          <TableCell className={cn('text-right text-xs', itProfit ? 'text-emerald-700' : 'text-rose-700')}>
-                                            {formatRupiah(it.marginPerUnit ?? 0)}
-                                          </TableCell>
-                                          <TableCell className="text-right text-xs text-amber-700">{formatRupiah(it.subtotalBeli ?? 0)}</TableCell>
-                                          <TableCell className="text-right text-xs text-emerald-700">{formatRupiah(it.subtotalJual ?? 0)}</TableCell>
-                                          <TableCell className={cn('text-right text-xs font-bold', itProfit ? 'text-emerald-900' : 'text-rose-900')}>
+                                          <TableCell className="text-right text-[11px] text-amber-700">{formatRupiah(it.hargaBeliNasabah ?? 0)}</TableCell>
+                                          <TableCell className="text-right text-[11px] text-emerald-700">{formatRupiah(it.hargaJualMitra ?? 0)}</TableCell>
+                                          <TableCell className="text-right text-[11px] text-amber-700">{formatRupiah(it.subtotalBeli ?? 0)}</TableCell>
+                                          <TableCell className="text-right text-[11px] text-emerald-700">{formatRupiah(it.subtotalJual ?? 0)}</TableCell>
+                                          <TableCell className={cn('text-right text-[11px] font-bold', itProfit ? 'text-emerald-700' : 'text-rose-700')}>
                                             {formatRupiah(itMargin)}
                                           </TableCell>
                                         </TableRow>
@@ -646,71 +647,35 @@ function LaporanBankSampah() {
         </Card>
       )}
 
-      {/* Info tambahan */}
-      <Card className="border-teal-200">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base text-teal-900">
-            <Leaf className="size-4" /> Aktivitas Operasional
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 p-3">
-              <div className="flex items-center gap-1.5 text-xs text-emerald-700"><Recycle className="size-3.5" /> Setoran Nabung</div>
-              <p className="mt-1 text-lg font-bold text-emerald-900">{data.operasional.nabung.count} kali</p>
-              <p className="text-xs text-emerald-700">{formatNumber(data.operasional.nabung.totalWeight)} kg · {formatRupiah(data.operasional.nabung.totalValue)}</p>
-            </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50/40 p-3">
-              <div className="flex items-center gap-1.5 text-xs text-amber-700"><HandCoins className="size-3.5" /> Sedekah Sampah</div>
-              <p className="mt-1 text-lg font-bold text-amber-900">{data.operasional.sedekah.count} kali</p>
-              <p className="text-xs text-amber-700">{formatNumber(data.operasional.sedekah.totalWeightBersih)} kg bersih</p>
-            </div>
-            <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3">
-              <div className="flex items-center gap-1.5 text-xs text-blue-700"><Store className="size-3.5" /> Jual ke Mitra</div>
-              <p className="mt-1 text-lg font-bold text-blue-900">{data.operasional.penjualanMitra.count} kali</p>
-              <p className="text-xs text-blue-700">{formatNumber(data.operasional.penjualanMitra.totalWeight)} kg terjual</p>
-            </div>
-          </div>
-          {r.pendapatanProdukDipisah > 0 && (
-            <div className="mt-3 flex items-start gap-2 rounded-md border border-purple-200 bg-purple-50/50 px-3 py-2 text-[11px] text-purple-800">
-              <ShoppingBag className="mt-0.5 size-3.5 shrink-0" />
-              <span>
-                <span className="font-semibold">Penjualan produk olahan ({formatRupiah(r.pendapatanProdukDipisah)})</span> dilaporkan terpisah di tab <span className="font-semibold">Penjualan Produk</span>. Uangnya tetap masuk ke kas Bank Sampah, tapi tidak dihitung di sini agar tidak dobel.
-              </span>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Tabel transaksi terbaru */}
-      <Card className="border-emerald-200">
-        <CardHeader>
-          <CardTitle className="text-base text-emerald-900">Transaksi Terbaru</CardTitle>
-          <CardDescription className="text-[11px]">
-            Riwayat uang masuk & keluar di kas Bank Sampah.
+      <Card className="border-zinc-200">
+        <CardHeader className="pb-3 border-b border-zinc-100">
+          <CardTitle className="text-base text-zinc-800">Riwayat Uang Masuk & Keluar</CardTitle>
+          <CardDescription className="text-xs">
+            Buku catatan pergerakan kas fisik terbaru.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-0">
           {data.transaksi.length === 0 ? (
             <p className="py-6 text-center text-sm text-zinc-400">Belum ada transaksi.</p>
           ) : (
-            <div className="max-h-80 overflow-auto">
+            <div className="max-h-80 overflow-auto border-x border-b border-zinc-100 rounded-b-lg">
               <Table>
-                <TableHeader className="bg-emerald-50 sticky top-0">
+                <TableHeader className="bg-zinc-50 sticky top-0">
                   <TableRow>
-                    <TableHead className="text-emerald-800">Tanggal</TableHead>
-                    <TableHead className="text-emerald-800">Keterangan</TableHead>
-                    <TableHead className="text-emerald-800 text-right">Masuk</TableHead>
-                    <TableHead className="text-emerald-800 text-right">Keluar</TableHead>
+                    <TableHead className="text-zinc-600 text-xs">Tanggal</TableHead>
+                    <TableHead className="text-zinc-600 text-xs">Keterangan</TableHead>
+                    <TableHead className="text-zinc-600 text-right text-xs">Uang Masuk</TableHead>
+                    <TableHead className="text-zinc-600 text-right text-xs">Uang Keluar</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.transaksi.map((t: any, i: number) => (
                     <TableRow key={i}>
-                      <TableCell className="text-xs text-zinc-600">{formatDateTime(t.transactedAt)}</TableCell>
-                      <TableCell className="text-xs text-zinc-700 max-w-xs truncate" title={t.keterangan || ''}>{t.keterangan || '-'}</TableCell>
-                      <TableCell className="text-right text-xs font-medium text-emerald-700">{t.tipe === 'masuk' ? formatRupiah(toNumber(t.jumlah)) : '—'}</TableCell>
-                      <TableCell className="text-right text-xs font-medium text-rose-700">{t.tipe === 'keluar' ? formatRupiah(toNumber(t.jumlah)) : '—'}</TableCell>
+                      <TableCell className="text-[11px] text-zinc-500 whitespace-nowrap">{formatDateTime(t.transactedAt)}</TableCell>
+                      <TableCell className="text-[11px] text-zinc-800 max-w-xs truncate" title={t.keterangan || ''}>{t.keterangan || '-'}</TableCell>
+                      <TableCell className="text-right text-[11px] font-medium text-emerald-600">{t.tipe === 'masuk' ? formatRupiah(toNumber(t.jumlah)) : '—'}</TableCell>
+                      <TableCell className="text-right text-[11px] font-medium text-rose-600">{t.tipe === 'keluar' ? formatRupiah(toNumber(t.jumlah)) : '—'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1039,7 +1004,7 @@ function LaporanPenjualanProduk() {
             <div className="mt-2 flex items-center gap-3 text-xs text-zinc-500">
               <span>{r.onlineTransactions} transaksi</span>
               <span>·</span>
-              <span>{formatNumber(r.onlineItemsSold, 0)} unit terjual</span>
+              <span>{formatNumber(r.onlineItemsSold, 0)} pcs terjual</span>
             </div>
           </CardContent>
         </Card>
@@ -1060,6 +1025,7 @@ function LaporanPenjualanProduk() {
                   <TableRow>
                     <TableHead className="text-purple-800">Produk</TableHead>
                     <TableHead className="text-purple-800 text-right">Terjual</TableHead>
+                    <TableHead className="text-purple-800 text-right">Modal</TableHead>
                     <TableHead className="text-purple-800 text-right">Penjualan</TableHead>
                     <TableHead className="text-purple-800 text-right">Laba</TableHead>
                   </TableRow>
@@ -1068,7 +1034,8 @@ function LaporanPenjualanProduk() {
                   {data.byProduct.slice(0, 15).map((p: any, i: number) => (
                     <TableRow key={i}>
                       <TableCell className="text-xs font-medium text-zinc-900 max-w-[160px] truncate" title={p.name}>{p.name}</TableCell>
-                      <TableCell className="text-right text-xs">{formatNumber(p.qty, 0)} unit</TableCell>
+                      <TableCell className="text-right text-xs">{formatNumber(p.qty, 0)} pcs</TableCell>
+                      <TableCell className="text-right text-xs font-medium text-amber-700">{formatRupiah(p.revenue - p.laba)}</TableCell>
                       <TableCell className="text-right text-xs font-medium text-purple-700">{formatRupiah(p.revenue)}</TableCell>
                       <TableCell className="text-right text-xs font-bold text-emerald-700">{formatRupiah(p.laba)}</TableCell>
                     </TableRow>

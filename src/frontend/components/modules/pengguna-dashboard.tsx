@@ -8,7 +8,7 @@ import {
   FileText, CreditCard, CheckCircle2, XCircle, Clock, AlertTriangle,
   Landmark, ShieldCheck, ShieldX, UserCircle, Info,
   HeartHandshake, Bell, BellRing, CalendarClock, CalendarDays, ChevronLeft, Loader2, Filter,
-  Unlock, Gift, Sprout, TrendingUp, ChevronRight, RotateCw, Search, Package,
+  Unlock, Gift, Sprout, TrendingUp, ChevronRight, RotateCw, Search, Package, CheckCheck, AlertCircle,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -18,15 +18,17 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { api } from '@/lib/api'
-import { formatRupiah, formatNumber, formatDate, formatDateTime, toNumber } from '@/lib/format'
+import { formatRupiah, formatNumber, formatDate, formatDateTime, toNumber, roleLabel } from '@/lib/format'
+import { sanitizeName, sanitizeNumber } from '@/lib/validation'
 import { cn } from '@/lib/utils'
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar, Cell } from 'recharts'
 import type { AuthUser } from '@/lib/auth'
-import { NotificationBell } from '@/components/modules/notification-bell'
+import { NotificationBell } from '@/components/modules/notifikasi-bell'
 
 type NotificationItem = {
   type: 'warning' | 'danger'
@@ -39,8 +41,8 @@ const PIE_COLORS = ['#10B981', '#F59E0B', '#8B5CF6', '#06B6D4', '#EC4899', '#84C
 
 type View = 'dashboard' | 'saldo' | 'nabung' | 'sedekah' | 'pencairan' | 'poin' | 'simpanan' | 'pinjaman' | 'ajukan_pinjaman' | 'bayar_angsuran' | 'pengaturan'
 
-export function UserDashboard({ user, onLogout, onSettings }: { user: AuthUser; onLogout: () => void; onSettings: () => void }) {
-  const [view, setView] = useState<View>('dashboard')
+export function UserDashboard({ pengguna, onLogout, onSettings }: { pengguna: AuthUser; onLogout: () => void; onSettings: () => void }) {
+  const [view, setView] = useState<View>(pengguna.roles.includes('nasabah') ? 'dashboard' : 'simpanan')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -51,12 +53,14 @@ export function UserDashboard({ user, onLogout, onSettings }: { user: AuthUser; 
   const [chartSampai, setChartSampai] = useState('')
   const reqId = useRef(0)
 
+
+
   const loadData = useCallback((isSilent = false) => {
-    if (!user?.id) return
+    if (!pengguna?.id) return
     const myId = ++reqId.current
     if (isSilent) setIsRefreshing(true)
     else setLoading(true)
-    api.personalDashboard(user.id, {
+    api.personalDashboard(pengguna.id, {
       chartRange: trenRange,
       chartDari: trenRange === 'custom' ? chartDari : undefined,
       chartSampai: trenRange === 'custom' ? chartSampai : undefined,
@@ -76,7 +80,7 @@ export function UserDashboard({ user, onLogout, onSettings }: { user: AuthUser; 
           setIsRefreshing(false)
         }
       })
-  }, [user?.id, trenRange, chartDari, chartSampai])
+  }, [pengguna?.id, trenRange, chartDari, chartSampai])
 
   useEffect(() => {
     loadData()
@@ -95,7 +99,6 @@ export function UserDashboard({ user, onLogout, onSettings }: { user: AuthUser; 
     { id: 'sedekah' as View, label: 'Sedekah Saya', icon: HeartHandshake, section: 'account' },
     { id: 'pencairan' as View, label: 'Pencairan', icon: ArrowDownToLine, section: 'account' },
     { id: 'poin' as View, label: 'Histori Poin', icon: Award, section: 'account' },
-    { id: 'pengaturan' as View, label: 'Pengaturan', icon: Settings, section: 'account' },
   ]
   const koperasiItems = [
     { id: 'simpanan' as View, label: 'Simpanan Saya', icon: PiggyBank, section: 'koperasi' },
@@ -124,11 +127,26 @@ export function UserDashboard({ user, onLogout, onSettings }: { user: AuthUser; 
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <NotificationBell userId={user.id} />
-            <span className="hidden text-sm font-medium text-white/90 sm:block">{user.name}</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm font-bold">
-              {user.name.charAt(0).toUpperCase()}
+            <NotificationBell penggunaId={pengguna.id} />
+            <div className="hidden flex-col items-end sm:flex mr-1">
+              <span className="text-sm font-medium text-white/90 leading-tight">{pengguna.name}</span>
+              <span className="text-[9px] font-semibold text-emerald-200/80 uppercase tracking-widest">
+                {pengguna.roles.includes('nasabah') && pengguna.roles.includes('koperasi') ? 'Nasabah & Koperasi' : pengguna.roles.includes('koperasi') ? 'Anggota Koperasi' : 'Nasabah'}
+              </span>
             </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100/20 text-sm font-bold text-white shadow-inner hover:bg-emerald-100/30 transition-colors">
+                  {pengguna.name.charAt(0).toUpperCase()}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={onLogout} className="text-rose-600 focus:text-rose-700 focus:bg-rose-50 cursor-pointer">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Keluar
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
@@ -140,11 +158,15 @@ export function UserDashboard({ user, onLogout, onSettings }: { user: AuthUser; 
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}>
           <nav className="flex h-full flex-col gap-1 overflow-y-auto p-3">
-            <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/50">Menu Utama</p>
-            {navItems.filter(n => n.section === 'main').map((item) => <NavButton key={item.id} item={item} view={view} setView={setView} setSidebarOpen={setSidebarOpen} />)}
-            <p className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/50">Akun Saya</p>
-            {navItems.filter(n => n.section === 'account').map((item) => <NavButton key={item.id} item={item} view={view} setView={setView} setSidebarOpen={setSidebarOpen} />)}
-            {user.roles.includes('koperasi') && (
+            {pengguna.roles.includes('nasabah') && (
+              <>
+                <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/50">Menu Utama</p>
+                {navItems.filter(n => n.section === 'main').map((item) => <NavButton key={item.id} item={item} view={view} setView={setView} setSidebarOpen={setSidebarOpen} />)}
+                <p className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/50">Akun Saya</p>
+                {navItems.filter(n => n.section === 'account').map((item) => <NavButton key={item.id} item={item} view={view} setView={setView} setSidebarOpen={setSidebarOpen} />)}
+              </>
+            )}
+            {pengguna.roles.includes('koperasi') && (
               <>
                 <p className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/50">Koperasi Saya</p>
                 {koperasiItems.map((item) => <NavButton key={item.id} item={item} view={view} setView={setView} setSidebarOpen={setSidebarOpen} />)}
@@ -158,6 +180,22 @@ export function UserDashboard({ user, onLogout, onSettings }: { user: AuthUser; 
         {/* Main content */}
         <main className="flex-1 overflow-x-hidden">
           <div className="p-4 lg:p-8">
+            {pengguna?.verificationStatus === 'pending_admin' && (
+              <div className="mb-6 overflow-hidden rounded-2xl border border-blue-200 bg-blue-50 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-start gap-4 p-5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                    <Clock className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-blue-900">Akun Anda sedang diverifikasi data nya</h3>
+                    <p className="mt-1.5 text-sm leading-relaxed text-blue-800/90">
+                      Pendaftaran dan email Anda telah berhasil diverifikasi. Saat ini data identitas Anda sedang dalam proses peninjauan oleh Admin. Anda akan dapat menikmati seluruh fitur dan layanan koperasi setelah proses verifikasi selesai.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             {loading ? (
               <div className="space-y-4">
                 <Skeleton className="h-32 w-full rounded-2xl" />
@@ -171,7 +209,7 @@ export function UserDashboard({ user, onLogout, onSettings }: { user: AuthUser; 
                 {view === 'dashboard' && (
                   <DashboardView
                     data={data}
-                    user={user}
+                    pengguna={pengguna}
                     trenRange={trenRange}
                     setTrenRange={setTrenRange}
                     chartDari={chartDari}
@@ -188,34 +226,27 @@ export function UserDashboard({ user, onLogout, onSettings }: { user: AuthUser; 
                 {view === 'sedekah' && <SedekahView data={data} />}
                 {view === 'pencairan' && <PencairanView data={data} />}
                 {view === 'poin' && <PoinView data={data} />}
-                {view === 'simpanan' && <SimpananView user={user} />}
-                {view === 'pinjaman' && <PinjamanView user={user} />}
-                {view === 'ajukan_pinjaman' && <AjukanPinjamanView data={data} user={user} />}
-                {view === 'bayar_angsuran' && <BayarAngsuranView user={user} />}
-                {view === 'pengaturan' && <PengaturanView user={user} />}
+                {view === 'simpanan' && <SimpananView pengguna={pengguna} />}
+                {view === 'pinjaman' && <PinjamanView pengguna={pengguna} />}
+                {view === 'ajukan_pinjaman' && <AjukanPinjamanView data={data} pengguna={pengguna} />}
+                {view === 'bayar_angsuran' && <BayarAngsuranView pengguna={pengguna} />}
               </>
             ) : null}
           </div>
         </main>
       </div>
 
-      {/* Footer */}
       <footer className="border-t border-emerald-900/20 bg-[#2d5016] py-3 text-white">
-        <div className="flex flex-col items-center justify-between gap-2 px-4 text-xs sm:flex-row lg:px-8">
+        <div className="flex flex-col items-center justify-center gap-2 px-4 text-xs sm:flex-row lg:px-8">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-xs font-bold">{user.name.charAt(0).toUpperCase()}</div>
-            <div className="leading-tight">
-              <p className="font-medium">{user.name}</p>
-              <p className="text-[10px] text-emerald-100/60">{user.email}</p>
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-xs font-bold">{pengguna.name.charAt(0).toUpperCase()}</div>
+            <div className="leading-tight text-center sm:text-left">
+              <p className="font-medium">{pengguna.name}</p>
+              <p className="text-[10px] text-emerald-100/60">{pengguna.email}</p>
+              <p className="text-[9px] font-semibold text-emerald-300 mt-0.5">
+                {pengguna.roles.includes('nasabah') && pengguna.roles.includes('koperasi') ? 'NASABAH & KOPERASI' : pengguna.roles.includes('koperasi') ? 'ANGGOTA KOPERASI' : 'NASABAH'}
+              </p>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setView('pengaturan')} className="text-xs text-white hover:bg-white/10">
-              <Settings className="mr-1.5 h-3.5 w-3.5" /> Pengaturan
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onLogout} className="text-xs text-white hover:bg-white/10">
-              <LogOut className="mr-1.5 h-3.5 w-3.5" /> Keluar
-            </Button>
           </div>
         </div>
       </footer>
@@ -237,7 +268,7 @@ function NavButton({ item, view, setView, setSidebarOpen }: { item: any; view: V
 }
 
 // ============================================================
-// Notification Banner (used in DashboardView)
+// Notifikasi Banner (used in DashboardView)
 // ============================================================
 function NotificationBanner({ type, title, message, icon: Icon }: NotificationItem) {
   const isDanger = type === 'danger'
@@ -277,7 +308,7 @@ function relativeDaysLabel(days: number): string {
 // ============================================================
 function DashboardView({
   data,
-  user,
+  pengguna,
   trenRange,
   setTrenRange,
   chartDari,
@@ -289,7 +320,7 @@ function DashboardView({
   lastUpdated,
 }: {
   data: any
-  user: AuthUser
+  pengguna: AuthUser
   trenRange: string
   setTrenRange: (r: string) => void
   chartDari: string
@@ -301,9 +332,9 @@ function DashboardView({
   lastUpdated?: Date
 }) {
   const { profile, saldo, trenTabungan, komposisiKategori, riwayat, koperasiInfo, periodLabel } = data
-  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [notifikasis, setNotifications] = useState<NotificationItem[]>([])
 
-  // Fetch active pinjaman + last simpanan wajib setor to compute due-date notifications
+  // Fetch active pinjaman + last simpanan wajib setor to compute due-date notifikasis
   useEffect(() => {
     if (!koperasiInfo?.anggotaId) return
     let cancelled = false
@@ -315,7 +346,7 @@ function DashboardView({
       if (cancelled) return
       const notifs: NotificationItem[] = []
 
-      // --- Angsuran due-date notifications ---
+      // --- Angsuran due-date notifikasis ---
       for (const loan of loans || []) {
         const tglCair = loan.tanggalPencairan ? new Date(loan.tanggalPencairan) : null
         if (!tglCair) continue
@@ -343,7 +374,7 @@ function DashboardView({
         }
       }
 
-      // --- Simpanan Wajib due-date notification ---
+      // --- Simpanan Wajib due-date notifikasi ---
       // Due date = last payment date + 1 month. Show warning if H-7 or overdue.
       const lastWajib = (wajibTx || [])[0]
       if (lastWajib?.tanggalTransaksi) {
@@ -413,9 +444,9 @@ function DashboardView({
   return (
     <div className="space-y-5">
       {/* Notifications (jatuh tempo angsuran & simpanan wajib) */}
-      {notifications.length > 0 && (
+      {notifikasis.length > 0 && (
         <div className="space-y-2">
-          {notifications.map((n, i) => <NotificationBanner key={i} {...n} />)}
+          {notifikasis.map((n, i) => <NotificationBanner key={i} {...n} />)}
         </div>
       )}
 
@@ -796,7 +827,7 @@ function SaldoView({ data }: { data: any }) {
         <p className="text-xs text-zinc-500 mt-0.5">Informasi akumulasi saldo tabungan sampah dan riwayat perolehannya</p>
       </div>
 
-      {/* Top Balance Cards - 3 Clean Cards (Satu Card Total Saldo) */}
+      {/* Top Saldo Cards - 3 Clean Cards (Satu Card Total Saldo) */}
       <div className="grid gap-4 sm:grid-cols-3">
         <Card className="border-0 p-5 shadow-sm ring-1 ring-emerald-200 bg-gradient-to-br from-emerald-50/70 via-emerald-50/20 to-white rounded-2xl">
           <div className="flex items-center justify-between">
@@ -1012,7 +1043,7 @@ function matchesDateFilter(dateStr: string | Date, preset: string, dari?: string
 function NabungView({ data }: { data: any }) {
   const rows = data.riwayat?.tabungan || []
   const masterCategories = data.masterData?.categories || []
-  const masterItems = data.masterData?.wasteItems || []
+  const masterItems = data.masterData?.jenisSampahs || []
 
   // Extract unique categories & items from rows + masterData
   const availableCategories = Array.from(new Set([
@@ -1099,10 +1130,11 @@ function NabungView({ data }: { data: any }) {
     return 0
   })
 
-  // Recalculate summary from filtered rows
-  const filteredNilai = filtered.reduce((s: number, r: any) => s + toNumber(r.nilai), 0)
-  const filteredBerat = filtered.reduce((s: number, r: any) => s + toNumber(r.berat), 0)
-  const filteredPoin = filtered.reduce((s: number, r: any) => s + toNumber(r.poin), 0)
+  // Recalculate summary from filtered rows (exclude rejected & pending)
+  const validFiltered = filtered.filter((r: any) => r.qcStatus === 'passed' || r.qcStatus === 'adjusted' || r.qcStatus === 'tidak_perlu')
+  const filteredNilai = validFiltered.reduce((s: number, r: any) => s + toNumber(r.nilai), 0)
+  const filteredBerat = validFiltered.reduce((s: number, r: any) => s + toNumber(r.berat), 0)
+  const filteredPoin = validFiltered.reduce((s: number, r: any) => s + toNumber(r.poin), 0)
   const filteredMenunggu = filtered.filter((r: any) => r.status === 'menunggu_qc' || r.qcStatus === 'pending').length
 
   const waktuOptions = [
@@ -1534,7 +1566,7 @@ function qcLabel(status: string) {
 function SedekahView({ data }: { data: any }) {
   const rows: any[] = data.riwayat?.sedekah || []
   const masterCategories = data.masterData?.categories || []
-  const masterItems = data.masterData?.wasteItems || []
+  const masterItems = data.masterData?.jenisSampahs || []
 
   const availableCategories = Array.from(new Set([
     ...masterCategories.map((c: any) => c.name),
@@ -1772,7 +1804,7 @@ function SedekahView({ data }: { data: any }) {
           </div>
         ) : (
           <SimpleTable
-            headers={['Tanggal', 'Kode Trx', 'Kategori', 'Barang', 'Berat Kotor', 'Berat Bersih', 'Susut', 'Status QC']}
+            headers={['Tanggal', 'Kode Trx', 'Kategori', 'Barang', 'Berat Kotor', 'Berat Bersih', 'Susut', 'Status QC', 'Keterangan']}
             rows={filtered.map((r: any) => [
               formatDate(r.tanggal),
               <span key="k" className="font-mono text-emerald-700 text-xs">{r.kode || '-'}</span>,
@@ -1782,6 +1814,7 @@ function SedekahView({ data }: { data: any }) {
               `${formatNumber(r.beratBersih, 2)} kg`,
               `${formatNumber(r.susut, 2)} kg`,
               <Badge key="qc" variant="outline" className={cn('text-[10px]', qcBadgeClass(r.qcStatus))}>{qcLabel(r.qcStatus)}</Badge>,
+              <span key="desc" className="text-xs text-zinc-500 max-w-[150px] truncate block" title={r.keterangan || '-'}>{r.keterangan || '-'}</span>,
             ])}
             emptyMsg="Belum ada riwayat sedekah."
           />
@@ -2326,19 +2359,19 @@ function PoinView({ data }: { data: any }) {
 // ============================================================
 // Simpanan View (koperasi) - REDESIGNED profesional
 // ============================================================
-function SimpananView({ user }: { user: AuthUser }) {
+function SimpananView({ pengguna }: { pengguna: AuthUser }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   // Card → detail view state
   const [selectedJenis, setSelectedJenis] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!user.anggotaId) return
-    api.personalDashboardKoperasi(user.anggotaId)
+    if (!pengguna.anggotaId) return
+    api.personalDashboardKoperasi(pengguna.anggotaId)
       .then((res) => setData(res))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [user.anggotaId])
+  }, [pengguna.anggotaId])
 
   if (loading) return <Skeleton className="h-64 w-full rounded-xl" />
   if (!data) {
@@ -2366,7 +2399,7 @@ function SimpananView({ user }: { user: AuthUser }) {
           <h2 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
             <Landmark className="size-5 text-emerald-600" /> Simpanan Koperasi Saya
           </h2>
-          <p className="text-xs text-zinc-500 mt-1">No. Anggota: <span className="font-mono font-semibold text-zinc-700">{data.profile?.nomorAnggota || user.anggotaId?.slice(-8)}</span></p>
+          <p className="text-xs text-zinc-500 mt-1">No. Anggota: <span className="font-mono font-semibold text-zinc-700">{data.profile?.nomorAnggota || pengguna.anggotaId?.slice(-8)}</span></p>
         </div>
         {selectedJenis && (
           <Button
@@ -2379,6 +2412,18 @@ function SimpananView({ user }: { user: AuthUser }) {
           </Button>
         )}
       </div>
+
+      {!selectedJenis && data.simpanan.pokok === 0 && (
+        <div className="mb-4 mt-2 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
+          <div>
+            <h3 className="text-sm font-bold text-amber-800">Perhatian: Simpanan Pokok Belum Disetor</h3>
+            <p className="mt-1 text-xs text-amber-700/90">
+              Anda belum melakukan penyetoran Simpanan Pokok. Simpanan Pokok adalah syarat wajib keanggotaan Koperasi yang disetorkan sekali di awal. Silakan segera setorkan Simpanan Pokok Anda melalui Admin Koperasi.
+            </p>
+          </div>
+        </div>
+      )}
 
       {!selectedJenis ? (
         <>
@@ -2439,7 +2484,12 @@ function SimpananView({ user }: { user: AuthUser }) {
           </Card>
         </>
       ) : (
-        <SimpananDetailView user={user} jenis={selectedJenis} label={cards.find((c) => c.jenis === selectedJenis)?.label || selectedJenis} />
+        <SimpananDetailView
+          pengguna={pengguna}
+          jenis={selectedJenis}
+          label={cards.find((c) => c.jenis === selectedJenis)?.label || selectedJenis}
+          simpananWajibInfo={data?.simpananWajibInfo}
+        />
       )}
     </div>
   )
@@ -2448,9 +2498,33 @@ function SimpananView({ user }: { user: AuthUser }) {
 // ============================================================
 // Simpanan Detail View (filter + table of transactions per jenis)
 // ============================================================
-function SimpananDetailView({ user, jenis, label }: { user: AuthUser; jenis: string; label: string }) {
+function SimpananDetailView({
+  pengguna,
+  jenis,
+  label,
+  simpananWajibInfo,
+}: {
+  pengguna: AuthUser
+  jenis: string
+  label: string
+  simpananWajibInfo?: any
+}) {
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [wajibInfo, setWajibInfo] = useState<any>(simpananWajibInfo || null)
+
+  // Fetch / sync simpananWajibInfo if needed
+  useEffect(() => {
+    if (simpananWajibInfo) {
+      setWajibInfo(simpananWajibInfo)
+    } else if (jenis === 'wajib' && pengguna.anggotaId) {
+      api.personalDashboardKoperasi(pengguna.anggotaId)
+        .then((res) => {
+          if (res?.simpananWajibInfo) setWajibInfo(res.simpananWajibInfo)
+        })
+        .catch(() => {})
+    }
+  }, [simpananWajibInfo, jenis, pengguna.anggotaId])
 
   // Pending (input) state
   const [dariInput, setDariInput] = useState('')
@@ -2464,10 +2538,10 @@ function SimpananDetailView({ user, jenis, label }: { user: AuthUser; jenis: str
   const [q, setQ] = useState('')
 
   const loadList = useCallback(async () => {
-    if (!user.anggotaId) return
+    if (!pengguna.anggotaId) return
     setLoading(true)
     try {
-      const res = await api.koperasi.simpananList(user.anggotaId, {
+      const res = await api.koperasi.simpananList(pengguna.anggotaId, {
         jenisSimpanan: jenis,
         tipe: tipeFilter === 'all' ? '' : tipeFilter,
         dari,
@@ -2480,7 +2554,7 @@ function SimpananDetailView({ user, jenis, label }: { user: AuthUser; jenis: str
     } finally {
       setLoading(false)
     }
-  }, [user.anggotaId, jenis, tipeFilter, dari, sampai, q])
+  }, [pengguna.anggotaId, jenis, tipeFilter, dari, sampai, q])
 
   useEffect(() => {
     loadList()
@@ -2551,6 +2625,114 @@ function SimpananDetailView({ user, jenis, label }: { user: AuthUser; jenis: str
           </Card>
         )}
       </div>
+
+      {/* Jadwal & Status Iuran Bulanan (Khusus Simpanan Wajib) */}
+      {jenis === 'wajib' && wajibInfo && (() => {
+        const nominalWajib = Number(wajibInfo.nominalWajib || 10000)
+        const effectiveMonths = nominalWajib > 0 ? Math.floor(saldoSekarang / nominalWajib) : 0
+        const lunasSampai = effectiveMonths > 0 && wajibInfo.jadwal?.[effectiveMonths - 1]
+          ? wajibInfo.jadwal[effectiveMonths - 1].label
+          : wajibInfo.lunasSampaiBulan || null
+
+        return (
+          <Card className="border-teal-200 bg-gradient-to-br from-teal-50/50 via-white to-emerald-50/30 overflow-hidden shadow-xs">
+            <CardHeader className="p-4 pb-3 border-b border-teal-100/80 bg-teal-50/60">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex size-9 items-center justify-center rounded-xl bg-teal-600 text-white shadow-2xs">
+                    <Calendar className="size-4.5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-sm font-bold text-teal-950">
+                      Jadwal Pembayaran Iuran Simpanan Wajib
+                    </CardTitle>
+                    <p className="text-[11px] text-teal-700">
+                      Iuran bulanan sebesar <strong>{formatRupiah(nominalWajib)}/bulan</strong> sejak awal keanggotaan
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
+                    ✓ {effectiveMonths} Bulan Lunas
+                  </span>
+                  {lunasSampai && (
+                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-800 border border-teal-200">
+                      Lunas s/d {lunasSampai}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                  <span className="inline-block size-2 rounded-full bg-teal-500"></span>
+                  Status Pembayaran per Bulan:
+                </p>
+                <p className="text-[11px] text-zinc-500 hidden sm:block">
+                  Sistem angsuran akumulatif (setoran multi-bulan langsung melunasi bulan-bulan berikutnya)
+                </p>
+              </div>
+
+              {/* Grid Kotak Status Bulan */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+                {wajibInfo.jadwal?.map((j: any, idx: number) => {
+                  const isPaid = idx < effectiveMonths
+                  const status = isPaid ? 'lunas' : j.status
+
+                  return (
+                    <div
+                      key={idx}
+                      className={cn(
+                        "rounded-xl border p-2.5 text-center flex flex-col justify-between transition-all shadow-2xs",
+                        isPaid
+                          ? "border-emerald-200 bg-emerald-50/80 text-emerald-950"
+                          : status === 'tertunggak'
+                          ? "border-rose-200 bg-rose-50/80 text-rose-950"
+                          : "border-zinc-200 bg-zinc-50/80 text-zinc-700",
+                        j.isCurrent && "ring-2 ring-teal-500 ring-offset-1"
+                      )}
+                    >
+                      <div className="mb-1">
+                        <p className="text-xs font-bold leading-tight">{j.label}</p>
+                        {j.isCurrent && (
+                          <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-teal-600 text-white">
+                            Bulan Berjalan
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-1.5">
+                        {isPaid ? (
+                          <span className="inline-flex items-center justify-center gap-1 w-full py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            <CheckCheck className="size-3 text-emerald-700" /> Sudah Lunas
+                          </span>
+                        ) : status === 'tertunggak' ? (
+                          <span className="inline-flex items-center justify-center gap-1 w-full py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                            <AlertCircle className="size-3 text-rose-700" /> Belum Bayar
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center justify-center gap-1 w-full py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600 border border-zinc-200">
+                            <Clock className="size-3 text-zinc-400" /> Belum Tempo
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Catatan Panduan */}
+              <div className="rounded-lg bg-teal-50/50 border border-teal-200/60 p-2.5 text-[11px] text-teal-900 flex items-start gap-2">
+                <Info className="size-4 shrink-0 text-teal-700 mt-0.5" />
+                <span>
+                  Bila Anda ingin membayar simpanan wajib untuk beberapa bulan ke depan (misal 3 atau 6 bulan langsung), Anda dapat menghubungi teller / petugas koperasi untuk menyetorkannya sekaligus.
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* Filter bar */}
       <Card className="border-zinc-200">
@@ -2672,7 +2854,7 @@ function SimpananDetailView({ user, jenis, label }: { user: AuthUser; jenis: str
 // ============================================================
 // Pinjaman View (koperasi) - REDESIGNED with filter + summary cards
 // ============================================================
-function PinjamanView({ user }: { user: AuthUser }) {
+function PinjamanView({ pengguna }: { pengguna: AuthUser }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [schedulePinjaman, setSchedulePinjaman] = useState<any>(null)
@@ -2680,12 +2862,12 @@ function PinjamanView({ user }: { user: AuthUser }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!user.anggotaId) return
-    api.personalDashboardKoperasi(user.anggotaId)
+    if (!pengguna.anggotaId) return
+    api.personalDashboardKoperasi(pengguna.anggotaId)
       .then((res) => setData(res))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [user.anggotaId])
+  }, [pengguna.anggotaId])
 
   if (loading) return <Skeleton className="h-64 w-full rounded-xl" />
   if (!data) {
@@ -2716,7 +2898,7 @@ function PinjamanView({ user }: { user: AuthUser }) {
         <h2 className="text-xl font-bold text-zinc-900 flex items-center gap-2">
           <HandCoins className="size-5 text-amber-600" /> Pinjaman Saya
         </h2>
-        <p className="text-xs text-zinc-500 mt-1">No. Anggota: <span className="font-mono font-semibold text-zinc-700">{data.profile?.nomorAnggota || user.anggotaId?.slice(-8)}</span></p>
+        <p className="text-xs text-zinc-500 mt-1">No. Anggota: <span className="font-mono font-semibold text-zinc-700">{data.profile?.nomorAnggota || pengguna.anggotaId?.slice(-8)}</span></p>
       </div>
 
       {/* Summary Cards */}
@@ -3067,23 +3249,23 @@ function JadwalBayarDialog({ pinjaman, onClose }: { pinjaman: any | null; onClos
 // ============================================================
 // Ajukan Pinjaman View (koperasi)
 // ============================================================
-function AjukanPinjamanView({ data, user }: { data: any; user: AuthUser }) {
+function AjukanPinjamanView({ data, pengguna }: { data: any; pengguna: AuthUser }) {
   const koperasiInfo = data?.koperasiInfo
   const [eligibility, setEligibility] = useState<any>(null)
   const [loadingElig, setLoadingElig] = useState(true)
   const [perbaikanList, setPerbaikanList] = useState<any[]>([])
 
   useEffect(() => {
-    if (!user?.anggotaId) return
+    if (!pengguna?.anggotaId) return
     let cancelled = false
-    api.koperasi.checkPinjamanEligibility(user.anggotaId)
+    api.koperasi.checkPinjamanEligibility(pengguna.anggotaId)
       .then((res) => { if (!cancelled) { setEligibility(res); setLoadingElig(false) } })
       .catch(() => { if (!cancelled) setLoadingElig(false) })
-    api.koperasi.perbaikanList(user.anggotaId, '')
+    api.koperasi.perbaikanList(pengguna.anggotaId, '')
       .then((res) => { if (!cancelled) setPerbaikanList(res || []) })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [user?.anggotaId])
+  }, [pengguna?.anggotaId])
 
   // Derive check results from flat API response
   const mm = eligibility?.memberMonths ?? 0
@@ -3390,17 +3572,17 @@ function AjukanPinjamanView({ data, user }: { data: any; user: AuthUser }) {
 // ============================================================
 // Bayar Angsuran View (koperasi)
 // ============================================================
-function BayarAngsuranView({ user }: { user: AuthUser }) {
+function BayarAngsuranView({ pengguna }: { pengguna: AuthUser }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!user.anggotaId) return
-    api.personalDashboardKoperasi(user.anggotaId)
+    if (!pengguna.anggotaId) return
+    api.personalDashboardKoperasi(pengguna.anggotaId)
       .then((res) => setData(res))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [user.anggotaId])
+  }, [pengguna.anggotaId])
 
   if (loading) return <Skeleton className="h-64 w-full rounded-xl" />
   if (!data) return <p className="text-sm text-zinc-500">Data koperasi tidak tersedia.</p>
@@ -3513,7 +3695,7 @@ function SimpleTable({ headers, rows, emptyMsg }: { headers: string[]; rows: any
 // ============================================================
 // PengaturanView — self-service profile + password management
 // ============================================================
-function PengaturanView({ user }: { user: AuthUser }) {
+function PengaturanView({ pengguna }: { pengguna: AuthUser }) {
   const [tab, setTab] = useState<'profil' | 'password' | 'info'>('profil')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -3529,18 +3711,18 @@ function PengaturanView({ user }: { user: AuthUser }) {
   const [confirmPassword, setConfirmPassword] = useState('')
 
   useEffect(() => {
-    if (!user?.id) return
-    api.profile.get(user.id)
+    if (!pengguna?.id) return
+    api.profile.get(pengguna.id)
       .then((res) => {
-        setProfile(res.user)
-        setName(res.user.name || '')
-        setPhone(res.user.phone || '')
-        setAddress(res.user.address || '')
-        setNik(res.user.nik || '')
+        setProfile(res.pengguna)
+        setName(res.pengguna.name || '')
+        setPhone(res.pengguna.phone || '')
+        setAddress(res.pengguna.address || '')
+        setNik(res.pengguna.nik || '')
       })
       .catch((e) => toast.error('Gagal memuat profil: ' + e.message))
       .finally(() => setLoading(false))
-  }, [user?.id])
+  }, [pengguna?.id])
 
   const handleSaveProfile = async () => {
     if (!name.trim()) {
@@ -3549,8 +3731,8 @@ function PengaturanView({ user }: { user: AuthUser }) {
     }
     setSaving(true)
     try {
-      const res = await api.profile.update(user.id, { name, phone, address, nik })
-      setProfile(res.user)
+      const res = await api.profile.update(pengguna.id, { name, phone, address, nik })
+      setProfile(res.pengguna)
       toast.success(res.message || 'Profil berhasil diperbarui')
     } catch (e: any) {
       toast.error(e.message || 'Gagal menyimpan profil')
@@ -3574,7 +3756,7 @@ function PengaturanView({ user }: { user: AuthUser }) {
     }
     setSaving(true)
     try {
-      const res = await api.profile.update(user.id, { currentPassword, newPassword })
+      const res = await api.profile.update(pengguna.id, { currentPassword, newPassword })
       toast.success('Password berhasil diubah')
       setCurrentPassword('')
       setNewPassword('')
@@ -3631,26 +3813,26 @@ function PengaturanView({ user }: { user: AuthUser }) {
                 {name.charAt(0).toUpperCase() || 'U'}
               </div>
               <div>
-                <p className="font-semibold text-zinc-900">{name || 'User'}</p>
-                <p className="text-xs text-zinc-500">{profile?.email || user.email}</p>
+                <p className="font-semibold text-zinc-900">{name || 'Pengguna'}</p>
+                <p className="text-xs text-zinc-500">{profile?.email || pengguna.email}</p>
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="name">Nama Lengkap</Label>
-                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama lengkap" />
+                <Input id="name" value={name} onChange={(e) => setName(sanitizeName(e.target.value))} placeholder="Nama lengkap" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">No. Telepon</Label>
-                <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="08xxxx" />
+                <Input id="phone" value={phone} onChange={(e) => setPhone(sanitizeNumber(e.target.value))} placeholder="08xxxx" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nik">NIK</Label>
-                <Input id="nik" value={nik} onChange={(e) => setNik(e.target.value)} placeholder="16 digit NIK" />
+                <Input id="nik" value={nik} onChange={(e) => setNik(sanitizeNumber(e.target.value))} placeholder="16 digit NIK" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" value={profile?.email || user.email} disabled className="bg-zinc-50 text-zinc-500" />
+                <Input id="email" value={profile?.email || pengguna.email} disabled className="bg-zinc-50 text-zinc-500" />
                 <p className="text-[10px] text-zinc-400">Email tidak dapat diubah. Hubungi admin jika perlu.</p>
               </div>
               <div className="space-y-2 sm:col-span-2">
@@ -3713,7 +3895,7 @@ function PengaturanView({ user }: { user: AuthUser }) {
               <InfoRow label="Email Terverifikasi" value={profile?.emailVerifiedAt ? 'Ya' : 'Belum'} />
               <InfoRow label="Bergabung Sejak" value={profile?.memberJoinedAt ? formatDate(profile.memberJoinedAt) : '-'} />
               <InfoRow label="Terdaftar Sejak" value={profile?.createdAt ? formatDate(profile.createdAt) : '-'} />
-              <InfoRow label="Role" value={(profile?.roles ? JSON.parse(profile.roles) : user.roles).join(', ') || '-'} />
+              <InfoRow label="Role" value={(profile?.roles ? JSON.parse(profile.roles) : pengguna.roles).join(', ') || '-'} />
             </div>
             <div className="mt-6 rounded-lg bg-zinc-50 p-4 text-xs text-zinc-600 ring-1 ring-zinc-100">
               <p className="font-semibold text-zinc-700">Butuh bantuan?</p>

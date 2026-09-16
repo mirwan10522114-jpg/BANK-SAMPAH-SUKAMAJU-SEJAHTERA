@@ -32,6 +32,7 @@ import {
   Weight,
   Tag,
   Recycle,
+  AlertTriangle,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -42,6 +43,17 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+
 import {
   Select,
   SelectContent,
@@ -1253,9 +1265,9 @@ function CartView({
 
       {/* Cart Items */}
       <div className="space-y-3">
-        {cart.map((item) => (
+        {cart.map((item, index) => (
           <CartItemRow
-            key={item.productId}
+            key={`${item.productId}-${index}`}
             item={item}
             onUpdateQty={onUpdateQty}
             onRemove={onRemoveItem}
@@ -1603,7 +1615,9 @@ function CheckoutView({
     // Wajib pilih kurir kalau ada opsi tersedia
     (courierOptions.length === 0 || selectedCourierIdx !== -1)
 
-  const handleSubmit = async () => {
+  const [showConfirm, setShowConfirm] = React.useState(false)
+
+  const handleSubmit = () => {
     // ====== Cegah double-click & duplicate order ======
     // Tombol disable saat submitting=true. Kalau user klik berkali-kali
     // cepat, hanya klik pertama yang akan diproses.
@@ -1656,11 +1670,11 @@ function CheckoutView({
       return
     }
 
-    // ====== Reuse order yang sama jika form & cart belum berubah ======
-    // Kalau user klik "Bayar" lagi tanpa perubahan, kita buka ulang Snap popup
-    // dengan token yang sama — TIDAK membuat order baru. Ini mencegah race
-    // condition di Midtrans (yang akan reject order_id duplikat) dan juga
-    // mencegah popup "tertutup sendiri" karena token lama di-replace.
+    setShowConfirm(true)
+  }
+
+  const processPayment = async () => {
+    const selectedCourier = selectedCourierIdx >= 0 ? courierOptions[selectedCourierIdx] : null
     const formHash = JSON.stringify({
       n: form.nama, p: form.hp, e: form.email,
       pv: form.provinsiId, c: form.kotaId, d: form.kecamatanId,
@@ -1706,7 +1720,7 @@ function CheckoutView({
       } else {
         // Buat order baru + Snap token
         const orderItems = cart.map((item) => ({
-          productId: item.productId,
+          produkId: item.productId,
           quantity: item.quantity,
         }))
 
@@ -2178,8 +2192,8 @@ function CheckoutView({
               </h2>
 
               <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
-                {cart.map((item) => (
-                  <div key={item.productId} className="flex items-center gap-3">
+                {cart.map((item, index) => (
+                  <div key={`${item.productId}-${index}`} className="flex items-center gap-3">
                     <div className="size-12 shrink-0 overflow-hidden rounded-lg bg-gray-100">
                       <img
                         src={item.image || getProductPlaceholder(item.name, 0)}
@@ -2320,6 +2334,31 @@ function CheckoutView({
           </Card>
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <AlertDialogContent className="border-rose-200">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-rose-600 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              Konfirmasi Pembayaran
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-rose-600/90 font-medium">
+              Apakah Anda yakin ingin membeli / checkout? Karena setelah dibayar, pesanan tidak bisa dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={submitting} className="border-rose-200 text-rose-700 hover:bg-rose-50">Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => {
+              e.preventDefault()
+              setShowConfirm(false)
+              processPayment()
+            }} className="bg-rose-600 text-white hover:bg-rose-700 focus:ring-rose-500">
+              Ya, Bayar Sekarang
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -3072,7 +3111,7 @@ function TrackingView({
                           />
                         )}
                       </div>
-                      {/* Label */}
+                      {/* Label & Timestamp */}
                       <div className={cn('pb-6', isCurrent ? '' : '-mt-1')}>
                         <p className={cn(
                           'text-sm font-semibold',
@@ -3080,6 +3119,47 @@ function TrackingView({
                         )}>
                           {step.label}
                         </p>
+                        
+                        {/* Menampilkan waktu & tanggal jika ada riwayat status yang cocok */}
+                        {(() => {
+                          if (!isActive) return null
+                          
+                          // Cari di status history
+                          let statusTime = null
+                          
+                          if (step.key === 'menunggu_pembayaran') {
+                            statusTime = orderInfo.createdAt
+                          } else if (step.key === 'dibayar' && orderInfo.paidAt) {
+                            statusTime = orderInfo.paidAt
+                          } else {
+                            // Cari di statusHistory array
+                            const history = orderInfo.statusHistory?.find((h: any) => h.status === step.key)
+                            if (history?.createdAt) {
+                              statusTime = history.createdAt
+                            } else if (step.key === 'diterima' && orderInfo.receivedAt) {
+                              statusTime = orderInfo.receivedAt
+                            } else if (step.key === 'dikirim' && orderInfo.shippedAt) {
+                              statusTime = orderInfo.shippedAt
+                            }
+                          }
+                          
+                          if (statusTime) {
+                            const dateObj = new Date(statusTime)
+                            const dateStr = dateObj.toLocaleDateString('id-ID', {
+                              day: '2-digit', month: 'long', year: 'numeric'
+                            })
+                            const timeStr = dateObj.toLocaleTimeString('id-ID', {
+                              hour: '2-digit', minute: '2-digit'
+                            })
+                            return (
+                              <p className="mt-1 text-xs text-emerald-900/60">
+                                {dateStr} jam {timeStr}
+                              </p>
+                            )
+                          }
+                          return null
+                        })()}
+
                         {isCurrent && orderInfo.kurirNama && (
                           <p className="mt-1 text-xs text-emerald-900/60">
                             Kurir: {orderInfo.kurirNama}

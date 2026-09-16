@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getActingUser, prosesAnggotaKeluar } from '@/lib/business'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const agt = await db.koperasiAnggota.findUnique({
     where: { id },
     include: {
-      user: true,
+      pengguna: true,
       simpananSaldos: true,
       simpananTx: { orderBy: { tanggalTransaksi: 'desc' }, take: 20 },
       pinjamans: { include: { angsurans: { orderBy: { angsuranKe: 'asc' } } }, orderBy: { createdAt: 'desc' } },
@@ -31,9 +32,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   })
   return NextResponse.json(agt)
 }
-
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  await db.koperasiAnggota.update({ where: { id }, data: { status: 'keluar', tanggalKeluar: new Date() } })
-  return NextResponse.json({ ok: true })
+  const actor = await getActingUser(req)
+  try {
+    await prosesAnggotaKeluar(id, actor?.id)
+    return NextResponse.json({ ok: true })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 400 })
+  }
 }

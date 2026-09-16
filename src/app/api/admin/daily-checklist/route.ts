@@ -32,8 +32,8 @@ export async function GET(req: NextRequest) {
 
     // 1. ANTRIAN QC SAMPAH (Nabung & Sedekah berstatus menunggu_qc)
     const [pendingSavingQc, pendingSedekahQc] = await Promise.all([
-      db.savingTransaction.count({ where: { status: 'menunggu_qc' } }),
-      db.sedekahTransaction.count({ where: { status: 'menunggu_qc' } }),
+      db.transaksiNabung.count({ where: { status: 'menunggu_qc' } }),
+      db.transaksiSedekah.count({ where: { status: 'menunggu_qc' } }),
     ])
     const totalPendingQc = pendingSavingQc + pendingSedekahQc
     const isQcDone = totalPendingQc === 0 || !!qcLog
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
     const pinjamans = await db.koperasiPinjaman.findMany({
       where: { status: 'berjalan' },
       include: {
-        anggota: { include: { user: { select: { name: true, email: true, phone: true } } } },
+        anggota: { include: { pengguna: { select: { name: true, email: true, phone: true } } } },
         angsurans: { orderBy: { angsuranKe: 'asc' } },
       },
       orderBy: { createdAt: 'desc' },
@@ -108,8 +108,8 @@ export async function GET(req: NextRequest) {
         loansNeedingAction.push({
           id: p.id,
           nomorPinjaman: p.nomorPinjaman,
-          nama: p.anggota?.nama || p.anggota?.user?.name || '-',
-          email: p.anggota?.user?.email || '',
+          nama: p.anggota?.nama || p.anggota?.pengguna?.name || '-',
+          email: p.anggota?.pengguna?.email || '',
           angsuranPerBulan: toNumber(p.angsuranPerBulan),
           angsuranKe: nextAngsuranKe,
           tenorBulan: p.tenorBulan,
@@ -159,7 +159,7 @@ export async function GET(req: NextRequest) {
       const anggotas = await db.koperasiAnggota.findMany({
         where: { status: 'aktif' },
         include: {
-          user: { select: { name: true, email: true, phone: true } },
+          pengguna: { select: { name: true, email: true, phone: true } },
           simpananTx: {
             where: {
               jenisSimpanan: 'wajib',
@@ -176,8 +176,8 @@ export async function GET(req: NextRequest) {
       }).map((a) => ({
         id: a.id,
         nomorAnggota: a.nomorAnggota,
-        nama: a.nama || a.user?.name || '-',
-        email: a.user?.email || '',
+        nama: a.nama || a.pengguna?.name || '-',
+        email: a.pengguna?.email || '',
       }))
 
       const isSimpananDone = membersUnpaidWajib.length === 0 || !!simpananLog

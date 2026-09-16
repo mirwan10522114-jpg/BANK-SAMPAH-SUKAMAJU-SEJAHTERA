@@ -5,23 +5,23 @@ import { releaseSaldo, getBankSampahKasBalance, getTotalSaldoTertahan, getTotalS
 
 // GET: list nasabah with saldo tertahan (candidates for release) + kas status
 export async function GET(req: NextRequest) {
-  const [balances, kasSaldo, totalTertahan, totalTersedia] = await Promise.all([
-    db.balance.findMany({
+  const [saldos, kasSaldo, totalTertahan, totalTersedia] = await Promise.all([
+    db.saldo.findMany({
       where: { saldoTertahan: { gt: 0 } },
-      include: { user: { select: { id: true, name: true, memberCode: true, phone: true } } },
+      include: { pengguna: { select: { id: true, name: true, memberCode: true, phone: true } } },
       orderBy: { saldoTertahan: 'desc' },
     }),
-    getBankSampahKasBalance(),
+    getBankSampahKasBalance('nasabah'),
     getTotalSaldoTertahan(),
     getTotalSaldoTersedia(),
   ])
 
-  const rows = balances.map((b) => ({
+  const rows = saldos.map((b) => ({
     id: b.id,
-    userId: b.userId,
-    name: b.user?.name || '-',
-    memberCode: b.user?.memberCode || null,
-    phone: b.user?.phone || null,
+    penggunaId: b.penggunaId,
+    name: b.pengguna?.name || '-',
+    memberCode: b.pengguna?.memberCode || null,
+    phone: b.pengguna?.phone || null,
     saldoTertahan: toNumber(b.saldoTertahan),
     saldoTersedia: toNumber(b.saldoTersedia),
     points: b.points,
@@ -45,13 +45,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const actor = await getActingUser(req)
-  const { userId, amount, keterangan } = body as { userId: string; amount: number; keterangan?: string }
+  const { penggunaId, amount, keterangan } = body as { penggunaId: string; amount: number; keterangan?: string }
 
-  if (!userId) return NextResponse.json({ error: 'Nasabah wajib dipilih' }, { status: 400 })
+  if (!penggunaId) return NextResponse.json({ error: 'Nasabah wajib dipilih' }, { status: 400 })
   if (!amount || amount <= 0) return NextResponse.json({ error: 'Nominal harus > 0' }, { status: 400 })
 
   try {
-    const result = await releaseSaldo(userId, amount, actor?.id, keterangan)
+    const result = await releaseSaldo(penggunaId, amount, actor?.id, keterangan)
     return NextResponse.json(result, { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 400 })

@@ -65,15 +65,17 @@ import {
   AlertTriangle,
   ShieldCheck,
   ShieldX,
+  AlertCircle,
   UserCircle,
   Calendar,
+  Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Progress } from '@/components/ui/progress'
 import { StrukModal, useStruk } from './struk-modal'
 
 // ============================ Types ============================
-type Anggota = {
+export type Anggota = {
   id: string
   nomorAnggota: string
   nama: string
@@ -82,7 +84,7 @@ type Anggota = {
   simpananSaldos?: { jenisSimpanan: string; saldo: string | number }[]
 }
 
-type KoperasiSetting = {
+export type KoperasiSetting = {
   id: string
   namaKoperasi?: string
   nominalSimpananPokok?: string | number
@@ -91,10 +93,11 @@ type KoperasiSetting = {
   sukuBungaPinjaman?: string | number
   dendaTerlambatPerHari?: string | number
   minimalBulanAnggota?: number
+  minimalSimpananPinjaman?: string | number
 } | null
 
 // ============================ Constants ============================
-const SUMBER_LABEL: Record<string, string> = {
+export const SUMBER_LABEL: Record<string, string> = {
   simpanan: 'Simpanan',
   penarikan: 'Penarikan',
   pinjaman: 'Pinjaman',
@@ -152,7 +155,7 @@ function PenarikanStatusBadge({ status }: { status: string }) {
   )
 }
 
-function SumberBadge({ sumber }: { sumber: string }) {
+export function SumberBadge({ sumber }: { sumber: string }) {
   return (
     <Badge variant="outline" className="border-emerald-200 bg-emerald-50/50 text-emerald-700">
       {SUMBER_LABEL[sumber] || sumber}
@@ -161,7 +164,7 @@ function SumberBadge({ sumber }: { sumber: string }) {
 }
 
 // ============================ Stat Card ============================
-function StatCard({
+export function StatCard({
   label,
   value,
   icon: Icon,
@@ -198,7 +201,7 @@ function StatCard({
 }
 
 // ============================ Anggota Selector ============================
-function AnggotaSelector({
+export function AnggotaSelector({
   value,
   onChange,
   anggotaList,
@@ -282,7 +285,7 @@ function AnggotaSelector({
 }
 
 // ============================ Empty Row ============================
-function EmptyRow({ colSpan, message }: { colSpan: number; message: string }) {
+export function EmptyRow({ colSpan, message }: { colSpan: number; message: string }) {
   return (
     <TableRow>
       <TableCell colSpan={colSpan} className="py-10 text-center text-sm text-emerald-700/60">
@@ -292,7 +295,7 @@ function EmptyRow({ colSpan, message }: { colSpan: number; message: string }) {
   )
 }
 
-function SkeletonRows({ cols, rows = 5 }: { cols: number; rows?: number }) {
+export function SkeletonRows({ cols, rows = 5 }: { cols: number; rows?: number }) {
   return (
     <>
       {Array.from({ length: rows }).map((_, i) => (
@@ -415,7 +418,7 @@ function SimpananTab({ setting }: { setting: KoperasiSetting }) {
   }
 
   // Sinkronisasi jumlah otomatis saat pengaturan koperasi selesai dimuat
-  // (untuk kasus user sudah memilih pokok/wajib sebelum setting tersedia).
+  // (untuk kasus pengguna sudah memilih pokok/wajib sebelum setting tersedia).
   // Dipicu satu kali saat `setting` berubah dari null → object.
   useEffect(() => {
     if (!setting) return
@@ -500,6 +503,18 @@ function SimpananTab({ setting }: { setting: KoperasiSetting }) {
           anggotaList={anggotaList}
           loading={loadingAnggota}
         />
+
+        {selectedAnggota && getSaldoByJenis(selectedAnggota, 'pokok') === 0 && (
+          <div className="mb-4 mt-2 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div>
+              <h3 className="text-sm font-bold text-amber-800">Perhatian: Anggota Belum Menyetor Simpanan Pokok</h3>
+              <p className="mt-1 text-xs text-amber-700/90">
+                Anggota ini belum melakukan penyetoran perdana Simpanan Pokok. Harap arahkan anggota untuk menyetor Simpanan Pokok terlebih dahulu sebelum dapat menggunakan fitur koperasi lainnya.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Saldo cards */}
         {loadingAnggota ? (
@@ -825,6 +840,13 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
   const [bayarKet, setBayarKet] = useState('')
   const [bayarSubmitting, setBayarSubmitting] = useState(false)
 
+  // Approve Dialog
+  const [approveOpen, setApproveOpen] = useState(false)
+  const [approvePinjaman, setApprovePinjaman] = useState<any | null>(null)
+  const [approveSubmitting, setApproveSubmitting] = useState(false)
+  const [approveElig, setApproveElig] = useState<any>(null)
+  const [loadingApproveElig, setLoadingApproveElig] = useState(false)
+
   // Suku bunga dari pengaturan (untuk dialog Create)
   const sukuBungaSetting = toNumber(setting?.sukuBungaPinjaman)
 
@@ -837,8 +859,11 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
     jpCreate > 0 && sukuBungaSetting > 0
       ? (jpCreate * sukuBungaSetting) / 100 / 12
       : 0
-  const pokokPerBulanCreate = tbCreate > 0 ? jpCreate / tbCreate : 0
-  const angsuranPerBulanCreate = pokokPerBulanCreate + bungaPerBulanCreate
+  const pokokPerBulanCreate = tbCreate > 0 ? Math.round(jpCreate / tbCreate) : 0
+  const bungaPerBulanCreateRounded = Math.round(bungaPerBulanCreate)
+  const adminSetting = Number(setting?.biayaAdminPinjaman || 0)
+  const rawAngsuranCreate = pokokPerBulanCreate + bungaPerBulanCreateRounded + adminSetting
+  const angsuranPerBulanCreate = Math.ceil(rawAngsuranCreate / 1000) * 1000
   const totalBungaCreate = bungaPerBulanCreate * (tbCreate > 0 ? tbCreate : 0)
   const totalPinjamanBungaCreate = jpCreate + totalBungaCreate
 
@@ -993,13 +1018,33 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
     }
   }
 
-  const handleApprove = async (p: any) => {
+  const openApprove = async (p: any) => {
+    setApprovePinjaman(p)
+    setApproveOpen(true)
+    setApproveElig(null)
+    setLoadingApproveElig(true)
     try {
-      await api.koperasi.pinjamanApprove(p.id)
-      toast.success(`Pinjaman ${p.nomorPinjaman} disetujui`)
+      const res = await api.koperasi.checkPinjamanEligibility(p.koperasiAnggotaId)
+      setApproveElig(res)
+    } catch (e: any) {
+      toast.error('Gagal mengecek syarat anggota')
+    } finally {
+      setLoadingApproveElig(false)
+    }
+  }
+
+  const handleApproveConfirm = async () => {
+    if (!approvePinjaman) return
+    setApproveSubmitting(true)
+    try {
+      await api.koperasi.pinjamanApprove(approvePinjaman.id)
+      toast.success(`Pinjaman ${approvePinjaman.nomorPinjaman} disetujui`)
+      setApproveOpen(false)
       loadList()
     } catch (e: any) {
       toast.error(e.message || 'Gagal menyetujui pinjaman')
+    } finally {
+      setApproveSubmitting(false)
     }
   }
 
@@ -1275,23 +1320,39 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
                           <PinjamanStatusBadge status={p.status} />
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-wrap justify-end gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 border-teal-200 text-teal-700 hover:bg-teal-50"
-                              onClick={() => openJadwal(p.id)}
-                            >
-                              <Eye className="h-3.5 w-3.5" /> Jadwal
-                            </Button>
-                            {canBayar && (
+                          <div className="flex flex-col items-end gap-2">
+                            <div className="flex flex-wrap justify-end gap-1">
+                              {p.status === 'diajukan' && (
+                                <Button
+                                  size="sm"
+                                  className="h-7 bg-emerald-600 text-white hover:bg-emerald-700"
+                                  onClick={() => openApprove(p)}
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" /> Setujui
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
-                                className="h-7 bg-emerald-600 text-white hover:bg-emerald-700"
-                                onClick={() => openBayar(p)}
+                                variant="outline"
+                                className="h-7 border-teal-200 text-teal-700 hover:bg-teal-50"
+                                onClick={() => openJadwal(p.id)}
                               >
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Bayar
+                                <Eye className="h-3.5 w-3.5" /> Jadwal
                               </Button>
+                              {canBayar && (
+                                <Button
+                                  size="sm"
+                                  className="h-7 bg-emerald-600 text-white hover:bg-emerald-700"
+                                  onClick={() => openBayar(p)}
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" /> Bayar
+                                </Button>
+                              )}
+                            </div>
+                            {p.createdBy?.name && (
+                              <p className="text-[10px] text-zinc-400 mt-1">
+                                Verifikator: {p.createdBy.name}
+                              </p>
                             )}
                           </div>
                         </TableCell>
@@ -1885,341 +1946,135 @@ function PinjamanTab({ setting }: { setting: KoperasiSetting }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <StrukModal data={strukData} open={strukOpen} onOpenChange={setStrukOpen} />
-    </Card>
-  )
-}
-
-// ============================ PENARIKAN SUKARELA TAB ============================
-function PenarikanTab() {
-  const [anggotaList, setAnggotaList] = useState<Anggota[]>([])
-  const [anggotaId, setAnggotaId] = useState<string>('')
-  const [simpananList, setSimpananList] = useState<any[]>([])
-  const [loadingAnggota, setLoadingAnggota] = useState(true)
-  const [loadingList, setLoadingList] = useState(false)
-
-  // Create dialog
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [jumlah, setJumlah] = useState('')
-  const [alasan, setAlasan] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-
-  // ---- Filter state (Daftar Penarikan) ----
-  const [dariInput, setDariInput] = useState('')
-  const [sampaiInput, setSampaiInput] = useState('')
-  const [qInput, setQInput] = useState('')
-  const [dari, setDari] = useState('')
-  const [sampai, setSampai] = useState('')
-  const [q, setQ] = useState('')
-  const [saldoSukarela, setSaldoSukarela] = useState<number>(0)
-
-  const { strukData, strukOpen, setStrukOpen, showStruk } = useStruk()
-
-  useEffect(() => {
-    setLoadingAnggota(true)
-    api.anggota
-      .list()
-      .then((data) => {
-        setAnggotaList(data)
-        if (data.length > 0) setAnggotaId(data[0].id)
-      })
-      .catch((e) => toast.error('Gagal memuat anggota: ' + e.message))
-      .finally(() => setLoadingAnggota(false))
-  }, [])
-
-  const loadList = useCallback(async () => {
-    if (!anggotaId) {
-      setSimpananList([])
-      setSaldoSukarela(0)
-      return
-    }
-    setLoadingList(true)
-    try {
-      const [data, agtData] = await Promise.all([
-        api.koperasi.simpananList(anggotaId, {
-          jenisSimpanan: 'sukarela',
-          tipe: 'tarik',
-          dari,
-          sampai,
-          q,
-        }),
-        api.anggota.get(anggotaId)
-      ])
-      setSimpananList(data)
-      const saldo = agtData?.simpananSaldos?.find((s: any) => s.jenisSimpanan === 'sukarela')?.saldo || 0
-      setSaldoSukarela(toNumber(saldo))
-    } catch (e: any) {
-      toast.error('Gagal memuat penarikan: ' + e.message)
-    } finally {
-      setLoadingList(false)
-    }
-  }, [anggotaId, dari, sampai, q])
-
-  useEffect(() => {
-    loadList()
-  }, [loadList])
-
-  const applyFilters = () => {
-    setDari(dariInput)
-    setSampai(sampaiInput)
-    setQ(qInput.trim())
-  }
-
-  const resetFilters = () => {
-    setDariInput('')
-    setSampaiInput('')
-    setQInput('')
-    setDari('')
-    setSampai('')
-    setQ('')
-  }
-
-  const handleCreate = async () => {
-    const n = parseFloat(jumlah)
-    if (isNaN(n) || n <= 0) {
-      toast.error('Jumlah harus > 0')
-      return
-    }
-    if (!alasan.trim()) {
-      toast.error('Alasan wajib diisi')
-      return
-    }
-    setSubmitting(true)
-    try {
-      const res = await api.koperasi.simpananTx({
-        anggotaId,
-        jenisSimpanan: 'sukarela',
-        tipe: 'tarik',
-        jumlah: n,
-        keterangan: alasan,
-      })
-      toast.success('Penarikan sukarela berhasil dicairkan')
-      setDialogOpen(false)
-      setJumlah('')
-      setAlasan('')
-      if (res) {
-        showStruk({
-          type: 'penarikan_sukarela',
-          receiptNo: res.nomorTransaksi,
-          tanggal: res.tanggalTransaksi || new Date().toISOString(),
-          anggotaName: anggotaList.find(a => a.id === anggotaId)?.nama || '-',
-          anggotaCode: anggotaList.find(a => a.id === anggotaId)?.nomorAnggota || '-',
-          summary: [
-            {
-              label: 'Jumlah Ditarik',
-              value: formatRupiah(toNumber(res.jumlah)),
-              highlight: true,
-            },
-            { label: 'Status', value: 'DANA DICAIRKAN' },
-          ],
-          notes: 'Simpanan sukarela telah ditarik dan dana diserahkan kepada anggota.',
-        })
-      }
-      loadList()
-    } catch (e: any) {
-      toast.error(e.message || 'Gagal melakukan penarikan')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <Card className="border-emerald-100">
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-emerald-900">
-              <ArrowDownCircle className="h-5 w-5 text-emerald-600" /> Penarikan
-              Simpanan Sukarela
-            </CardTitle>
-            <CardDescription>
-              Penarikan dana simpanan sukarela anggota yang akan langsung dipotong dari saldo kas.
-            </CardDescription>
-          </div>
-          <Button
-            onClick={() => setDialogOpen(true)}
-            disabled={!anggotaId}
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
-          >
-            <Plus className="mr-1.5 h-4 w-4" /> Tarik Dana
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex-1">
-            <AnggotaSelector
-              value={anggotaId}
-              onChange={setAnggotaId}
-              anggotaList={anggotaList}
-              loading={loadingAnggota}
-            />
-          </div>
-          {anggotaId && (
-            <div className="flex min-w-[200px] flex-col justify-center rounded-lg border border-emerald-100 bg-emerald-50 p-4">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-emerald-800">Saldo Sukarela</p>
-              <p className="text-2xl font-bold text-emerald-700">{formatRupiah(saldoSukarela)}</p>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold text-emerald-900">
-              Riwayat Penarikan Dana
-            </p>
-            {loadingList && <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />}
-          </div>
-
-          {/* Filter bar */}
-          <div className="mb-3 flex flex-wrap items-end gap-2 rounded-lg border border-emerald-100 bg-emerald-50/40 p-3">
-            <div className="w-40">
-              <Label className="text-xs text-zinc-500">Dari</Label>
-              <Input
-                type="date"
-                value={dariInput}
-                onChange={(e) => setDariInput(e.target.value)}
-                className="h-9 bg-white"
-              />
-            </div>
-            <div className="w-40">
-              <Label className="text-xs text-zinc-500">Sampai</Label>
-              <Input
-                type="date"
-                value={sampaiInput}
-                onChange={(e) => setSampaiInput(e.target.value)}
-                className="h-9 bg-white"
-              />
-            </div>
-            <div className="w-44">
-              <Label className="text-xs text-zinc-500">Cari No. Penarikan</Label>
-              <Input
-                value={qInput}
-                onChange={(e) => setQInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') applyFilters()
-                }}
-                placeholder="No. transaksi..."
-                className="h-9 bg-white"
-              />
-            </div>
-            <Button size="sm" onClick={applyFilters} className="h-9 bg-emerald-600 hover:bg-emerald-700">
-              Terapkan
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={resetFilters}
-              className="h-9 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-            >
-              Reset
-            </Button>
-            {(dari || sampai || q) && (
-              <div className="ml-auto text-xs text-emerald-800">
-                Aktif: <span className="font-medium">{dari || '…'} — {sampai || '…'}</span>
-                {q && ` · "${q}"`}
-              </div>
-            )}
-          </div>
-
-          <div className="max-h-[480px] overflow-auto rounded-lg border border-emerald-100">
-            <Table>
-              <TableHeader className="sticky top-0 z-10 bg-emerald-50/95 backdrop-blur">
-                <TableRow>
-                  <TableHead>Nomor</TableHead>
-                  <TableHead>Tanggal Penarikan</TableHead>
-                  <TableHead>Nama Anggota</TableHead>
-                  <TableHead className="text-right">Jumlah</TableHead>
-                  <TableHead>Keterangan</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loadingList ? (
-                  <SkeletonRows cols={5} />
-                ) : simpananList.length === 0 ? (
-                  <EmptyRow
-                    colSpan={5}
-                    message="Belum ada riwayat penarikan dana."
-                  />
-                ) : (
-                  simpananList.map((p: any) => (
-                    <TableRow key={p.id}>
-                      <TableCell className="font-mono text-xs">
-                        {p.nomorTransaksi}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {formatDate(p.tanggalTransaksi)}
-                      </TableCell>
-                      <TableCell className="font-semibold text-xs text-emerald-900">
-                        {p.anggota?.nama || '-'}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatRupiah(toNumber(p.jumlah))}
-                      </TableCell>
-                      <TableCell
-                        className="max-w-[260px] truncate text-xs text-emerald-700/80"
-                        title={p.keterangan}
-                      >
-                        {p.keterangan || '-'}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </CardContent>
-
-      {/* Create Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+      {/* Approve Dialog */}
+      <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-emerald-900">
-              Tarik Simpanan Sukarela
+            <DialogTitle className="flex items-center gap-2 text-emerald-900">
+              <ShieldCheck className="h-5 w-5 text-emerald-600" /> Verifikasi Persyaratan Pinjaman
             </DialogTitle>
             <DialogDescription>
-              Dana simpanan sukarela anggota akan langsung dipotong dari saldo kas dan dicairkan.
+              Tinjau persyaratan anggota sebelum menyetujui pinjaman {approvePinjaman?.nomorPinjaman}.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
-            <div className="grid gap-1.5">
-              <Label htmlFor="jp2">Jumlah (Rp)</Label>
-              <Input
-                id="jp2"
-                type="number"
-                value={jumlah}
-                onChange={(e) => setJumlah(e.target.value)}
-                placeholder="100000"
-                min="0"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="alasan">Alasan Penarikan</Label>
-              <Textarea
-                id="alasan"
-                value={alasan}
-                onChange={(e) => setAlasan(e.target.value)}
-                placeholder="Jelaskan alasan penarikan..."
-                rows={3}
-              />
-            </div>
+            {loadingApproveElig && (
+              <Skeleton className="h-28 w-full rounded-xl" />
+            )}
+            {!loadingApproveElig && approveElig && (
+              <div className={cn(
+                'relative overflow-hidden rounded-xl border-2 p-4',
+                approveElig.eligible
+                  ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50'
+                  : 'border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50'
+              )}>
+                <div className="flex items-start gap-3">
+                  {approveElig.eligible ? (
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 ring-3 ring-emerald-100/50">
+                      <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                    </div>
+                  ) : (
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 ring-3 ring-amber-100/50">
+                      <AlertTriangle className="h-6 w-6 text-amber-600" />
+                    </div>
+                  )}
+                  <div className="flex-1 space-y-3">
+                    <div>
+                      <p className={cn('text-sm font-bold', approveElig.eligible ? 'text-emerald-800' : 'text-amber-800')}>
+                        {approveElig.eligible ? 'LAYAK DISetujui' : 'PERHATIAN: Syarat Tidak Terpenuhi'}
+                      </p>
+                      <p className={cn('text-xs', approveElig.eligible ? 'text-emerald-600' : 'text-amber-700')}>
+                        {approveElig.eligible ? 'Semua syarat terpenuhi' : 'Terdapat syarat yang belum terpenuhi. Anda dapat menolak atau tetap memaksa setuju dengan kebijakan admin.'}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-2 border-t border-emerald-200/50 pt-3">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-zinc-600">Masa Keanggotaan</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn('font-bold', (approveElig.memberMonths ?? 0) >= (approveElig.minimalBulanAnggota ?? 3) ? 'text-emerald-700' : 'text-amber-600')}>
+                            {approveElig.memberMonths ?? 0} bulan
+                          </span>
+                          <span className="text-zinc-400">(min. {approveElig.minimalBulanAnggota ?? 3} bln)</span>
+                          <div className={cn(
+                            'flex h-4 w-4 items-center justify-center rounded-full',
+                            (approveElig.memberMonths ?? 0) >= (approveElig.minimalBulanAnggota ?? 3)
+                              ? 'bg-emerald-100 text-emerald-600'
+                              : 'bg-amber-100 text-amber-600'
+                          )}>
+                            {(approveElig.memberMonths ?? 0) >= (approveElig.minimalBulanAnggota ?? 3) ? <ShieldCheck className="h-3 w-3" /> : <ShieldX className="h-3 w-3" />}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-zinc-600">Riwayat Pembayaran</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn('font-medium', approveElig.riwayatPembayaran === 'baik' || approveElig.riwayatPembayaran === 'baru' ? 'text-emerald-700' : 'text-amber-600')}>
+                            {approveElig.riwayatPembayaran === 'baru' ? 'Baru/Belum ada riwayat' : approveElig.riwayatPembayaran === 'baik' ? 'Baik' : 'Buruk'}
+                          </span>
+                          <div className={cn(
+                            'flex h-4 w-4 items-center justify-center rounded-full',
+                            approveElig.riwayatPembayaran === 'buruk' ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'
+                          )}>
+                            {approveElig.riwayatPembayaran === 'buruk' ? <ShieldX className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-zinc-600">Status Pinjaman Lain</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn('font-medium', !approveElig.adaPinjamanAktif ? 'text-emerald-700' : 'text-amber-600')}>
+                            {approveElig.adaPinjamanAktif ? 'Ada pinjaman aktif' : 'Tidak ada pinjaman aktif'}
+                          </span>
+                          <div className={cn(
+                            'flex h-4 w-4 items-center justify-center rounded-full',
+                            !approveElig.adaPinjamanAktif ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                          )}>
+                            {!approveElig.adaPinjamanAktif ? <ShieldCheck className="h-3 w-3" /> : <ShieldX className="h-3 w-3" />}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {!approveElig.eligible && approveElig.reasons?.length > 0 && (
+                      <div className="mt-2 rounded-lg bg-white/60 p-3 ring-1 ring-amber-200">
+                        <p className="mb-2 text-xs font-semibold text-amber-800">Detail Kendala:</p>
+                        <ul className="list-inside list-disc space-y-1 text-xs text-amber-700">
+                          {approveElig.reasons.map((r: string, i: number) => (
+                            <li key={i} className="leading-snug">{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {!loadingApproveElig && !approveElig && (
+              <div className="rounded-xl border border-dashed p-8 text-center text-zinc-500">
+                <AlertCircle className="mx-auto mb-2 h-6 w-6 text-zinc-400" />
+                <p>Gagal memuat status eligibilitas.</p>
+              </div>
+            )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
-              onClick={() => setDialogOpen(false)}
-              disabled={submitting}
+              onClick={() => setApproveOpen(false)}
+              disabled={approveSubmitting}
             >
               Batal
             </Button>
             <Button
-              onClick={handleCreate}
-              disabled={submitting}
+              onClick={handleApproveConfirm}
+              disabled={approveSubmitting || loadingApproveElig}
               className="bg-emerald-600 text-white hover:bg-emerald-700"
             >
-              {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-              Cairkan Dana
+              {approveSubmitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              <CheckCircle2 className="mr-1.5 h-4 w-4" />
+              Setujui Pinjaman
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2229,315 +2084,132 @@ function PenarikanTab() {
   )
 }
 
-// ============================ KAS KOPERASI TAB ============================
-function KasTab() {
-  const [data, setData] = useState<{
-    list: any[]
-    saldo: number | string
-    totalMasuk?: number | string
-    totalKeluar?: number | string
-    bySumber: any[]
-    periode?: { dari: string | null; sampai: string | null } | null
-  } | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [filterSumber, setFilterSumber] = useState<string>('')
-  const [filterTipe, setFilterTipe] = useState<string>('')
-  const [dariInput, setDariInput] = useState<string>('')
-  const [sampaiInput, setSampaiInput] = useState<string>('')
-  const [dari, setDari] = useState<string>('')
-  const [sampai, setSampai] = useState<string>('')
+// ============================ PENGATURAN TAB ============================
+function PengaturanTab({ setting, onUpdate }: { setting: KoperasiSetting; onUpdate: (s: KoperasiSetting) => void }) {
+  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState({
+    nominalSimpananPokok: '',
+    nominalSimpananWajib: '',
+    biayaAdminPinjaman: '',
+    sukuBungaPinjaman: '',
+    dendaTerlambatPerHari: '',
+    minimalBulanAnggota: '',
+    minimalSimpananPinjaman: '',
+  })
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    if (setting) {
+      setForm({
+        nominalSimpananPokok: String(setting.nominalSimpananPokok || ''),
+        nominalSimpananWajib: String(setting.nominalSimpananWajib || ''),
+        biayaAdminPinjaman: String(setting.biayaAdminPinjaman || ''),
+        sukuBungaPinjaman: String(setting.sukuBungaPinjaman || ''),
+        dendaTerlambatPerHari: String(setting.dendaTerlambatPerHari || ''),
+        minimalBulanAnggota: String(setting.minimalBulanAnggota || ''),
+        minimalSimpananPinjaman: String(setting.minimalSimpananPinjaman || ''),
+      })
+    }
+  }, [setting])
+
+  const handleSave = async () => {
     setLoading(true)
     try {
-      const res = await api.koperasi.kas(dari, sampai)
-      setData(res)
+      const payload = {
+        nominalSimpananPokok: form.nominalSimpananPokok === '' ? 0 : Number(form.nominalSimpananPokok),
+        nominalSimpananWajib: form.nominalSimpananWajib === '' ? 0 : Number(form.nominalSimpananWajib),
+        biayaAdminPinjaman: form.biayaAdminPinjaman === '' ? 0 : Number(form.biayaAdminPinjaman),
+        sukuBungaPinjaman: form.sukuBungaPinjaman === '' ? 0 : Number(form.sukuBungaPinjaman),
+        dendaTerlambatPerHari: form.dendaTerlambatPerHari === '' ? 0 : Number(form.dendaTerlambatPerHari),
+        minimalBulanAnggota: form.minimalBulanAnggota === '' ? 3 : Number(form.minimalBulanAnggota),
+        minimalSimpananPinjaman: form.minimalSimpananPinjaman === '' ? 0 : Number(form.minimalSimpananPinjaman),
+      }
+      const res = await api.koperasiSetting.update(payload)
+      onUpdate(res)
+      toast.success('Pengaturan berhasil disimpan')
     } catch (e: any) {
-      toast.error('Gagal memuat kas koperasi: ' + e.message)
+      toast.error('Gagal menyimpan pengaturan: ' + e.message)
     } finally {
       setLoading(false)
     }
-  }, [dari, sampai])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  // Client-side filter (the API also supports query, but we filter locally for snappy UX)
-  const filtered = (data?.list || []).filter((k) => {
-    if (filterSumber && k.sumber !== filterSumber) return false
-    if (filterTipe && k.tipe !== filterTipe) return false
-    return true
-  })
-
-  const masukTotal =
-    data?.totalMasuk != null
-      ? toNumber(data.totalMasuk)
-      : (data?.list || [])
-          .filter((k) => k.tipe === 'masuk')
-          .reduce((sum, k) => sum + toNumber(k.jumlah), 0)
-  const keluarTotal =
-    data?.totalKeluar != null
-      ? toNumber(data.totalKeluar)
-      : (data?.list || [])
-          .filter((k) => k.tipe === 'keluar')
-          .reduce((sum, k) => sum + toNumber(k.jumlah), 0)
-  const periodeLabel =
-    dari || sampai
-      ? `periode: ${dari || '…'} — ${sampai || '…'}`
-      : 'semua periode'
-
-  const applyPeriode = () => {
-    setDari(dariInput)
-    setSampai(sampaiInput)
-  }
-
-  const resetPeriode = () => {
-    setDariInput('')
-    setSampaiInput('')
-    setDari('')
-    setSampai('')
   }
 
   return (
-    <Card className="border-emerald-100">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-emerald-900">
-          <Landmark className="h-5 w-5 text-emerald-600" /> Kas Koperasi
-        </CardTitle>
-        <CardDescription>
-          Buku kas koperasi — masuk & keluar dari semua sumber transaksi.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {loading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-28 w-full rounded-xl" />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Skeleton className="h-24 rounded-xl" />
-              <Skeleton className="h-24 rounded-xl" />
+    <div className="space-y-4">
+      <Card className="border-zinc-200">
+        <CardHeader className="bg-zinc-50/50 pb-4">
+          <CardTitle className="text-sm font-semibold text-zinc-800">
+            Pengaturan Dasar Koperasi
+          </CardTitle>
+          <CardDescription>Atur besaran simpanan dan aturan pinjaman</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Simpanan Pokok (Rp)</Label>
+              <Input
+                type="number"
+                value={form.nominalSimpananPokok}
+                onChange={(e) => setForm({ ...form, nominalSimpananPokok: e.target.value })}
+              />
             </div>
-            <Skeleton className="h-64 w-full rounded-lg" />
+            <div className="space-y-1.5">
+              <Label>Simpanan Wajib per Bulan (Rp)</Label>
+              <Input
+                type="number"
+                value={form.nominalSimpananWajib}
+                onChange={(e) => setForm({ ...form, nominalSimpananWajib: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Minimal Saldo Pinjaman (Rp)</Label>
+              <Input
+                type="number"
+                value={form.minimalSimpananPinjaman}
+                onChange={(e) => setForm({ ...form, minimalSimpananPinjaman: e.target.value })}
+              />
+              <p className="text-[10px] text-zinc-500">Total simpanan minimum (Pokok+Wajib+Sukarela)</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Lama Anggota Minimal (Bulan)</Label>
+              <Input
+                type="number"
+                value={form.minimalBulanAnggota}
+                onChange={(e) => setForm({ ...form, minimalBulanAnggota: e.target.value })}
+              />
+              <p className="text-[10px] text-zinc-500">Masa keanggotaan agar bisa pinjam</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Biaya Admin Pinjaman (Rp)</Label>
+              <Input
+                type="number"
+                value={form.biayaAdminPinjaman}
+                onChange={(e) => setForm({ ...form, biayaAdminPinjaman: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Suku Bunga Pinjaman (% per tahun)</Label>
+              <Input
+                type="number"
+                value={form.sukuBungaPinjaman}
+                onChange={(e) => setForm({ ...form, sukuBungaPinjaman: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Denda Terlambat (Rp per hari)</Label>
+              <Input
+                type="number"
+                value={form.dendaTerlambatPerHari}
+                onChange={(e) => setForm({ ...form, dendaTerlambatPerHari: e.target.value })}
+              />
+            </div>
           </div>
-        ) : (
-          <>
-            {/* Big saldo card */}
-            <Card className="overflow-hidden border-0 bg-gradient-to-br from-emerald-600 to-teal-700 text-white">
-              <CardContent className="flex items-center justify-between gap-4 p-6">
-                <div>
-                  <p className="text-xs font-medium text-emerald-50/80">
-                    Saldo Kas Saat Ini
-                  </p>
-                  <p className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
-                    {formatRupiah(toNumber(data?.saldo))}
-                  </p>
-                  <p className="mt-1 text-xs text-emerald-50/70">
-                    Saldo berjalan — semua periode (tidak terfilter)
-                  </p>
-                </div>
-                <div className="hidden h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 backdrop-blur sm:flex">
-                  <ListChecks className="h-8 w-8 text-white" />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Stat cards */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <StatCard
-                label="Total Kas Masuk"
-                value={formatRupiah(masukTotal)}
-                icon={ArrowUpCircle}
-                accent="emerald"
-                sub={`(${periodeLabel})`}
-              />
-              <StatCard
-                label="Total Kas Keluar"
-                value={formatRupiah(keluarTotal)}
-                icon={ArrowDownCircle}
-                accent="rose"
-                sub={`(${periodeLabel})`}
-              />
-            </div>
-
-            {/* Period filter */}
-            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
-              <div className="text-xs font-semibold text-emerald-900 flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5" /> Filter Periode
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">Dari</Label>
-                <Input
-                  type="date"
-                  value={dariInput}
-                  onChange={(e) => setDariInput(e.target.value)}
-                  className="w-full sm:w-[150px]"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">Sampai</Label>
-                <Input
-                  type="date"
-                  value={sampaiInput}
-                  onChange={(e) => setSampaiInput(e.target.value)}
-                  className="w-full sm:w-[150px]"
-                />
-              </div>
-              <Button
-                size="sm"
-                onClick={applyPeriode}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                Terapkan
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={resetPeriode}
-                className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-              >
-                Reset
-              </Button>
-              {(dari || sampai) && (
-                <div className="ml-auto text-xs text-emerald-800">
-                  Aktif: <span className="font-medium">{dari || '…'}</span> —{' '}
-                  <span className="font-medium">{sampai || '…'}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Filters */}
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">Sumber</Label>
-                <Select
-                  value={filterSumber}
-                  onValueChange={(v) => setFilterSumber(v === 'all' ? '' : v)}
-                >
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="Semua sumber" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Semua sumber</SelectItem>
-                    {Object.entries(SUMBER_LABEL).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>
-                        {v}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">Tipe</Label>
-                <Select
-                  value={filterTipe}
-                  onValueChange={(v) => setFilterTipe(v === 'all' ? '' : v)}
-                >
-                  <SelectTrigger className="w-full sm:w-[160px]">
-                    <SelectValue placeholder="Semua tipe" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Semua tipe</SelectItem>
-                    <SelectItem value="masuk">Masuk</SelectItem>
-                    <SelectItem value="keluar">Keluar</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                variant="outline"
-                className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                onClick={load}
-              >
-                <Loader2
-                  className={
-                    'mr-1.5 h-4 w-4 ' + (loading ? 'animate-spin' : 'hidden')
-                  }
-                />
-                Refresh
-              </Button>
-            </div>
-
-            {/* Table */}
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-emerald-900">
-                  Riwayat Transaksi Kas
-                </p>
-                <span className="text-xs text-emerald-700/60">
-                  {filtered.length} transaksi
-                </span>
-              </div>
-              <div className="max-h-[480px] overflow-auto rounded-lg border border-emerald-100">
-                <Table>
-                  <TableHeader className="sticky top-0 z-10 bg-emerald-50/95 backdrop-blur">
-                    <TableRow>
-                      <TableHead>Tanggal</TableHead>
-                      <TableHead>Sumber</TableHead>
-                      <TableHead>Tipe</TableHead>
-                      <TableHead className="text-right">Jumlah</TableHead>
-                      <TableHead>Keterangan</TableHead>
-                      <TableHead>No Referensi</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.length === 0 ? (
-                      <EmptyRow colSpan={6} message="Tidak ada transaksi kas." />
-                    ) : (
-                      filtered.map((k) => (
-                        <TableRow key={k.id}>
-                          <TableCell className="text-xs">
-                            {formatDateTime(k.tanggalTransaksi)}
-                          </TableCell>
-                          <TableCell>
-                            <SumberBadge sumber={k.sumber} />
-                          </TableCell>
-                          <TableCell>
-                            {k.tipe === 'masuk' ? (
-                              <Badge
-                                variant="outline"
-                                className="border-emerald-200 bg-emerald-50 text-emerald-700"
-                              >
-                                <ArrowUpCircle className="h-3 w-3" /> masuk
-                              </Badge>
-                            ) : (
-                              <Badge
-                                variant="outline"
-                                className="border-rose-200 bg-rose-50 text-rose-700"
-                              >
-                                <ArrowDownCircle className="h-3 w-3" /> keluar
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell
-                            className={
-                              'text-right font-semibold ' +
-                              (k.tipe === 'masuk'
-                                ? 'text-emerald-700'
-                                : 'text-rose-700')
-                            }
-                          >
-                            {k.tipe === 'masuk' ? '+' : '-'}{' '}
-                            {formatRupiah(toNumber(k.jumlah))}
-                          </TableCell>
-                          <TableCell
-                            className="max-w-[240px] truncate text-xs text-emerald-700/80"
-                            title={k.keterangan || ''}
-                          >
-                            {k.keterangan || '-'}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs text-emerald-700/60">
-                            {k.nomorReferensi || '-'}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
+          <Button onClick={handleSave} disabled={loading} className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white">
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Simpan Pengaturan
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
@@ -2574,18 +2246,11 @@ export function Koperasi() {
             <span className="hidden sm:inline">Pinjaman</span>
           </TabsTrigger>
           <TabsTrigger
-            value="penarikan"
+            value="pengaturan"
             className="data-[state=active]:bg-white data-[state=active]:text-emerald-700"
           >
-            <ArrowDownCircle className="h-4 w-4" />
-            <span className="hidden sm:inline">Penarikan Sukarela</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="kas"
-            className="data-[state=active]:bg-white data-[state=active]:text-emerald-700"
-          >
-            <Landmark className="h-4 w-4" />
-            <span className="hidden sm:inline">Kas Koperasi</span>
+            <Settings className="h-4 w-4" />
+            <span className="hidden sm:inline">Pengaturan</span>
           </TabsTrigger>
         </TabsList>
 
@@ -2595,11 +2260,8 @@ export function Koperasi() {
         <TabsContent value="pinjaman">
           <PinjamanTab setting={setting} />
         </TabsContent>
-        <TabsContent value="penarikan">
-          <PenarikanTab />
-        </TabsContent>
-        <TabsContent value="kas">
-          <KasTab />
+        <TabsContent value="pengaturan">
+          <PengaturanTab setting={setting} onUpdate={setSetting} />
         </TabsContent>
       </Tabs>
     </div>

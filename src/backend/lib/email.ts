@@ -511,10 +511,11 @@ interface SendOrderEmailParams {
   buyerPhone?: string
   kurirNama?: string
   notes?: string
+  paidAt?: Date
 }
 
 export async function sendOrderConfirmationEmail(params: SendOrderEmailParams): Promise<{ success: boolean; error?: string }> {
-  const { to, buyerName, orderNumber, items, subtotal, ongkir, total, paymentMethod, buyerAddress, buyerPhone, kurirNama, notes } = params
+  const { to, buyerName, orderNumber, items, subtotal, ongkir, total, paymentMethod, buyerAddress, buyerPhone, kurirNama, notes, paidAt } = params
 
   const user = process.env.SMTP_USER
   const pass = process.env.SMTP_PASS
@@ -681,3 +682,125 @@ export async function sendAdminNewUserNotificationEmail(params: SendAdminNewUser
   }
 }
 
+export async function sendSimpananPokokReminderEmail(params: any): Promise<{ success: boolean; error?: string }> {
+  const { to, userName, amount } = params
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
+  if (!user || !pass) return { success: false, error: 'SMTP tidak dikonfigurasi' }
+
+  const formatRp = (val: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(val)
+  const html = `
+  <html>
+  <body>
+    <h2>Halo, ${userName}!</h2>
+    <p>Mohon segera melunasi Simpanan Pokok Anda sebesar ${formatRp(amount || 0)} agar status keanggotaan Koperasi Anda menjadi aktif.</p>
+    <p>Terima kasih.</p>
+  </body>
+  </html>
+  `
+  
+  try {
+    const transport = getTransporter()
+    await transport.sendMail({
+      from: `"${process.env.SMTP_FROM_NAME || 'Bank Sampah'}" <${process.env.SMTP_FROM_EMAIL || user}>`,
+      to,
+      subject: 'Peringatan Pembayaran Simpanan Pokok',
+      html,
+    })
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
+}
+
+export async function sendOrderStatusEmail(params: any) {
+  const { to, buyerName, orderNumber, status, keterangan, noResi, kurirNama, updatedAt } = params
+
+  const dateToUse = updatedAt || new Date()
+  const formattedDate = dateToUse.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
+  const formattedTime = dateToUse.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  const timeStr = `${formattedDate} jam ${formattedTime}`
+
+  let title = 'Status Pesanan Diperbarui'
+  let color = '#0284c7' // blue
+  let message = `Pesanan Anda <b>#${orderNumber}</b> saat ini sedang dalam status: <b>${status.toUpperCase()}</b> pada ${timeStr}.`
+
+  if (status === 'diproses') {
+    title = 'Pesanan Sedang Diproses'
+    color = '#f59e0b' // amber
+    message = `Hore! Pesanan Anda <b>#${orderNumber}</b> saat ini sedang kami siapkan dan proses pada ${timeStr}.`
+  } else if (status === 'dikirim') {
+    title = 'Pesanan Sedang Dikirim'
+    color = '#059669' // emerald
+    message = `Pesanan Anda <b>#${orderNumber}</b> telah diserahkan kepada kurir dan sedang dalam perjalanan ke alamat Anda pada ${timeStr}.`
+  } else if (status === 'selesai' || status === 'diterima') {
+    title = 'Pesanan Selesai'
+    color = '#16a34a' // green
+    message = `Pesanan Anda <b>#${orderNumber}</b> telah selesai pada ${timeStr}. Terima kasih telah berbelanja di Bank Sampah Sukamaju Sejahtera!`
+  } else if (status === 'dibatalkan') {
+    title = 'Pesanan Dibatalkan'
+    color = '#dc2626' // red
+    message = `Mohon maaf, pesanan Anda <b>#${orderNumber}</b> telah dibatalkan pada ${timeStr}.`
+  }
+
+  const html = `
+    <div style="font-family: sans-serif; background: #f3f4f6; padding: 24px;">
+      <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; padding: 24px; border-top: 4px solid ${color};">
+        <h2 style="color: ${color}; margin-top: 0; text-align: center;">${title}</h2>
+        <p>Halo <b>${buyerName}</b>,</p>
+        <p>${message}</p>
+        
+        ${status === 'dikirim' ? `
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 20px 0;">
+          <h3 style="margin-top: 0; font-size: 14px; color: #334155;">Informasi Pengiriman</h3>
+          <p style="margin: 4px 0; font-size: 14px;"><b>Kurir:</b> ${kurirNama || 'Tidak diketahui'}</p>
+          <p style="margin: 4px 0; font-size: 14px;"><b>No. Resi:</b> ${noResi || 'Tidak ada resi'}</p>
+        </div>
+        ` : ''}
+
+        ${keterangan ? `
+        <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 16px; margin: 20px 0;">
+          <h3 style="margin-top: 0; font-size: 14px; color: #991b1b;">Catatan:</h3>
+          <p style="margin: 0; font-size: 14px; color: #7f1d1d;">${keterangan}</p>
+        </div>
+        ` : ''}
+
+        <div style="text-align: center; margin-top: 32px;">
+          <a href="${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/toko" style="background-color: ${color}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Lihat Pesanan Saya</a>
+        </div>
+
+        <p style="color: #64748b; font-size: 14px; margin-top: 32px; text-align: center;">
+          Bank Sampah Sukamaju Sejahtera<br/>
+          Terima kasih telah berkontribusi untuk lingkungan!
+        </p>
+      </div>
+    </div>
+  `
+
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
+  if (!user || !pass) {
+    console.warn('[Status Email] SMTP not configured, skipping')
+    return { success: false, error: 'SMTP belum dikonfigurasi' }
+  }
+
+  const fromName = process.env.SMTP_FROM_NAME || 'Bank Sampah Sukamaju'
+  const fromEmail = process.env.SMTP_FROM_EMAIL || user
+
+  try {
+    const transport = getTransporter()
+    console.log('[Status Email] Sending to:', to, '| status:', status)
+    const info = await transport.sendMail({
+      from: `"${fromName}" <${fromEmail}>`,
+      to,
+      subject: `[${status.toUpperCase()}] Pesanan ${orderNumber} - Bank Sampah Sukamaju Sejahtera`,
+      html,
+    })
+    console.log('[Status Email] Sent to:', to, '| messageId:', info.messageId)
+    return { success: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[Status Email] Error:', message)
+    return { success: false, error: message }
+  }
+}

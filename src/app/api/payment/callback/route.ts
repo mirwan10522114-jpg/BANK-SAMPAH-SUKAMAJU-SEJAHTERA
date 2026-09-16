@@ -30,7 +30,7 @@ import { logWebhook } from '@/lib/logger'
 //      transactionId, grossAmount, paidAt, settlementTime, rawCallback
 //   7. On settlement: convert reserved stock → real sale + record kas
 //   8. On failure/expire: release reserved stock
-//   9. Always create TokoOrderStatusHistory row for audit trail
+//   9. Always create RiwayatStatusPesananToko row for audit trail
 //  10. Return 200 { status: 'ok' } (Midtrans expects 2xx)
 // =====================================================================
 
@@ -130,7 +130,7 @@ function mapStatus(
   if (ts === 'expire') {
     return {
       paymentStatus: 'expired',
-      orderStatus: 'expired',
+      orderStatus: 'dibatalkan',
       keterangan: 'Pembayaran expired (tidak dibayar dalam waktu yang ditentukan)',
       isPaid: false,
       isFailed: true,
@@ -248,7 +248,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 2) Verify signature (only if all 4 fields are present)
-  //    Midtrans sends signature_key for most notifications
+  //    Midtrans sends signature_key for most notifikasis
   if (signatureKey && statusCode && grossAmount) {
     const valid = verifyMidtransSignature({
       orderId,
@@ -276,7 +276,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 3) Find order
-  const order = await db.tokoOrder.findFirst({
+  const order = await db.pesananToko.findFirst({
     where: {
       OR: [{ midtransOrderId: orderId }, { orderNumber: orderId }],
     },
@@ -304,7 +304,7 @@ export async function POST(req: NextRequest) {
       payment_status: mapping.paymentStatus,
     })
     // Still update lastWebhookAt for audit
-    await db.tokoOrder.update({
+    await db.pesananToko.update({
       where: { id: order.id },
       data: { midtransLastWebhookAt: new Date() },
     })
@@ -355,7 +355,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 7) Apply the update
-  await db.tokoOrder.update({
+  await db.pesananToko.update({
     where: { id: order.id },
     data: updateData,
   })
@@ -370,9 +370,9 @@ export async function POST(req: NextRequest) {
   })
 
   // 8) Create status history
-  await db.tokoOrderStatusHistory.create({
+  await db.riwayatStatusPesananToko.create({
     data: {
-      tokoOrderId: order.id,
+      pesananTokoId: order.id,
       status: mapping.orderStatus,
       keterangan: mapping.keterangan,
     },
@@ -384,7 +384,7 @@ export async function POST(req: NextRequest) {
       const qty = toNumber(item.quantity)
       // Release the reserve first
       await addProductStock(
-        item.productId,
+        item.produkId,
         qty,
         'online_release',
         'toko_order',
@@ -394,7 +394,7 @@ export async function POST(req: NextRequest) {
       )
       // Then reduce as real sale
       await reduceProductStock(
-        item.productId,
+        item.produkId,
         qty,
         'online_sale',
         'toko_order',
@@ -420,9 +420,9 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Create ProductSale record for unified reporting
+    // Create PenjualanProduk record for unified reporting
     try {
-      await db.productSale.create({
+      await db.penjualanProduk.create({
         data: {
           buyerName: order.buyerName,
           buyerPhone: order.buyerPhone,
@@ -437,7 +437,7 @@ export async function POST(req: NextRequest) {
           notes: `Pesanan online ${order.orderNumber}`,
           items: {
             create: order.items.map((i) => ({
-              productId: i.productId,
+              produkId: i.produkId,
               productNameSnapshot: i.productNameSnapshot,
               unitSnapshot: i.unitSnapshot,
               pricePerUnitSnapshot: i.pricePerUnitSnapshot,
@@ -448,38 +448,43 @@ export async function POST(req: NextRequest) {
         },
       })
     } catch (e) {
-      logWebhook.error('Failed to create ProductSale record', e, {
+      logWebhook.error('Failed to create PenjualanProduk record', e, {
         order_id: orderId,
       })
     }
 
     // Send order confirmation email to buyer
     try {
-      const { sendOrderConfirmationEmail } = await import('@/lib/email')
-      const emailResult = await sendOrderConfirmationEmail({
-        to: order.buyerEmail || '',
-        buyerName: order.buyerName,
-        orderNumber: order.orderNumber,
-        items: order.items.map((i) => ({
-          productName: i.productNameSnapshot,
-          quantity: toNumber(i.quantity),
-          unit: i.unitSnapshot || 'pcs',
-          pricePerUnit: toNumber(i.pricePerUnitSnapshot),
-          subtotal: toNumber(i.subtotal),
-        })),
-        subtotal: toNumber(order.subtotalProduk),
-        ongkir: toNumber(order.ongkir),
-        total: toNumber(order.totalBayar),
-        paymentMethod: order.paymentMethod || 'midtrans',
-        buyerAddress: order.buyerAddress || undefined,
-        buyerPhone: order.buyerPhone || undefined,
-        kurirNama: order.kurirNama || undefined,
-        notes: order.notes || undefined,
-      })
-      if (emailResult.success) {
-        logWebhook.info('Order confirmation email sent', { order_id: orderId, to: order.buyerEmail })
+      if (order.buyerEmail) {
+        const { sendOrderConfirmationEmail } = await import('@/lib/email')
+        const emailResult = await sendOrderConfirmationEmail({
+          to: order.buyerEmail,
+          buyerName: order.buyerName,
+          orderNumber: order.orderNumber,
+          items: order.items.map((i) => ({
+            productName: i.productNameSnapshot,
+            quantity: toNumber(i.quantity),
+            unit: i.unitSnapshot || 'pcs',
+            pricePerUnit: toNumber(i.pricePerUnitSnapshot),
+            subtotal: toNumber(i.subtotal),
+          })),
+          subtotal: toNumber(order.subtotalProduk),
+          ongkir: toNumber(order.ongkir),
+          total: toNumber(order.totalBayar),
+          paymentMethod: order.paymentMethod || 'midtrans',
+          buyerAddress: order.buyerAddress || undefined,
+          buyerPhone: order.buyerPhone || undefined,
+          kurirNama: order.kurirNama || undefined,
+          notes: order.notes || undefined,
+          paidAt: updateData.paidAt ? (updateData.paidAt as Date) : order.paidAt ? order.paidAt : new Date(),
+        })
+        if (emailResult.success) {
+          logWebhook.info('Order confirmation email sent', { order_id: orderId, to: order.buyerEmail })
+        } else {
+          logWebhook.warn('Order confirmation email failed', { order_id: orderId, error: emailResult.error })
+        }
       } else {
-        logWebhook.warn('Order confirmation email failed', { order_id: orderId, error: emailResult.error })
+        logWebhook.info('Order confirmation email skipped, no buyer email', { order_id: orderId })
       }
     } catch (e) {
       logWebhook.error('Failed to send order email', e, { order_id: orderId })
@@ -491,7 +496,7 @@ export async function POST(req: NextRequest) {
     for (const item of order.items) {
       const qty = toNumber(item.quantity)
       await addProductStock(
-        item.productId,
+        item.produkId,
         qty,
         'online_release',
         'toko_order',

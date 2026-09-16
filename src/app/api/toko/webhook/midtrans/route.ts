@@ -1,6 +1,6 @@
 // Re-export the canonical webhook handler.
 //
-// Midtrans dashboard may be configured to send notifications to either:
+// Midtrans dashboard may be configured to send notifikasis to either:
 //   /api/payment/callback   (canonical — used by new integrations)
 //   /api/toko/webhook/midtrans  (legacy path used by old /toko/checkout)
 //

@@ -184,8 +184,13 @@ export function StrukModal({ data, open, onOpenChange }: { data: StrukData | nul
           </div>
         </div>
 
+        {/* Email Notifikasi */}
+        <div className="border-t border-zinc-100 bg-emerald-50/80 px-4 py-2.5 text-center text-xs text-emerald-700 flex items-center justify-center gap-1.5 font-medium print:hidden">
+          <CheckCircle2 className="h-4 w-4" /> Struk telah dikirimkan ke email
+        </div>
+        
         {/* Actions */}
-        <div className="flex gap-2 border-t border-zinc-100 bg-white p-4 print:hidden">
+        <div className="flex gap-2 bg-white p-4 pt-2 print:hidden">
           <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1 text-sm">
             <X className="mr-1.5 h-4 w-4" /> Tutup
           </Button>

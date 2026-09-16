@@ -2,21 +2,23 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getActingUser } from '@/lib/business'
 
-// GET: List all product categories
+// GET: List all produk categories
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
-  const categories = await db.productCategory.findMany({
+  const categories = await db.kategoriProduk.findMany({
     orderBy: { name: 'asc' },
     include: {
       _count: {
-        select: { products: true },
+        select: { produks: true },
       },
     },
   })
 
-  // Map _count.products -> flat productCount field expected by frontend
+  // Map _count.produks -> flat productCount field expected by frontend
   const result = categories.map((c) => ({
     ...c,
-    productCount: c._count.products,
+    productCount: c._count.produks,
   }))
 
   return NextResponse.json(result)
@@ -45,10 +47,10 @@ export async function POST(req: NextRequest) {
     .trim()
 
   // Check uniqueness
-  const existing = await db.productCategory.findUnique({ where: { slug } })
+  const existing = await db.kategoriProduk.findUnique({ where: { slug } })
   if (existing) return NextResponse.json({ error: 'Slug sudah digunakan' }, { status: 400 })
 
-  const category = await db.productCategory.create({
+  const category = await db.kategoriProduk.create({
     data: {
       name,
       slug,

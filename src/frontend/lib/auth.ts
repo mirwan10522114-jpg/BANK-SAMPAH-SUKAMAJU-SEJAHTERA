@@ -13,10 +13,11 @@ export interface AuthUser {
   phone: string | null
   address: string | null
   nik: string | null
+  verificationStatus: string
 }
 
 const AUTH_KEY = 'bs-auth-token'
-const AUTH_USER_KEY = 'bs-auth-user'
+const AUTH_USER_KEY = 'bs-auth-pengguna'
 
 export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null
@@ -34,28 +35,28 @@ export function getAuthUser(): AuthUser | null {
   }
 }
 
-export function setAuth(token: string, user: AuthUser) {
+export function setAuth(token: string, pengguna: AuthUser) {
   if (typeof window === 'undefined') return
   localStorage.setItem(AUTH_KEY, token)
-  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user))
+  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(pengguna))
 }
 
 export function clearAuth() {
   if (typeof window === 'undefined') return
   localStorage.removeItem(AUTH_KEY)
   localStorage.removeItem(AUTH_USER_KEY)
-  // Also clear the acting user used by admin
-  localStorage.removeItem('bs-acting-user')
+  // Also clear the acting pengguna used by admin
+  localStorage.removeItem('bs-acting-pengguna')
 }
 
-export function isAdmin(user: AuthUser | null): boolean {
-  if (!user) return false
-  const roles = user.roles || []
+export function isAdmin(pengguna: AuthUser | null): boolean {
+  if (!pengguna) return false
+  const roles = pengguna.roles || []
   return roles.includes('admin') || roles.includes('owner')
 }
 
-export function isNasabah(user: AuthUser | null): boolean {
-  if (!user) return false
-  const roles = user.roles || []
+export function isNasabah(pengguna: AuthUser | null): boolean {
+  if (!pengguna) return false
+  const roles = pengguna.roles || []
   return roles.includes('nasabah') || roles.includes('koperasi')
 }

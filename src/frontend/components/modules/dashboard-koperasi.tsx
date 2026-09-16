@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Search, Filter, RotateCcw, FileText, Landmark, CreditCard, AlertTriangle, Users, TrendingUp, TrendingDown, ArrowDownRight, ArrowUpRight, MousePointerClick } from 'lucide-react'
+import { Search, Filter, RotateCcw, FileText, Landmark, CreditCard, AlertTriangle, Users, TrendingUp, TrendingDown, ArrowDownRight, ArrowUpRight, MousePointerClick, Banknote } from 'lucide-react'
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   PieChart, Pie, Cell,
@@ -247,6 +247,61 @@ export function DashboardKoperasi() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* ===== RINGKASAN HARI INI ===== */}
+      {data.todaySummary && (
+        <Card 
+          className="border-0 bg-gradient-to-r from-blue-600 to-indigo-700 shadow-lg text-white cursor-pointer hover:shadow-xl transition-shadow"
+          onClick={() => {
+            const today = new Date()
+            const todayYMD = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+            setDetailModal({
+              title: 'Detail Transaksi Hari Ini',
+              description: 'Seluruh riwayat mutasi kas koperasi yang tercatat khusus hari ini.',
+              apiPath: '/koperasi/kas',
+              responsePath: 'list',
+              columns: kasColumns,
+              sumField: 'jumlah', sumLabel: 'Total Mutasi', sumFormat: 'currency',
+              baseParams: { dari: todayYMD, sampai: todayYMD }
+            })
+          }}
+        >
+          <CardContent className="p-4 sm:p-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+              <Landmark className="w-32 h-32 transform rotate-12 translate-x-8 -translate-y-8" />
+            </div>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+              <div>
+                <h3 className="font-bold text-lg flex items-center gap-2">
+                  <Banknote className="size-5" /> Ringkasan Transaksi Hari Ini
+                </h3>
+                <p className="text-blue-100 text-xs mt-1">Pergerakan kas masuk dan keluar koperasi khusus hari ini. (Otomatis reset besok)</p>
+                <div className="mt-3 inline-flex items-center gap-1 rounded-md bg-white/20 px-2 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
+                  <MousePointerClick className="h-3 w-3" /> Klik untuk melihat rincian kas hari ini
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3 sm:gap-6">
+                <div className="bg-white/10 rounded-xl p-3 px-4 backdrop-blur-sm border border-white/20">
+                  <p className="text-[10px] uppercase font-bold text-blue-100 mb-1 flex items-center gap-1"><ArrowUpRight className="size-3" /> Pemasukan</p>
+                  <p className="font-black text-xl">{formatRupiah(data.todaySummary.totalPemasukan)}</p>
+                  <div className="flex gap-3 mt-1 text-[10px] text-blue-200">
+                    <span>Simpanan: {formatRupiah(data.todaySummary.simpananMasuk)}</span>
+                    <span>Angsuran: {formatRupiah(data.todaySummary.angsuranMasuk)}</span>
+                  </div>
+                </div>
+                <div className="bg-white/10 rounded-xl p-3 px-4 backdrop-blur-sm border border-white/20">
+                  <p className="text-[10px] uppercase font-bold text-pink-200 mb-1 flex items-center gap-1"><ArrowDownRight className="size-3" /> Pengeluaran</p>
+                  <p className="font-black text-xl">{formatRupiah(data.todaySummary.totalPengeluaran)}</p>
+                  <div className="flex gap-3 mt-1 text-[10px] text-pink-200/80">
+                    <span>Penarikan: {formatRupiah(data.todaySummary.penarikanKeluar)}</span>
+                    <span>Cair Pinjaman: {formatRupiah(data.todaySummary.pinjamanCair)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ===== 5 METRIC CARDS ===== */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">

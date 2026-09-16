@@ -27,7 +27,7 @@ function parseDatabaseUrl(url) {
   try {
     const parsed = new URL(url);
     return {
-      user: parsed.username || 'root',
+      pengguna: parsed.username || 'root',
       password: parsed.password || '',
       host: parsed.hostname || 'localhost',
       port: parsed.port || '3306',
@@ -57,7 +57,7 @@ function restoreDatabase() {
   }
 
   const pwdArg = dbConfig.password ? `-p"${dbConfig.password}"` : '';
-  const cmd = `Get-Content -Path "${targetFile}" | & "${mysqlExe}" -h ${dbConfig.host} -P ${dbConfig.port} -u ${dbConfig.user} ${pwdArg}`;
+  const cmd = `Get-Content -Path "${targetFile}" | & "${mysqlExe}" -h ${dbConfig.host} -P ${dbConfig.port} -u ${dbConfig.pengguna} ${pwdArg}`;
 
   console.log(`Merestore database [${dbConfig.database}] dari file: ${targetFile}...`);
   execSync(cmd, { shell: 'powershell.exe' });

@@ -10,40 +10,72 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Email dan password wajib diisi' }, { status: 400 })
   }
 
-  const user = await db.user.findUnique({
+  const pengguna = await db.pengguna.findUnique({
     where: { email: email.toLowerCase().trim() },
     include: {
-      balance: true,
+      saldo: true,
       koperasiAnggota: { select: { id: true, nomorAnggota: true, status: true } },
     },
   })
 
-  if (!user) {
+  if (!pengguna) {
     return NextResponse.json({ error: 'Email tidak terdaftar' }, { status: 404 })
   }
 
+  // Cek Verifikasi 2 Langkah (OTP & Admin)
+  if (pengguna.verificationStatus === 'pending_otp') {
+    // Generate and send a new OTP automatically
+    try {
+      const { sendOtpEmail, generateOtp } = await import('@/backend/lib/email')
+      const otp = generateOtp()
+      const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000)
+      
+      await db.pengguna.update({
+        where: { id: pengguna.id },
+        data: { otpCode: otp, otpExpiresAt, otpAttempts: 0 },
+      })
+
+      await sendOtpEmail({
+        to: pengguna.email,
+        otp,
+        userName: pengguna.name,
+      })
+    } catch (e) {
+      console.error('Failed to auto-resend OTP during login:', e)
+    }
+
+    return NextResponse.json({ 
+      error: 'Akun Anda belum verifikasi OTP. Kode OTP baru telah dikirim ke email Anda.',
+      requireOtp: true,
+      penggunaId: pengguna.id
+    }, { status: 401 })
+  }
+
+  // pending_admin is allowed to login, but dashboard will show a banner and disable transactions
+
   // Mock password check (in production, use bcrypt)
-  if (user.password !== password) {
+  if (pengguna.password !== password) {
     return NextResponse.json({ error: 'Password salah' }, { status: 401 })
   }
 
-  const roles = parseRoles(user.roles)
+  const roles = parseRoles(pengguna.roles)
 
   const authUser = {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    memberCode: user.memberCode,
-    anggotaId: user.koperasiAnggota?.id || null,
-    nomorAnggota: user.koperasiAnggota?.nomorAnggota || null,
+    id: pengguna.id,
+    name: pengguna.name,
+    email: pengguna.email,
+    memberCode: pengguna.memberCode,
+    anggotaId: pengguna.koperasiAnggota?.id || null,
+    nomorAnggota: pengguna.koperasiAnggota?.nomorAnggota || null,
     roles,
-    isMember: user.isMember,
-    phone: user.phone,
-    address: user.address,
-    nik: user.nik,
+    isMember: pengguna.isMember,
+    phone: pengguna.phone,
+    address: pengguna.address,
+    nik: pengguna.nik,
+    verificationStatus: pengguna.verificationStatus,
   }
 
-  const token = `mock-${user.id}-${Date.now()}`
+  const token = `mock-${pengguna.id}-${Date.now()}`
 
-  return NextResponse.json({ token, user: authUser })
+  return NextResponse.json({ token, pengguna: authUser })
 }

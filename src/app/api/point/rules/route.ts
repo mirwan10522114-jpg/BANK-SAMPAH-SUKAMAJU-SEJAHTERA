@@ -8,28 +8,36 @@ import { z } from 'zod'
 // GET /api/point/rules
 // List semua point rules
 // =====================================================================
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
-  const rules = await db.pointRule.findMany({
+  const rules = await db.aturanPoin.findMany({
     orderBy: { effectiveFrom: 'desc' },
     include: { createdBy: { select: { name: true } } },
   })
-  return NextResponse.json(rules.map((r) => ({
-    ...r,
-    pointsPerRupiah: toNumber(r.pointsPerRupiah),
-    rupiahPerPoint: toNumber(r.rupiahPerPoint),
-    tierBronzeMult: toNumber(r.tierBronzeMult),
-    tierSilverMult: toNumber(r.tierSilverMult),
-    tierGoldMult: toNumber(r.tierGoldMult),
-    tierPlatinumMult: toNumber(r.tierPlatinumMult),
-    streakBonusMult: toNumber(r.streakBonusMult),
-  })))
+  return NextResponse.json(rules.map((r) => {
+    const ppr = toNumber(r.pointsPerRupiah)
+    const earnRp = r.rupiahPerPointEarn || (ppr > 0 ? Math.round(1 / ppr) : 1000)
+    return {
+      ...r,
+      rupiahPerPointEarn: earnRp,
+      pointsPerRupiah: ppr > 0 ? ppr : (1 / earnRp),
+      rupiahPerPoint: toNumber(r.rupiahPerPoint),
+      tierBronzeMult: toNumber(r.tierBronzeMult),
+      tierSilverMult: toNumber(r.tierSilverMult),
+      tierGoldMult: toNumber(r.tierGoldMult),
+      tierPlatinumMult: toNumber(r.tierPlatinumMult),
+      streakBonusMult: toNumber(r.streakBonusMult),
+    }
+  }))
 }
 
 // =====================================================================
 // POST /api/point/rules — buat/update aturan poin
 // =====================================================================
 const CreateSchema = z.object({
-  pointsPerRupiah: z.number().positive(),
+  rupiahPerPointEarn: z.number().int().positive().optional(), // nilai rupiah tabungan untuk 1 poin (cth: 1000)
+  pointsPerRupiah: z.number().positive().optional(),
   rupiahPerPoint: z.number().min(0).default(0),
   effectiveFrom: z.string().optional(),
   notes: z.string().optional(),
@@ -59,14 +67,28 @@ export async function POST(req: NextRequest) {
   }
   const d = parsed.data
 
-  // Nonaktifkan semua rule lama jika rule baru aktif
-  if (d.isActive) {
-    await db.pointRule.updateMany({ where: { isActive: true }, data: { isActive: false } })
+  // Sinkronkan nilai rupiahPerPointEarn dan pointsPerRupiah
+  let rupiahPerPointEarn = d.rupiahPerPointEarn
+  let pointsPerRupiah = d.pointsPerRupiah
+
+  if (rupiahPerPointEarn && rupiahPerPointEarn > 0) {
+    pointsPerRupiah = 1 / rupiahPerPointEarn
+  } else if (pointsPerRupiah && pointsPerRupiah > 0) {
+    rupiahPerPointEarn = Math.round(1 / pointsPerRupiah)
+  } else {
+    rupiahPerPointEarn = 1000
+    pointsPerRupiah = 0.001
   }
 
-  const rule = await db.pointRule.create({
+  // Nonaktifkan semua rule lama jika rule baru aktif
+  if (d.isActive) {
+    await db.aturanPoin.updateMany({ where: { isActive: true }, data: { isActive: false } })
+  }
+
+  const rule = await db.aturanPoin.create({
     data: {
-      pointsPerRupiah: d.pointsPerRupiah,
+      rupiahPerPointEarn,
+      pointsPerRupiah,
       rupiahPerPoint: d.rupiahPerPoint,
       effectiveFrom: d.effectiveFrom ? new Date(d.effectiveFrom) : new Date(),
       notes: d.notes || null,

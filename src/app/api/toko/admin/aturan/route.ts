@@ -25,8 +25,8 @@ export async function POST(req: NextRequest) {
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { productCategoryId, minPembelian, maxPembelian, berlakuOffline, berlakuOnline } = body as {
-    productCategoryId?: string
+  const { kategoriProdukId, minPembelian, maxPembelian, berlakuOffline, berlakuOnline } = body as {
+    kategoriProdukId?: string
     minPembelian?: number
     maxPembelian?: number
     berlakuOffline?: boolean
@@ -34,14 +34,14 @@ export async function POST(req: NextRequest) {
   }
 
   // Validate category if provided
-  if (productCategoryId) {
-    const cat = await db.productCategory.findUnique({ where: { id: productCategoryId } })
+  if (kategoriProdukId) {
+    const cat = await db.kategoriProduk.findUnique({ where: { id: kategoriProdukId } })
     if (!cat) return NextResponse.json({ error: 'Kategori tidak ditemukan' }, { status: 400 })
   }
 
   const rule = await db.aturanPenjualan.create({
     data: {
-      productCategoryId: productCategoryId || null,
+      kategoriProdukId: kategoriProdukId || null,
       minPembelian: minPembelian || 1,
       maxPembelian: maxPembelian || 0,
       berlakuOffline: berlakuOffline !== false,

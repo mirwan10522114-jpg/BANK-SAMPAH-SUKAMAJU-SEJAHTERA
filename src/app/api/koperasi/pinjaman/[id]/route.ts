@@ -7,7 +7,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   const pinjaman = await db.koperasiPinjaman.findUnique({
     where: { id },
-    include: { anggota: true, angsurans: { orderBy: { angsuranKe: 'asc' } } },
+    include: { anggota: true, angsurans: { orderBy: { angsuranKe: 'asc' } }, disetujuiOleh: { select: { name: true } } },
   })
   if (!pinjaman) return NextResponse.json({ error: 'Pinjaman tidak ditemukan' }, { status: 404 })
 
@@ -15,7 +15,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const jumlah = toNumber(pinjaman.jumlahPinjaman)
   const tenor = pinjaman.tenorBulan
   const sukuBunga = toNumber(pinjaman.sukuBunga)
-  const { pokokPerBulan, bungaPerBulan, angsuranPerBulan } = calcAngsuranSchedule(jumlah, tenor, sukuBunga)
+  const biayaAdmin = toNumber(pinjaman.biayaAdmin)
+  const { pokokPerBulan, bungaPerBulan, adminPerBulan, angsuranPerBulan } = calcAngsuranSchedule(jumlah, tenor, sukuBunga, biayaAdmin)
   const schedule: any[] = []
   let sisa = jumlah
   const paidMap = new Map(pinjaman.angsurans.map((a) => [a.angsuranKe, a]))

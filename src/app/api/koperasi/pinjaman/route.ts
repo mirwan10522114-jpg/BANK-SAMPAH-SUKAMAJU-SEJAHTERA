@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getActingUser, generateTxNo, calcAngsuranSchedule, recordKasTx } from '@/lib/business'
-import { toNumber, formatRupiah } from '@/lib/format'
+import { getActingUser, generateTxNo, calcAngsuranSchedule, recordKasTx, getKoperasiKasBalance } from '@/lib/business'
+import { toNumber, formatRupiah, parseFilterStartDate, parseFilterEndDate } from '@/lib/format'
 
 // GET: list pinjaman
 // Query params:
@@ -11,35 +11,64 @@ import { toNumber, formatRupiah } from '@/lib/format'
 //   sampai    — ISO date (lte tanggalPengajuan)
 //   q         — search by nomorPinjaman (case-insensitive contains)
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const anggotaId = searchParams.get('anggotaId')
-  const status = searchParams.get('status')
-  const dari = searchParams.get('dari')
-  const sampai = searchParams.get('sampai')
-  const q = (searchParams.get('q') || '').trim()
+  try {
+    const { searchParams } = new URL(req.url)
+    const anggotaId = searchParams.get('anggotaId')
+    const status = searchParams.get('status')
+    const dari = searchParams.get('dari')
+    const sampai = searchParams.get('sampai')
+    const q = (searchParams.get('q') || '').trim()
+    const limit = parseInt(searchParams.get('limit') || '5000', 10)
 
-  const where: any = {}
-  if (anggotaId) where.koperasiAnggotaId = anggotaId
-  if (status && status !== 'all') where.status = status
-  if (dari || sampai) {
-    where.tanggalPengajuan = {}
-    if (dari) where.tanggalPengajuan.gte = new Date(dari)
-    if (sampai) {
-      const s = new Date(sampai)
-      s.setHours(23, 59, 59, 999)
-      where.tanggalPengajuan.lte = s
+    const where: any = {}
+    if (anggotaId) where.koperasiAnggotaId = anggotaId
+    if (status && status !== 'all' && status !== 'Semua') where.status = status
+
+    const startDate = parseFilterStartDate(dari)
+    const endDate = parseFilterEndDate(sampai)
+    if (startDate || endDate) {
+      where.tanggalPengajuan = {}
+      if (startDate) where.tanggalPengajuan.gte = startDate
+      if (endDate) where.tanggalPengajuan.lte = endDate
     }
+
+    if (q) {
+      where.OR = [
+        { nomorPinjaman: { contains: q } },
+        { anggota: { nama: { contains: q } } },
+        { anggota: { nomorAnggota: { contains: q } } },
+      ]
+    }
+
+    const [pinjaman, countAgg, sumSisaAgg] = await Promise.all([
+      db.koperasiPinjaman.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: { anggota: true, angsurans: { orderBy: { angsuranKe: 'asc' } }, createdBy: { select: { name: true } } },
+        take: limit,
+      }),
+      db.koperasiPinjaman.count({ where }),
+      db.koperasiPinjaman.aggregate({ where, _sum: { sisaPinjaman: true, jumlahPinjaman: true } }),
+    ])
+
+    const totalCount = countAgg
+    const totalSum = toNumber(sumSisaAgg._sum.sisaPinjaman)
+
+    const format = searchParams.get('format')
+    if (format === 'wrapped') {
+      return NextResponse.json({ list: pinjaman, totalCount, totalSum })
+    }
+
+    return NextResponse.json(pinjaman, {
+      headers: {
+        'x-total-count': String(totalCount),
+        'x-total-sum': String(totalSum),
+      },
+    })
+  } catch (err: any) {
+    console.error('[GET /api/koperasi/pinjaman] Error:', err)
+    return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 })
   }
-  if (q) {
-    where.nomorPinjaman = { contains: q }
-  }
-  const pinjaman = await db.koperasiPinjaman.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    include: { anggota: true, angsurans: { orderBy: { angsuranKe: 'asc' } } },
-    take: 100,
-  })
-  return NextResponse.json(pinjaman)
 }
 
 // POST: pemberian pinjaman baru (langsung berstatus 'berjalan' & kas keluar dicatat)
@@ -60,11 +89,29 @@ export async function POST(req: NextRequest) {
   // Server-side eligibility check
   const anggotaData = await db.koperasiAnggota.findUnique({
     where: { id: anggotaId },
-    include: { pinjamans: { include: { angsurans: true } }, user: true },
+    include: { pinjamans: { include: { angsurans: true } }, pengguna: true },
   })
   if (!anggotaData) return NextResponse.json({ error: 'Anggota tidak ditemukan' }, { status: 404 })
 
   const setting = await db.koperasiSetting.findFirst()
+
+  // Server-side check Simpanan Pokok
+  const saldoPokok = await db.koperasiSimpananSaldo.findUnique({
+    where: {
+      koperasiAnggotaId_jenisSimpanan: {
+        koperasiAnggotaId: anggotaId,
+        jenisSimpanan: 'pokok',
+      },
+    },
+  })
+  const nominalSimpananPokok = setting ? toNumber(setting.nominalSimpananPokok) : 50000
+  const saldoPokokVal = toNumber(saldoPokok?.saldo ?? 0)
+  if (saldoPokokVal <= 0 || (nominalSimpananPokok > 0 && saldoPokokVal < nominalSimpananPokok)) {
+    return NextResponse.json({
+      error: `Anggota belum melunasi Simpanan Pokok. Pembayaran Simpanan Pokok (${nominalSimpananPokok > 0 ? 'Rp ' + nominalSimpananPokok.toLocaleString('id-ID') : 'Simpanan Pokok'}) wajib diselesaikan terlebih dahulu.`,
+    }, { status: 400 })
+  }
+
   const minimalBulan = setting?.minimalBulanAnggota ?? 3
   const nowMs = Date.now()
   const joinMs = new Date(anggotaData.tanggalBergabung).getTime()
@@ -80,8 +127,17 @@ export async function POST(req: NextRequest) {
   }
 
   const sukuBunga = inputBunga !== undefined ? Number(inputBunga) : (setting ? toNumber(setting.sukuBungaPinjaman) : 0)
+  const biayaAdmin = setting ? toNumber(setting.biayaAdminPinjaman) : 0
 
-  const { angsuranPerBulan } = calcAngsuranSchedule(jumlahPinjaman, tenorBulan, sukuBunga)
+  // Check kas koperasi balance
+  const kasBalance = await getKoperasiKasBalance()
+  if (kasBalance < jumlahPinjaman) {
+    return NextResponse.json({
+      error: `Saldo kas koperasi tidak mencukupi. Saldo kas: Rp ${kasBalance.toLocaleString('id-ID')}, dibutuhkan: Rp ${jumlahPinjaman.toLocaleString('id-ID')}.`,
+    }, { status: 400 })
+  }
+
+  const { angsuranPerBulan, pokokPerBulan, bungaPerBulan, adminPerBulan } = calcAngsuranSchedule(jumlahPinjaman, tenorBulan, sukuBunga, biayaAdmin)
   const counter = await db.koperasiPinjaman.count()
   const nomor = `PNJ / ${String(counter + 1).padStart(4, '0')}`
 
@@ -92,14 +148,16 @@ export async function POST(req: NextRequest) {
       jumlahPinjaman,
       tenorBulan,
       angsuranPerBulan,
-      biayaAdmin: setting ? toNumber(setting.biayaAdminPinjaman) : 0,
+      biayaAdmin,
       tanggalPengajuan: new Date(),
       tanggalPencairan: new Date(),
       status: 'berjalan', // Langsung berjalan (anggota datang langsung & disetujui di tempat)
       sisaPinjaman: jumlahPinjaman,
       sukuBunga,
       keterangan,
-      userId: actor?.id,
+      penggunaId: actor?.id,
+      disetujuiOlehId: actor?.id,
+      disetujuiPada: new Date(),
     },
     include: { anggota: true },
   })
@@ -109,7 +167,7 @@ export async function POST(req: NextRequest) {
 
   // Kirim email struk pencairan pinjaman ke anggota jika ada email
   try {
-    const email = anggotaData.user?.email
+    const email = anggotaData.pengguna?.email
     if (email) {
       const { sendStrukEmail } = await import('@/lib/email')
       const fmtIDR = (n: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n)

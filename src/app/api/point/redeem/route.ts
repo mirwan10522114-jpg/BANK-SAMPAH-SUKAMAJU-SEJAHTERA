@@ -7,12 +7,12 @@ import { z } from 'zod'
 // =====================================================================
 // POST /api/point/redeem
 // Tukar poin dengan produk
-// Body: { userId, productId, quantity }
+// Body: { penggunaId, produkId, quantity }
 // =====================================================================
 
 const BodySchema = z.object({
-  userId: z.string().min(1),
-  productId: z.string().min(1),
+  penggunaId: z.string().min(1),
+  produkId: z.string().min(1),
   quantity: z.number().int().positive().default(1),
 })
 
@@ -25,23 +25,33 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Data tidak valid', details: parsed.error.issues }, { status: 400 })
   }
-  const { userId, productId, quantity } = parsed.data
+  const { penggunaId, produkId, quantity } = parsed.data
 
   // 1) Cek produk
-  const product = await db.product.findUnique({ where: { id: productId } })
-  if (!product) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
-  if (!product.dijualDenganPoin) return NextResponse.json({ error: 'Produk ini tidak bisa ditukar dengan poin' }, { status: 400 })
-  if (product.pointsCost <= 0) return NextResponse.json({ error: 'Produk ini tidak punya harga poin' }, { status: 400 })
-  if (toNumber(product.stock) < quantity) return NextResponse.json({ error: `Stok tidak cukup (tersedia: ${product.stock})` }, { status: 400 })
+  const produk = await db.produk.findUnique({ where: { id: produkId } })
+  if (!produk) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
+  if (!produk.dijualDenganPoin) return NextResponse.json({ error: 'Produk ini tidak bisa ditukar dengan poin' }, { status: 400 })
 
   // 2) Cek point rule aktif
-  const rule = await db.pointRule.findFirst({ where: { isActive: true }, orderBy: { effectiveFrom: 'desc' } })
-  if (!rule) return NextResponse.json({ error: 'Aturan poin belum dikonfigurasi' }, { status: 400 })
+  const rule = await db.aturanPoin.findFirst({ where: { isActive: true }, orderBy: { effectiveFrom: 'desc' } })
+  const rupiahPerPoint = rule && toNumber(rule.rupiahPerPoint) > 0 ? toNumber(rule.rupiahPerPoint) : 40
+
+  // Tentukan harga poin: jika pointsCost sudah diisi gunakan pointsCost, jika 0 hitung dari price / rupiahPerPoint
+  const effectivePointsCost = produk.pointsCost > 0
+    ? produk.pointsCost
+    : (rupiahPerPoint > 0 && toNumber(produk.price) > 0 ? Math.ceil(toNumber(produk.price) / rupiahPerPoint) : 0)
+
+  if (effectivePointsCost <= 0) {
+    return NextResponse.json({ error: 'Produk ini belum memiliki harga poin atau harga produk yang valid' }, { status: 400 })
+  }
+  if (toNumber(produk.stock) < quantity) {
+    return NextResponse.json({ error: `Stok tidak cukup (tersedia: ${produk.stock})` }, { status: 400 })
+  }
 
   // 3) Cek saldo poin nasabah
-  const balance = await db.balance.findUnique({ where: { userId } })
-  const currentPoints = balance ? toNumber(balance.points) : 0
-  const pointsNeeded = product.pointsCost * quantity
+  const saldo = await db.saldo.findUnique({ where: { penggunaId } })
+  const currentPoints = saldo ? toNumber(saldo.points) : 0
+  const pointsNeeded = effectivePointsCost * quantity
 
   if (currentPoints < pointsNeeded) {
     return NextResponse.json({
@@ -49,28 +59,28 @@ export async function POST(req: NextRequest) {
     }, { status: 400 })
   }
 
-  // 4) Cek minimum redeem
-  if (pointsNeeded < rule.minRedeemPoints) {
+  // 4) Cek minimum redeem jika ada
+  if (rule?.minRedeemPoints && rule.minRedeemPoints > 0 && pointsNeeded < rule.minRedeemPoints && currentPoints < rule.minRedeemPoints) {
     return NextResponse.json({
-      error: `Minimal penukaran: ${rule.minRedeemPoints} pt. Poin dipakai: ${pointsNeeded} pt.`,
+      error: `Minimal saldo poin untuk penukaran adalah ${rule.minRedeemPoints} pt. Saldo Anda: ${currentPoints} pt.`,
     }, { status: 400 })
   }
 
-  // 5) Proses: debit poin + kurangi stok produk + catat redemption
+  // 5) Proses: debit poin + kurangi stok produk + catat penukaranPoin
   try {
     // Debit poin
-    await debitPoints(userId, pointsNeeded, 'redeem', 'redemption', 'manual', `Tukar poin: ${product.name} × ${quantity}`, actor.id)
+    await debitPoints(penggunaId, pointsNeeded, 'redeem', 'penukaranPoin', 'manual', `Tukar poin: ${produk.name} × ${quantity}`, actor.id)
 
     // Kurangi stok produk
-    await reduceProductStock(productId, quantity, 'redemption', 'point_redemption', userId, actor.id, `Redeem poin: ${product.name} × ${quantity}`)
+    await reduceProductStock(produkId, quantity, 'penukaranPoin', 'point_redemption', penggunaId, actor.id, `Redeem poin: ${produk.name} × ${quantity}`)
 
-    // Catat redemption
-    const redemption = await db.redemption.create({
+    // Catat penukaranPoin
+    const penukaranPoin = await db.penukaranPoin.create({
       data: {
-        userId,
-        productId,
-        productNameSnapshot: product.name,
-        unitSnapshot: product.unit,
+        penggunaId,
+        produkId,
+        productNameSnapshot: produk.name,
+        unitSnapshot: produk.unit,
         quantity,
         pointsUsed: pointsNeeded,
         notes: `Ditukar oleh ${actor.name}`,
@@ -78,16 +88,16 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Get updated balance
-    const updatedBalance = await db.balance.findUnique({ where: { userId } })
+    // Get updated saldo
+    const updatedBalance = await db.saldo.findUnique({ where: { penggunaId } })
     const remainingPoints = updatedBalance ? toNumber(updatedBalance.points) : 0
 
     return NextResponse.json({
       success: true,
-      redemption,
+      penukaranPoin,
       pointsUsed: pointsNeeded,
       remainingPoints,
-      message: `Penukaran berhasil! ${product.name} × ${quantity} telah diberikan. Poin dipakai: ${pointsNeeded} pt. Sisa poin: ${remainingPoints} pt.`,
+      message: `Penukaran berhasil! ${produk.name} × ${quantity} telah diberikan. Poin dipakai: ${pointsNeeded} pt. Sisa poin: ${remainingPoints} pt.`,
     }, { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'Gagal memproses penukaran' }, { status: 500 })

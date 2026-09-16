@@ -2,31 +2,33 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/format'
 
-// GET: inventory list with stock (include harga beli per source)
-// Harga beli nasabah: 0 untuk sedekah (donasi), harga acuan WastePrice untuk nabung
+// GET: inventaris list with stock (include harga beli per source)
+// Harga beli nasabah: 0 untuk sedekah (donasi), harga acuan HargaSampah untuk nabung
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
-  const inv = await db.inventory.findMany({
+  const inv = await db.inventaris.findMany({
     include: {
-      wasteItem: {
+      jenisSampah: {
         include: {
           category: true,
           prices: { orderBy: { effectiveFrom: 'desc' }, take: 1 },
         },
       },
     },
-    orderBy: { wasteItem: { name: 'asc' } },
+    orderBy: { jenisSampah: { name: 'asc' } },
   })
-  // group by wasteItem
+  // group by jenisSampah
   const grouped = new Map<string, any>()
   for (const i of inv) {
-    const key = i.wasteItemId
+    const key = i.jenisSampahId
     if (!grouped.has(key)) {
-      const hargaAcuan = i.wasteItem.prices?.[0]
-        ? toNumber(i.wasteItem.prices[0].pricePerUnit)
-        : toNumber(i.wasteItem.pricePerUnit)
+      const hargaAcuan = i.jenisSampah.prices?.[0]
+        ? toNumber(i.jenisSampah.prices[0].pricePerUnit)
+        : toNumber(i.jenisSampah.pricePerUnit)
       grouped.set(key, {
-        wasteItemId: key,
-        wasteItem: i.wasteItem,
+        jenisSampahId: key,
+        jenisSampah: i.jenisSampah,
         totalStock: 0,
         hargaAcuan, // harga beli dari nasabah (untuk source nabung)
         bySource: [],

@@ -13,6 +13,8 @@ import {
 //   - snapJsUrl (different for sandbox vs production)
 //
 // The Server Key is NEVER exposed to the frontend.
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   return NextResponse.json({
     configured: isMidtransConfigured(),

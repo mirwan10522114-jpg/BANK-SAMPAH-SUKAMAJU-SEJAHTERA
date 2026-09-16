@@ -4,7 +4,7 @@ import { getActingUser } from '@/lib/business'
 import { toNumber } from '@/lib/format'
 import { Prisma } from '@prisma/client'
 
-// GET: List products with category, stock, and sale stats
+// GET: List produks with category, stock, and sale stats
 export async function GET(req: NextRequest) {
   const actor = await getActingUser(req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -15,9 +15,9 @@ export async function GET(req: NextRequest) {
   const dijualOffline = url.searchParams.get('dijualOffline') || ''
   const q = url.searchParams.get('q') || ''
 
-  const where: Prisma.ProductWhereInput = {}
+  const where: Prisma.ProdukWhereInput = {}
 
-  if (kategoriId) where.productCategoryId = kategoriId
+  if (kategoriId) where.kategoriProdukId = kategoriId
   if (dijualOnline === 'true') where.dijualOnline = true
   if (dijualOnline === 'false') where.dijualOnline = false
   if (dijualOffline === 'true') where.dijualOffline = true
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     where.name = { contains: q }
   }
 
-  const products = await db.product.findMany({
+  const produks = await db.produk.findMany({
     where,
     orderBy: { createdAt: 'desc' },
     include: {
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       _count: {
         select: {
           saleItems: true,
-          tokoOrderItems: true,
+          itemPesananTokos: true,
           movements: true,
         },
       },
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     take: 200,
   })
 
-  const result = products.map((p) => ({
+  const result = produks.map((p) => ({
     id: p.id,
     name: p.name,
     slug: p.slug,
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
     price: toNumber(p.price),
     stock: toNumber(p.stock),
     isActive: p.isActive,
-    productCategoryId: p.productCategoryId,
+    kategoriProdukId: p.kategoriProdukId,
     weightGram: p.weightGram,
     lengthCm: p.lengthCm,
     widthCm: p.widthCm,
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
     dijualDenganPoin: !!p.dijualDenganPoin,
     category: p.category || null,
     totalOfflineSales: p._count.saleItems,
-    totalOnlineOrderItems: p._count.tokoOrderItems,
+    totalOnlineOrderItems: p._count.itemPesananTokos,
     totalMovements: p._count.movements,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(result)
 }
 
-// POST: Create product with all fields
+// POST: Create produk with all fields
 export async function POST(req: NextRequest) {
   const actor = await getActingUser(req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
   const price = body.price !== undefined ? body.price : (body.hargaJual !== undefined ? body.hargaJual : body.harga)
   const stock = body.stock !== undefined ? body.stock : (body.stok !== undefined ? body.stok : 0)
   const unit = body.unit || body.satuan || 'pcs'
-  const productCategoryId = body.productCategoryId || body.kategoriId || null
+  const kategoriProdukId = body.kategoriProdukId || body.kategoriId || null
   const weightGram = body.weightGram !== undefined ? body.weightGram : (body.beratGram !== undefined ? body.beratGram : 0)
   const lengthCm = body.lengthCm || 0
   const widthCm = body.widthCm || 0
@@ -118,16 +118,16 @@ export async function POST(req: NextRequest) {
     .trim()
 
   // Check uniqueness
-  const existing = await db.product.findUnique({ where: { slug: productSlug } })
+  const existing = await db.produk.findUnique({ where: { slug: productSlug } })
   if (existing) return NextResponse.json({ error: 'Slug sudah digunakan' }, { status: 400 })
 
   // Validate category if provided
-  if (productCategoryId) {
-    const cat = await db.productCategory.findUnique({ where: { id: productCategoryId } })
+  if (kategoriProdukId) {
+    const cat = await db.kategoriProduk.findUnique({ where: { id: kategoriProdukId } })
     if (!cat) return NextResponse.json({ error: 'Kategori tidak ditemukan' }, { status: 400 })
   }
 
-  const product = await db.product.create({
+  const produk = await db.produk.create({
     data: {
       name: name.trim(),
       slug: productSlug,
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
       unit,
       price: Number(price),
       stock: Number(stock),
-      productCategoryId,
+      kategoriProdukId,
       weightGram,
       lengthCm,
       widthCm,
@@ -153,5 +153,5 @@ export async function POST(req: NextRequest) {
     include: { category: true },
   })
 
-  return NextResponse.json(product, { status: 201 })
+  return NextResponse.json(produk, { status: 201 })
 }

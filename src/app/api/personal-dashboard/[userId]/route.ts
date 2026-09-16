@@ -63,7 +63,7 @@ function buildBuckets(rangeStart: Date, rangeEnd: Date): { keys: string[]; label
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
-  const { userId } = await params
+  const { userId: penggunaId } = await params
 
   const chartRange = _req.nextUrl.searchParams.get('chartRange') || '1thn'
   const chartDari = _req.nextUrl.searchParams.get('chartDari')
@@ -103,13 +103,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
     periodLabel = '1 Tahun Terakhir'
   }
 
-  const [user, savingAllTimeAgg, savingInRange, sedekahInRange, allSavingTxs, allSedekahTxs, allCategories, allWasteItems] = await Promise.all([
-    db.user.findUnique({
-      where: { id: userId },
+  const [pengguna, savingAllTimeAgg, savingInRange, sedekahInRange, allSavingTxs, allSedekahTxs, allCategories, allWasteItems] = await Promise.all([
+    db.pengguna.findUnique({
+      where: { id: penggunaId },
       include: {
-        balance: true,
+        saldo: true,
         pointHistories: { orderBy: { createdAt: 'desc' }, take: 100 },
-        redemptions: { orderBy: { redeemedAt: 'desc' }, take: 100, include: { product: true } },
+        penukaranPoins: { orderBy: { redeemedAt: 'desc' }, take: 100, include: { produk: true } },
         withdrawals: { orderBy: { createdAt: 'desc' }, take: 100 },
         balanceReleasesAsUser: { orderBy: { createdAt: 'desc' }, take: 100 },
         koperasiAnggota: {
@@ -123,49 +123,49 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
         },
       },
     }),
-    db.savingTransaction.aggregate({
-      where: { userId, status: 'selesai', qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
+    db.transaksiNabung.aggregate({
+      where: { penggunaId, status: 'selesai', qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       _sum: { totalWeight: true, totalValue: true, pointsAwarded: true },
     }),
-    db.savingTransaction.findMany({
+    db.transaksiNabung.findMany({
       where: {
-        userId,
+        penggunaId,
         transactedAt: { gte: chartStart, lte: chartEnd },
         status: 'selesai',
         qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] },
       },
       orderBy: { transactedAt: 'desc' },
-      include: { items: { include: { wasteItem: { include: { category: true } } } } },
+      include: { items: { include: { jenisSampah: { include: { category: true } } } } },
     }),
-    db.sedekahTransaction.findMany({
+    db.transaksiSedekah.findMany({
       where: {
-        userId,
+        penggunaId,
         transactedAt: { gte: chartStart, lte: chartEnd },
         status: 'selesai',
         qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] },
       },
       orderBy: { transactedAt: 'desc' },
-      include: { items: { include: { wasteItem: { include: { category: true } } } } },
+      include: { items: { include: { jenisSampah: { include: { category: true } } } } },
     }),
-    db.savingTransaction.findMany({
-      where: { userId },
+    db.transaksiNabung.findMany({
+      where: { penggunaId },
       orderBy: { transactedAt: 'desc' },
       take: 200,
-      include: { items: { include: { wasteItem: { include: { category: true } } } } },
+      include: { items: { include: { jenisSampah: { include: { category: true } } } } },
     }),
-    db.sedekahTransaction.findMany({
-      where: { userId },
+    db.transaksiSedekah.findMany({
+      where: { penggunaId },
       orderBy: { transactedAt: 'desc' },
       take: 200,
-      include: { items: { include: { wasteItem: { include: { category: true } } } } },
+      include: { items: { include: { jenisSampah: { include: { category: true } } } } },
     }),
-    db.wasteCategory.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-    db.wasteItem.findMany({ where: { isActive: true }, select: { id: true, name: true, code: true, wasteCategoryId: true }, orderBy: { name: 'asc' } }),
+    db.kategoriSampah.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    db.jenisSampah.findMany({ where: { isActive: true }, select: { id: true, name: true, code: true, kategoriSampahId: true }, orderBy: { name: 'asc' } }),
   ])
 
-  if (!user) return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 })
+  if (!pengguna) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
 
-  const balance = user.balance || { saldoTertahan: 0, saldoTersedia: 0, points: 0 }
+  const saldo = pengguna.saldo || { saldoTertahan: 0, saldoTersedia: 0, points: 0 }
 
   const totalDitabungAllTime = toNumber(savingAllTimeAgg._sum.totalWeight)
   const totalDitabungPeriode = savingInRange.reduce((s, t) => s + toNumber(t.totalWeight), 0)
@@ -216,7 +216,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
   const catMap: Record<string, number> = {}
   for (const t of savingInRange) {
     for (const it of t.items) {
-      const cat = it.categoryNameSnapshot || it.wasteItem?.category?.name || 'Lainnya'
+      const cat = it.categoryNameSnapshot || it.jenisSampah?.category?.name || 'Lainnya'
       catMap[cat] = (catMap[cat] || 0) + toNumber(it.quantity)
     }
   }
@@ -230,13 +230,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
     const totalNilaiItem = t.items.reduce((s, it) => s + toNumber(it.subtotal), 0)
     const firstItem = t.items[0]
     const isMulti = t.items.length > 1
-    const kategoriList = Array.from(new Set(t.items.map((it) => it.categoryNameSnapshot || it.wasteItem?.category?.name || 'Lainnya')))
-    const barangList = t.items.map((it) => it.itemNameSnapshot || it.wasteItem?.name || '')
+    const kategoriList = Array.from(new Set(t.items.map((it) => it.categoryNameSnapshot || it.jenisSampah?.category?.name || 'Lainnya')))
+    const barangList = t.items.map((it) => it.itemNameSnapshot || it.jenisSampah?.name || '')
     const itemsDetail = t.items.map((it) => ({
       id: it.id,
-      kategori: it.categoryNameSnapshot || it.wasteItem?.category?.name || 'Lainnya',
-      barang: it.itemNameSnapshot || it.wasteItem?.name || '-',
-      kode: it.itemCodeSnapshot || it.wasteItem?.code || '-',
+      kategori: it.categoryNameSnapshot || it.jenisSampah?.category?.name || 'Lainnya',
+      barang: it.itemNameSnapshot || it.jenisSampah?.name || '-',
+      kode: it.itemCodeSnapshot || it.jenisSampah?.code || '-',
       berat: toNumber(it.quantity),
       nilai: toNumber(it.subtotal),
     }))
@@ -272,14 +272,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
         txId: t.id,
         kode: t.kodeTransaksi || null,
         tanggal: t.transactedAt,
-        kategori: it.categoryNameSnapshot || it.wasteItem?.category?.name || '-',
+        kategori: it.categoryNameSnapshot || it.jenisSampah?.category?.name || '-',
         barang: `${it.itemCodeSnapshot || ''} · ${it.itemNameSnapshot || ''}`,
-        barangNama: it.itemNameSnapshot || it.wasteItem?.name || '-',
+        barangNama: it.itemNameSnapshot || it.jenisSampah?.name || '-',
         beratKotor,
         beratBersih,
         susut,
         qcStatus: t.qcStatus || 'pending',
         status: t.status || 'selesai',
+        keterangan: t.qcNotes || t.notes || '-',
         _txBeratKotor: beratKotorTx,
         _txBeratBersih: beratBersihTx,
         _txSusut: susutTx,
@@ -287,7 +288,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
     }
   }
 
-  const riwayatPoin = user.pointHistories.map((p) => ({
+  const riwayatPoin = pengguna.pointHistories.map((p) => ({
     id: p.id,
     tanggal: p.createdAt,
     tipe: p.type,
@@ -296,7 +297,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
     deskripsi: p.description || '-',
   }))
 
-  const riwayatPenukaran = user.redemptions.map((r) => ({
+  const riwayatPenukaran = pengguna.penukaranPoins.map((r) => ({
     id: r.id,
     tanggal: r.redeemedAt,
     produk: r.productNameSnapshot,
@@ -304,7 +305,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
     poin: r.pointsUsed,
   }))
 
-  const riwayatPenarikan = user.withdrawals.map((w: any) => ({
+  const riwayatPenarikan = pengguna.withdrawals.map((w: any) => ({
     id: w.id,
     receiptNo: w.receiptNo,
     tanggal: w.createdAt,
@@ -317,7 +318,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
     processedAt: w.processedAt,
   }))
 
-  const riwayatRelease = user.balanceReleasesAsUser.map((r: any) => ({
+  const riwayatRelease = pengguna.balanceReleasesAsUser.map((r: any) => ({
     id: r.id,
     tanggal: r.createdAt,
     jumlah: toNumber(r.amount),
@@ -330,24 +331,24 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
     periodDates: { start: chartStart.toISOString(), end: chartEnd.toISOString() },
     masterData: {
       categories: allCategories,
-      wasteItems: allWasteItems,
+      jenisSampahs: allWasteItems,
     },
     profile: {
-      id: user.id,
-      name: user.name,
-      memberCode: user.memberCode,
-      email: user.email,
-      phone: user.phone,
-      address: user.address,
-      nik: user.nik,
-      roles: JSON.parse(user.roles || '[]'),
-      isMember: user.isMember,
-      memberJoinedAt: user.memberJoinedAt,
+      id: pengguna.id,
+      name: pengguna.name,
+      memberCode: pengguna.memberCode,
+      email: pengguna.email,
+      phone: pengguna.phone,
+      address: pengguna.address,
+      nik: pengguna.nik,
+      roles: JSON.parse(pengguna.roles || '[]'),
+      isMember: pengguna.isMember,
+      memberJoinedAt: pengguna.memberJoinedAt,
     },
     saldo: {
-      saldoTersedia: toNumber(balance.saldoTersedia),
-      saldoTertahan: toNumber(balance.saldoTertahan),
-      poin: balance.points,
+      saldoTersedia: toNumber(saldo.saldoTersedia),
+      saldoTertahan: toNumber(saldo.saldoTertahan),
+      poin: saldo.points,
       totalDitabung: Math.round(totalDitabungAllTime * 100) / 100,
       totalDitabungPeriode: Math.round(totalDitabungPeriode * 100) / 100,
       totalNilaiPeriode: Math.round(totalNilaiPeriode),
@@ -364,12 +365,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ use
       penarikan: riwayatPenarikan,
       releaseSaldo: riwayatRelease,
     },
-    koperasiInfo: user.koperasiAnggota ? {
-      anggotaId: user.koperasiAnggota.id,
-      nomorAnggota: user.koperasiAnggota.nomorAnggota,
-      status: user.koperasiAnggota.status,
-      tanggalBergabung: user.koperasiAnggota.tanggalBergabung,
-      simpananSaldos: user.koperasiAnggota.simpananSaldos.map((s) => ({
+    koperasiInfo: pengguna.koperasiAnggota ? {
+      anggotaId: pengguna.koperasiAnggota.id,
+      nomorAnggota: pengguna.koperasiAnggota.nomorAnggota,
+      status: pengguna.koperasiAnggota.status,
+      tanggalBergabung: pengguna.koperasiAnggota.tanggalBergabung,
+      simpananSaldos: pengguna.koperasiAnggota.simpananSaldos.map((s) => ({
         jenisSimpanan: s.jenisSimpanan,
         saldo: toNumber(s.saldo),
       })),

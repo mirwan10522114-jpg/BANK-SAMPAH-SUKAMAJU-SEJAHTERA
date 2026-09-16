@@ -69,6 +69,9 @@
       "@/lib/format": [
         "./src/frontend/lib/format"
       ],
+      "@/lib/validation": [
+        "./src/frontend/lib/validation"
+      ],
       "@/lib/utils": [
         "./src/frontend/lib/utils"
       ],

@@ -1,37 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { toNumber } from '@/lib/format'
+import { toNumber, parseFilterStartDate, parseFilterEndDate } from '@/lib/format'
 
 // Laporan Laba Rugi Bank Sampah
-// Source of truth: BankSampahKas (Buku Kas Utama)
-// Revenue: penjualan_mitra, penjualan_produk, setoran_awal, penyesuaian (masuk), lainnya (masuk)
-// Expense: penarikan_nasabah, biaya_operasional, penyesuaian (keluar), lainnya (keluar)
-// Off-P&L (Balance Sheet / Liabilities): saldoTertahan, saldoTersedia (utang ke nasabah)
+// Source of truth: KasBankSampah (Buku Kas Utama institusi)
+// Revenue (masuk): penjualan_mitra, penjualan_produk, hibah, lain_lain
+// Expense (keluar): operasional, penarikan_nasabah
+// Neraca Kas: kasSaldo (uang fisik/rekening) vs totalUtangNasabah (kewajiban saldo nasabah)
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const periode = searchParams.get('periode') || 'bulan_ini'
   const dari = searchParams.get('dari')
   const sampai = searchParams.get('sampai')
+  const buku = searchParams.get('buku') || 'semua'
 
   // Compute period range
-  // Note: rangeEnd is set to end of current month to include transactions
-  // dated later in the current month (handles seed/test data with future dates)
   const now = new Date()
   const endOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
   let rangeStart: Date
   let rangeEnd: Date = endOfCurrentMonth
   if (periode === 'custom' && dari && sampai) {
-    rangeStart = new Date(dari); rangeStart.setHours(0, 0, 0, 0)
-    rangeEnd = new Date(sampai); rangeEnd.setHours(23, 59, 59, 999)
+    const sDate = parseFilterStartDate(dari)
+    const eDate = parseFilterEndDate(sampai)
+    rangeStart = sDate || new Date(now.getFullYear(), 0, 1)
+    rangeEnd = eDate || endOfCurrentMonth
   } else if (periode === '1bul') {
-    rangeStart = new Date(now); rangeStart.setDate(rangeStart.getDate() - 29); rangeStart.setHours(0, 0, 0, 0)
+    rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
   } else if (periode === '3bul') {
-    rangeStart = new Date(now); rangeStart.setDate(rangeStart.getDate() - 89); rangeStart.setHours(0, 0, 0, 0)
+    rangeStart = new Date(now.getFullYear(), now.getMonth() - 2, 1)
   } else if (periode === '6bul') {
     rangeStart = new Date(now.getFullYear(), now.getMonth() - 5, 1)
   } else if (periode === '1thn') {
-    rangeStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+    rangeStart = new Date(now.getFullYear(), 0, 1)
+    rangeEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999)
   } else {
     // bulan_ini (default)
     rangeStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -39,41 +41,46 @@ export async function GET(req: NextRequest) {
 
   const dateRange = { gte: rangeStart, lte: rangeEnd }
 
-  // ===== P&L from BankSampahKas grouped by sumber + tipe =====
+  const bankSampahKasWhere: any = { transactedAt: dateRange }
+  if (buku && buku !== 'semua') {
+    bankSampahKasWhere.buku = buku
+  }
+
+  // ===== P&L from KasBankSampah grouped by sumber + tipe =====
   const [allKasTx, balanceAgg, totalSavingTx, totalSedekahTx, totalSalesMitra, totalProductSale, salesMitraDetail] = await Promise.all([
-    db.bankSampahKas.findMany({
-      where: { transactedAt: dateRange },
+    db.kasBankSampah.findMany({
+      where: bankSampahKasWhere,
       orderBy: { transactedAt: 'desc' },
     }),
-    db.balance.aggregate({ _sum: { saldoTertahan: true, saldoTersedia: true, points: true } }),
-    db.savingTransaction.aggregate({
+    db.saldo.aggregate({ _sum: { saldoTertahan: true, saldoTersedia: true, points: true } }),
+    db.transaksiNabung.aggregate({
       where: { transactedAt: dateRange, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       _sum: { totalWeight: true, totalValue: true, pointsAwarded: true },
       _count: true,
     }),
-    db.sedekahTransaction.aggregate({
+    db.transaksiSedekah.aggregate({
       where: { transactedAt: dateRange },
       _sum: { totalWeightBersih: true, totalWeightKotor: true },
       _count: true,
     }),
-    db.salesTransaction.aggregate({
+    db.transaksiPenjualanMitra.aggregate({
       where: { transactedAt: dateRange },
       _sum: { totalWeight: true, totalValue: true },
       _count: true,
     }),
-    db.productSale.aggregate({
+    db.penjualanProduk.aggregate({
       where: { transactedAt: dateRange, paymentStatus: 'paid' },
       _sum: { totalValue: true, totalQuantity: true },
       _count: true,
     }),
     // Detailed sales to mitra with items (for margin analysis)
-    db.salesTransaction.findMany({
+    db.transaksiPenjualanMitra.findMany({
       where: { transactedAt: dateRange },
       include: {
-        partner: true,
+        mitra: true,
         items: {
           include: {
-            wasteItem: {
+            jenisSampah: {
               include: {
                 category: true,
                 prices: { orderBy: { effectiveFrom: 'desc' }, take: 1 },
@@ -99,7 +106,7 @@ export async function GET(req: NextRequest) {
 
   // P&L Bank Sampah HANYA dari operasional sampah.
   // Penjualan produk olahan DIPISAH ke Laporan Penjualan Produk (tidak masuk pendapatan BS).
-  // Nilai penjualan_produk tetap tercatat di BankSampahKas (karena kas nyata masuk),
+  // Nilai penjualan_produk tetap tercatat di KasBankSampah (karena kas nyata masuk),
   // jadi saldo kas tetap akurat — tapi untuk P&L BS, pendapatan produk dikecualikan.
   const pendapatanProdukDipisah = bySumber['penjualan_produk']?.masuk || 0
 
@@ -120,11 +127,12 @@ export async function GET(req: NextRequest) {
   const totalPengeluaran = Object.values(pengeluaran).reduce((a, b) => a + b, 0)
 
   // penarikan_nasabah = pelunasan utang (bukan beban operasional)
-  const bebanOperasional = totalPengeluaran - pengeluaran.penarikanNasabah
+  // penyesuaianNegatif & lainnya juga bukan beban operasional murni (kegiatan jual beli)
+  const bebanOperasional = pengeluaran.biayaOperasional
   const labaRugiKas = totalPendapatan - totalPengeluaran
   const labaRugiOperasional = totalPendapatan - bebanOperasional
 
-  // ===== Balance Sheet (snapshot) =====
+  // ===== Saldo Sheet (snapshot) =====
   const totalSaldoTertahan = toNumber(balanceAgg._sum.saldoTertahan)
   const totalSaldoTersedia = toNumber(balanceAgg._sum.saldoTersedia)
   const totalPoints = toNumber(balanceAgg._sum.points)
@@ -133,7 +141,7 @@ export async function GET(req: NextRequest) {
   // ===== Trend (monthly buckets) — exclude penjualan_produk for BS-only trend =====
   const months = new Map<string, { masuk: number; keluar: number; label: string }>()
   for (const tx of allKasTx) {
-    if (tx.sumber === 'penjualan_produk') continue // skip product sales, reported separately
+    if (tx.sumber === 'penjualan_produk') continue // skip produk sales, reported separately
     const d = new Date(tx.transactedAt)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
     const label = d.toLocaleDateString('id-ID', { month: 'short', year: '2-digit' })
@@ -147,9 +155,25 @@ export async function GET(req: NextRequest) {
     .map(([key, v]) => ({ key, ...v, net: v.masuk - v.keluar }))
 
   // ===== Saldo kas saat ini (all-time) =====
-  const kasMasukAllAgg = await db.bankSampahKas.aggregate({ where: { tipe: 'masuk' }, _sum: { jumlah: true } })
-  const kasKeluarAllAgg = await db.bankSampahKas.aggregate({ where: { tipe: 'keluar' }, _sum: { jumlah: true } })
+  const kasWhere: any = {}
+  if (buku && buku !== 'semua') kasWhere.buku = buku
+  
+  const kasMasukAllAgg = await db.kasBankSampah.aggregate({ where: { ...kasWhere, tipe: 'masuk' }, _sum: { jumlah: true } })
+  const kasKeluarAllAgg = await db.kasBankSampah.aggregate({ where: { ...kasWhere, tipe: 'keluar' }, _sum: { jumlah: true } })
   const saldoKas = toNumber(kasMasukAllAgg._sum.jumlah) - toNumber(kasKeluarAllAgg._sum.jumlah)
+
+  // ===== Estimasi nilai sampah di gudang (Inventaris) =====
+  const inventories = await db.inventaris.findMany({
+    where: { source: 'nabung' },
+    include: { jenisSampah: { include: { prices: true } } }
+  })
+  let inventoryValueNasabah = 0
+  for (const inv of inventories) {
+    const stock = toNumber(inv.stock)
+    if (stock <= 0) continue
+    const price = inv.jenisSampah.prices?.[0] ? toNumber(inv.jenisSampah.prices[0].pricePerUnit) : toNumber(inv.jenisSampah.pricePerUnit)
+    inventoryValueNasabah += stock * price
+  }
 
   // ===== Margin analysis: penjualan mitra (harga beli nasabah vs harga jual mitra) =====
   let totalBeliNasabah = 0
@@ -162,9 +186,9 @@ export async function GET(req: NextRequest) {
     const itemsWithMargin = tx.items.map((item) => {
       const hargaJualMitra = toNumber(item.pricePerUnit)
       const qty = toNumber(item.quantity)
-      const hargaBeliNasabah = item.wasteItem.prices?.[0]
-        ? toNumber(item.wasteItem.prices[0].pricePerUnit)
-        : toNumber(item.wasteItem.pricePerUnit)
+      const hargaBeliNasabah = item.jenisSampah.prices?.[0]
+        ? toNumber(item.jenisSampah.prices[0].pricePerUnit)
+        : toNumber(item.jenisSampah.pricePerUnit)
       const subtotalJual = hargaJualMitra * qty
       const subtotalBeli = hargaBeliNasabah * qty
       const margin = subtotalJual - subtotalBeli
@@ -177,7 +201,7 @@ export async function GET(req: NextRequest) {
 
       return {
         id: item.id,
-        wasteItemId: item.wasteItemId,
+        jenisSampahId: item.jenisSampahId,
         itemCode: item.itemCodeSnapshot,
         itemName: item.itemNameSnapshot,
         categoryName: item.categoryNameSnapshot,
@@ -202,7 +226,7 @@ export async function GET(req: NextRequest) {
       id: tx.id,
       nomor: tx.id.slice(-6).toUpperCase(),
       tanggal: tx.transactedAt,
-      partner: tx.partner?.name || '-',
+      mitra: tx.mitra?.name || '-',
       totalWeight: toNumber(tx.totalWeight),
       totalBeliNasabah: txBeli,
       totalJualMitra: txJual,
@@ -226,6 +250,7 @@ export async function GET(req: NextRequest) {
       totalUtangNasabah,
       totalSaldoTertahan,
       totalSaldoTersedia,
+      inventoryValueNasabah,
       totalPoints,
       pendapatanProdukDipisah,
     },

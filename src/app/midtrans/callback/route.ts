@@ -1,5 +1,5 @@
 // Re-export the canonical callback handler at /midtrans/callback
-// so users who configured Midtrans dashboard with this exact path
+// so penggunas who configured Midtrans dashboard with this exact path
 // can hit it without the /api prefix.
 //
 // The actual implementation lives in /api/payment/callback/route.ts.

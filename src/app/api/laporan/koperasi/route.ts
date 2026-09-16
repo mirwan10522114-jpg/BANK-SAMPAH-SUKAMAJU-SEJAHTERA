@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { toNumber } from '@/lib/format'
+import { toNumber, parseFilterStartDate, parseFilterEndDate } from '@/lib/format'
 
 // Laporan Laba Rugi Koperasi Simpan Pinjam
 // Source of truth: KoperasiKasTransaksi (Buku Kas Koperasi)
 // Revenue (masuk): simpanan (setor), angsuran, denda, saldo_awal
 // Expense (keluar): penarikan (tarik sukarela), pinjaman (pencairan)
-// Balance Sheet: total simpanan (pokok+wajib+sukarela), sisa pinjaman berjalan
+// Saldo Sheet: total simpanan (pokok+wajib+sukarela), sisa pinjaman berjalan
 // Pendapatan dari bunga pinjaman = angsuran - (jumlahPokok/bulan) ... dihitung dari bunga
 
 export async function GET(req: NextRequest) {
@@ -20,16 +20,19 @@ export async function GET(req: NextRequest) {
   let rangeStart: Date
   let rangeEnd: Date = endOfCurrentMonth
   if (periode === 'custom' && dari && sampai) {
-    rangeStart = new Date(dari); rangeStart.setHours(0, 0, 0, 0)
-    rangeEnd = new Date(sampai); rangeEnd.setHours(23, 59, 59, 999)
+    const sDate = parseFilterStartDate(dari)
+    const eDate = parseFilterEndDate(sampai)
+    rangeStart = sDate || new Date(now.getFullYear(), 0, 1)
+    rangeEnd = eDate || endOfCurrentMonth
   } else if (periode === '1bul') {
-    rangeStart = new Date(now); rangeStart.setDate(rangeStart.getDate() - 29); rangeStart.setHours(0, 0, 0, 0)
+    rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
   } else if (periode === '3bul') {
-    rangeStart = new Date(now); rangeStart.setDate(rangeStart.getDate() - 89); rangeStart.setHours(0, 0, 0, 0)
+    rangeStart = new Date(now.getFullYear(), now.getMonth() - 2, 1)
   } else if (periode === '6bul') {
     rangeStart = new Date(now.getFullYear(), now.getMonth() - 5, 1)
   } else if (periode === '1thn') {
-    rangeStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+    rangeStart = new Date(now.getFullYear(), 0, 1)
+    rangeEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999)
   } else {
     rangeStart = new Date(now.getFullYear(), now.getMonth(), 1)
   }
@@ -135,14 +138,15 @@ export async function GET(req: NextRequest) {
   const beban = {
     pencairanPinjaman: bySumber['pinjaman']?.keluar || 0,
     penarikanSimpanan: bySumber['penarikan']?.keluar || 0,
+    operasional: bySumber['operasional']?.keluar || 0,
     lainnya: bySumber['lainnya']?.keluar || 0,
   }
   const totalBebanKas = Object.values(beban).reduce((a, b) => a + b, 0)
   // Beban operasional nyata (exclude pencairan & penarikan yg bukan beban)
-  const bebanOperasional = beban.lainnya
+  const bebanOperasional = (beban.operasional || 0) + (beban.lainnya || 0)
   const labaRugiBersih = totalPendapatan - bebanOperasional
 
-  // ===== Balance Sheet =====
+  // ===== Saldo Sheet =====
   const totalSimpanan = toNumber(simpananSaldoAgg._sum.saldo)
   const simpananByJenis: Record<string, number> = { pokok: 0, wajib: 0, sukarela: 0 }
   for (const s of simpananSaldoByJenis) {

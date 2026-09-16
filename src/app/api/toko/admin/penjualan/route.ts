@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getActingUser } from '@/lib/business'
-import { toNumber } from '@/lib/format'
+import { toNumber, parseFilterStartDate, parseFilterEndDate } from '@/lib/format'
 import { Prisma } from '@prisma/client'
 
 // Unified sales data (Offline + Online)
@@ -15,36 +15,51 @@ export async function GET(req: NextRequest) {
   const sampai = url.searchParams.get('sampai') || ''
   const q = url.searchParams.get('q') || ''
   const status = url.searchParams.get('status') || ''
+  const limit = parseInt(url.searchParams.get('limit') || '5000', 10)
 
   // Date filter
+  const startDate = parseFilterStartDate(dari)
+  const endDate = parseFilterEndDate(sampai)
   const dateFilter: Prisma.DateTimeNullableFilter = {}
-  if (dari) dateFilter.gte = new Date(dari)
-  if (sampai) dateFilter.lte = new Date(sampai + 'T23:59:59')
-  const hasDateFilter = !!(dari || sampai)
+  if (startDate) dateFilter.gte = startDate
+  if (endDate) dateFilter.lte = endDate
+  const hasDateFilter = !!(startDate || endDate)
 
   const results: any[] = []
 
   // Offline sales
   if (channel === 'semua' || channel === 'offline') {
-    const offlineWhere: Prisma.ProductSaleWhereInput = { channel: 'offline', paymentStatus: 'paid' }
+    const offlineWhere: Prisma.PenjualanProdukWhereInput = { channel: 'offline', paymentStatus: 'paid' }
     if (hasDateFilter) (offlineWhere as any).transactedAt = dateFilter
-    if (q) offlineWhere.buyerName = { contains: q }
+    if (q) {
+      offlineWhere.OR = [
+        { invoiceNumber: { contains: q } },
+        { buyerName: { contains: q } },
+      ]
+    }
 
-    const offlineSales = await db.productSale.findMany({
+    const offlineSales = await db.penjualanProduk.findMany({
       where: offlineWhere,
       orderBy: { transactedAt: 'desc' },
       include: {
         items: true,
         createdBy: { select: { id: true, name: true } },
       },
-      take: 100,
+      take: limit,
     })
 
     for (const s of offlineSales) {
+      const orderNo = s.invoiceNumber || (() => {
+        const d = new Date(s.transactedAt)
+        const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+        return `TKOFF-${ymd}-${s.id.slice(-4).toUpperCase()}`
+      })()
+
       results.push({
         id: s.id,
         channel: 'offline',
-        refNumber: s.id.slice(-8).toUpperCase(),
+        refNumber: orderNo,
+        orderNumber: orderNo,
         buyerName: s.buyerName,
         buyerPhone: s.buyerPhone,
         totalQuantity: toNumber(s.totalQuantity),
@@ -68,9 +83,9 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Online sales (TokoOrder) — show ALL orders (not just dibayar) so admin can see pending ones too
+  // Online sales (PesananToko) — show ALL orders (not just dibayar) so admin can see pending ones too
   if (channel === 'semua' || channel === 'online') {
-    const onlineWhere: Prisma.TokoOrderWhereInput = {}
+    const onlineWhere: Prisma.PesananTokoWhereInput = {}
     if (hasDateFilter) (onlineWhere as any).createdAt = dateFilter
     if (q) {
       onlineWhere.OR = [
@@ -80,14 +95,14 @@ export async function GET(req: NextRequest) {
     }
     if (status) onlineWhere.orderStatus = status
 
-    const onlineOrders = await db.tokoOrder.findMany({
+    const onlineOrders = await db.pesananToko.findMany({
       where: onlineWhere,
       orderBy: { createdAt: 'desc' },
       include: {
         items: true,
         createdBy: { select: { id: true, name: true } },
       },
-      take: 100,
+      take: limit,
     })
 
     for (const o of onlineOrders) {
@@ -131,8 +146,8 @@ export async function GET(req: NextRequest) {
 
     // Summary stats — HANYA menghitung transaksi yang SUDAH DIBAYAR
   // Penting: status pembayaran berbeda antara offline & online
-  //   - ProductSale (offline): paymentStatus = 'paid'
-  //   - TokoOrder (online):    paymentStatus = 'dibayar' (bahasa Indonesia)
+  //   - PenjualanProduk (offline): paymentStatus = 'paid'
+  //   - PesananToko (online):    paymentStatus = 'dibayar' (bahasa Indonesia)
   // Total Penjualan = SUBTOTAL PRODUK saja (EXCLUDE ongkir)
   // Total Ongkir = ongkir dari order online yang paid (dipisah terpisah)
   const PAID_STATUSES = ['paid', 'dibayar']

@@ -9,7 +9,7 @@ import { logCheckout } from '@/lib/logger'
 // POST /api/payment/retry
 // ---------------------------------------------------------------------
 // Regenerates Snap token untuk order yang sudah expired atau masih pending.
-// User wajib pakai endpoint ini kalau popup Snap expired — TIDAK boleh
+// Pengguna wajib pakai endpoint ini kalau popup Snap expired — TIDAK boleh
 // "konfirmasi manual" yang bypass Midtrans.
 //
 // Flow:
@@ -31,7 +31,8 @@ const BodySchema = z.object({
 function generateMidtransOrderId(orderNumber: string): string {
   const ts = Date.now().toString(36)
   const rand = Math.random().toString(36).slice(2, 6)
-  return `MID-${orderNumber}-${ts}${rand}`.toUpperCase()
+  const cleanOrderNumber = orderNumber.replace(/[^a-zA-Z0-9._~-]/g, '')
+  return `MID-${cleanOrderNumber}-${ts}${rand}`.toUpperCase()
 }
 
 // Extract origin URL dari request headers (sama seperti di /api/payment/create)
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
     }
     const { orderNumber } = parsed.data
 
-    const order = await db.tokoOrder.findFirst({
+    const order = await db.pesananToko.findFirst({
       where: { orderNumber },
       include: { items: true },
     })
@@ -135,7 +136,7 @@ export async function POST(req: NextRequest) {
       name: it.productNameSnapshot.slice(0, 50),
       price: toNumber(it.pricePerUnitSnapshot),
       quantity: Number(it.quantity) || 1,
-      category: 'Product',
+      category: 'Produk',
     }))
     const ongkir = toNumber(order.ongkir)
     if (ongkir > 0) {
@@ -167,7 +168,7 @@ export async function POST(req: NextRequest) {
     })
 
     // Update order: new midtransOrderId + snapToken + reset status
-    await db.tokoOrder.update({
+    await db.pesananToko.update({
       where: { id: order.id },
       data: {
         midtransOrderId: newMidtransOrderId,
@@ -188,9 +189,9 @@ export async function POST(req: NextRequest) {
     })
 
     // Add status history
-    await db.tokoOrderStatusHistory.create({
+    await db.riwayatStatusPesananToko.create({
       data: {
-        tokoOrderId: order.id,
+        pesananTokoId: order.id,
         status: 'menunggu_pembayaran',
         keterangan: `Retry pembayaran — Snap token baru dibuat (${newMidtransOrderId})`,
       },

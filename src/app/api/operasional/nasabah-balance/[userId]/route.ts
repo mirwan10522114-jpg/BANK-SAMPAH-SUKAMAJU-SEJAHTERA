@@ -2,26 +2,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/format'
 
-// GET balance + point history for a nasabah
+// GET saldo + point history for a nasabah
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
-  const { userId } = await params
-  const [balance, balanceHistories, pointHistories, savingTx, sedekahTx, withdrawals, redemptions] = await Promise.all([
-    db.balance.findUnique({ where: { userId } }),
-    db.balanceHistory.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 20 }),
-    db.pointHistory.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 20 }),
-    db.savingTransaction.findMany({ where: { userId }, orderBy: { transactedAt: 'desc' }, take: 10, include: { items: true } }),
-    db.sedekahTransaction.findMany({ where: { userId }, orderBy: { transactedAt: 'desc' }, take: 10 }),
-    db.withdrawalRequest.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 10 }),
-    db.redemption.findMany({ where: { userId }, orderBy: { redeemedAt: 'desc' }, take: 10 }),
+  const { userId: penggunaId } = await params
+  const [saldo, balanceHistories, pointHistories, savingTx, sedekahTx, withdrawals, penukaranPoins] = await Promise.all([
+    db.saldo.findUnique({ where: { penggunaId } }),
+    db.riwayatSaldo.findMany({ where: { penggunaId }, orderBy: { createdAt: 'desc' }, take: 20 }),
+    db.riwayatPoin.findMany({ where: { penggunaId }, orderBy: { createdAt: 'desc' }, take: 20 }),
+    db.transaksiNabung.findMany({ where: { penggunaId }, orderBy: { transactedAt: 'desc' }, take: 10, include: { items: true } }),
+    db.transaksiSedekah.findMany({ where: { penggunaId }, orderBy: { transactedAt: 'desc' }, take: 10 }),
+    db.permintaanPenarikan.findMany({ where: { penggunaId }, orderBy: { createdAt: 'desc' }, take: 10 }),
+    db.penukaranPoin.findMany({ where: { penggunaId }, orderBy: { redeemedAt: 'desc' }, take: 10 }),
   ])
   return NextResponse.json({
-    balance: balance || { saldoTertahan: 0, saldoTersedia: 0, points: 0 },
+    saldo: saldo || { saldoTertahan: 0, saldoTersedia: 0, points: 0 },
     balanceHistories,
     pointHistories,
-    savingTransactions: savingTx,
-    sedekahTransactions: sedekahTx,
+    transaksiNabungs: savingTx,
+    transaksiSedekahs: sedekahTx,
     withdrawals,
-    redemptions,
+    penukaranPoins,
     totals: {
       totalSetoran: savingTx.reduce((s, t) => s + toNumber(t.totalValue), 0),
       totalBerat: savingTx.reduce((s, t) => s + toNumber(t.totalWeight), 0),

@@ -30,6 +30,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       data: {
         status: targetStatus,
         keterangan: body.alasan ? `${pinjaman.keterangan || ''} (Ditolak: ${body.alasan})`.trim() : pinjaman.keterangan,
+        ...(targetStatus === 'disetujui' ? {
+          disetujuiOlehId: actor.id,
+          disetujuiPada: new Date()
+        } : {}),
       },
     })
     return NextResponse.json(updated)

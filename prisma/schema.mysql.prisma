@@ -141,8 +141,9 @@ model WastePrice {
 
 model PointRule {
   id              String    @id @default(cuid())
-  pointsPerRupiah Decimal                 // poin per Rp setoran (mis. 0.01 = 1 poin / Rp 100)
-  rupiahPerPoint  Decimal   @default(0)   // nilai 1 poin dalam Rupiah (untuk cash out)
+  pointsPerRupiah     Decimal                 // poin per Rp setoran (mis. 0.001 = 1 poin / Rp 1000)
+  rupiahPerPointEarn  Int       @default(1000) // nilai rupiah tabungan untuk mendapatkan 1 poin (mis. 1000, 2000, 500)
+  rupiahPerPoint      Decimal   @default(0)   // nilai 1 poin dalam Rupiah (untuk cash out / tukar produk)
   effectiveFrom   DateTime
   notes           String?
   isActive        Boolean   @default(true)

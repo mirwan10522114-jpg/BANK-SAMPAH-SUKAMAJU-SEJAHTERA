@@ -5,16 +5,16 @@ import { toNumber } from '@/lib/format'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const tx = await db.sedekahTransaction.findUnique({
+  const tx = await db.transaksiSedekah.findUnique({
     where: { id },
-    include: { user: true, items: { include: { wasteItem: { include: { category: true } } } }, createdBy: true },
+    include: { pengguna: true, items: { include: { jenisSampah: { include: { category: true } } } }, createdBy: true },
   })
   if (!tx) return NextResponse.json({ error: 'Transaksi tidak ditemukan' }, { status: 404 })
   return NextResponse.json(tx)
 }
 
-// PATCH: edit QC for an existing sedekah transaction (recalculates weights, adjusts inventory)
-// Note: sedekah does not affect saldo/points — only inventory and weight stats.
+// PATCH: edit QC for an existing sedekah transaction (recalculates weights, adjusts inventaris)
+// Note: sedekah does not affect saldo/points — only inventaris and weight stats.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const body = await req.json()
@@ -26,9 +26,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     rejectReason?: string | null
   }
 
-  const existing = await db.sedekahTransaction.findUnique({
+  const existing = await db.transaksiSedekah.findUnique({
     where: { id },
-    include: { items: true, user: true },
+    include: { items: true, pengguna: true },
   })
   if (!existing) {
     return NextResponse.json({ error: 'Transaksi tidak ditemukan' }, { status: 404 })
@@ -36,7 +36,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   // Handle Reject All
   if (rejectAll) {
-    const updated = await db.sedekahTransaction.update({
+    const updated = await db.transaksiSedekah.update({
       where: { id },
       data: {
         status: 'dibatalkan',
@@ -75,7 +75,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     quantityAfterQc: number
     susutQc: number
     qcReason: string | null
-    wasteItemId: string
+    jenisSampahId: string
     oldQuantity: number
   }[] = []
 
@@ -93,7 +93,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       quantityAfterQc: after,
       susutQc: susut,
       qcReason: edit.qcReason,
-      wasteItemId: item.wasteItemId,
+      jenisSampahId: item.jenisSampahId,
       oldQuantity: toNumber(item.quantity),
     })
   }
@@ -107,7 +107,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const updated = await db.$transaction(async (prisma) => {
     for (const upd of itemUpdates) {
-      await prisma.sedekahTransactionItem.update({
+      await prisma.itemTransaksiSedekah.update({
         where: { id: upd.id },
         data: {
           quantity: upd.quantity,
@@ -118,7 +118,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       })
     }
 
-    const tx = await prisma.sedekahTransaction.update({
+    const tx = await prisma.transaksiSedekah.update({
       where: { id },
       data: {
         status: 'selesai',
@@ -132,30 +132,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         qcNotes: qcNotes ?? null,
         finalizedAt: new Date(),
       },
-      include: { items: { include: { wasteItem: { include: { category: true } } } }, user: true },
+      include: { items: { include: { jenisSampah: { include: { category: true } } } }, pengguna: true },
     })
     return tx
   })
 
-  // Manage Inventory:
-  // If this was in 'menunggu_qc', inventory was not added yet -> add full quantity.
+  // Manage Inventaris:
+  // If this was in 'menunggu_qc', inventaris was not added yet -> add full quantity.
   // If this was already 'selesai', adjust delta.
   for (const upd of itemUpdates) {
     if (isFirstQc) {
       if (upd.quantity > 0) {
         try {
-          await addInventory(upd.wasteItemId, 'sedekah', upd.quantity, 'sedekah', 'sedekah_transaction', id, actor?.id, `Sedekah sampah (Lolos Verifikasi QC)`)
+          await addInventory(upd.jenisSampahId, 'sedekah', upd.quantity, 'sedekah', 'sedekah_transaction', id, actor?.id, `Sedekah sampah (Lolos Verifikasi QC)`)
         } catch {}
       }
     } else {
       const qtyDelta = upd.quantity - upd.oldQuantity
       if (qtyDelta > 0) {
         try {
-          await addInventory(upd.wasteItemId, 'sedekah', qtyDelta, 'qc_adjustment', 'sedekah_transaction', id, actor?.id, `Koreksi QC tambah stok sedekah`)
+          await addInventory(upd.jenisSampahId, 'sedekah', qtyDelta, 'qc_adjustment', 'sedekah_transaction', id, actor?.id, `Koreksi QC tambah stok sedekah`)
         } catch {}
       } else if (qtyDelta < 0) {
         try {
-          await reduceInventory(upd.wasteItemId, 'sedekah', Math.abs(qtyDelta), 'qc_adjustment', 'sedekah_transaction', id, actor?.id, `Koreksi QC kurangi stok sedekah`)
+          await reduceInventory(upd.jenisSampahId, 'sedekah', Math.abs(qtyDelta), 'qc_adjustment', 'sedekah_transaction', id, actor?.id, `Koreksi QC kurangi stok sedekah`)
         } catch {}
       }
     }
@@ -166,10 +166,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Send struk email if transitioning from menunggu_qc
   if (isFirstQc) {
     try {
-      const email = updated.user?.email
-      const name = updated.user?.name || updated.donorName || 'Donatur'
+      const email = updated.pengguna?.email
+      const name = updated.pengguna?.name || updated.donorName || 'Donatur'
       if (email) {
-        const { sendStrukEmail } = await import('@/backend/lib/email')
+        const { sendStrukEmail } = await import('@/lib/email')
         let strukHtml = `<div class="struk-section"><div class="info-row"><span class="key">Kode Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal Setor</span><span class="val">${new Date(updated.transactedAt).toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Waktu Verifikasi QC</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Donatur</span><span class="val bold">${name}</span></div><div class="info-row"><span class="key">Status QC</span><span class="val bold" style="color:#047857;">${newQcStatus === 'passed' ? 'Lolos Bersih' : 'Disesuaikan'}</span></div></div>`
         strukHtml += `<div class="struk-section"><div class="label">Detail Sedekah Sampah & Hasil QC</div><table class="items-table"><thead><tr><th>Kategori</th><th>Nama</th><th class="center">Kotor</th><th class="center">Bersih</th><th class="center">Susut</th></tr></thead><tbody>`
         for (const item of updated.items) {

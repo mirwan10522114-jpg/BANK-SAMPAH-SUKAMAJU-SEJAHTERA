@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   }
 
   // `let` karena bisa di-reassign setelah poll Midtrans API
-  let order = await db.tokoOrder.findFirst({
+  let order = await db.pesananToko.findFirst({
     where: {
       OR: [{ orderNumber: orderId }, { midtransOrderId: orderId }],
     },
@@ -91,12 +91,12 @@ export async function GET(req: NextRequest) {
         const { toNumber } = await import('@/lib/format')
 
         // Ambil items untuk update stok
-        const orderWithItems = await db.tokoOrder.findUnique({
+        const orderWithItems = await db.pesananToko.findUnique({
           where: { id: order.id },
           include: { items: true },
         })
 
-        await db.tokoOrder.update({
+        await db.pesananToko.update({
           where: { id: order.id },
           data: {
             paymentStatus: 'dibayar',
@@ -127,19 +127,19 @@ export async function GET(req: NextRequest) {
           for (const item of orderWithItems.items) {
             const qty = toNumber(item.quantity)
             try {
-              await addProductStock(item.productId, qty, 'online_release', 'toko_order', order.id, undefined, `Konfirmasi pesanan ${order.orderNumber}`)
+              await addProductStock(item.produkId, qty, 'online_release', 'toko_order', order.id, undefined, `Konfirmasi pesanan ${order.orderNumber}`)
             } catch {}
             try {
-              await reduceProductStock(item.productId, qty, 'online_sale', 'toko_order', order.id, undefined, `Penjualan online ${order.orderNumber}`)
+              await reduceProductStock(item.produkId, qty, 'online_sale', 'toko_order', order.id, undefined, `Penjualan online ${order.orderNumber}`)
             } catch {}
           }
           try {
             await recordBankSampahKas('masuk', 'penjualan_produk', toNumber(order.totalBayar), `Penjualan online ${order.orderNumber}`, undefined, undefined)
           } catch {}
-          // Create ProductSale record
-          const existingSale = await db.productSale.findFirst({ where: { notes: { contains: order.orderNumber } } })
+          // Create PenjualanProduk record
+          const existingSale = await db.penjualanProduk.findFirst({ where: { notes: { contains: order.orderNumber } } })
           if (!existingSale) {
-            await db.productSale.create({
+            await db.penjualanProduk.create({
               data: {
                 buyerName: order.buyerName,
                 buyerPhone: order.buyerPhone,
@@ -152,7 +152,7 @@ export async function GET(req: NextRequest) {
                 transactedAt: new Date(),
                 items: {
                   create: orderWithItems.items.map((i) => ({
-                    productId: i.productId,
+                    produkId: i.produkId,
                     productNameSnapshot: i.productNameSnapshot,
                     unitSnapshot: i.unitSnapshot,
                     pricePerUnitSnapshot: i.pricePerUnitSnapshot,
@@ -164,9 +164,38 @@ export async function GET(req: NextRequest) {
             })
           }
         }
+          // Send Order Confirmation Email
+          if (orderWithItems && order.buyerEmail) {
+            try {
+              const { sendOrderConfirmationEmail } = await import('@/lib/email')
+              await sendOrderConfirmationEmail({
+                to: order.buyerEmail,
+                buyerName: order.buyerName,
+                orderNumber: order.orderNumber,
+                items: orderWithItems.items.map((i) => ({
+                  productName: i.productNameSnapshot,
+                  quantity: toNumber(i.quantity),
+                  unit: i.unitSnapshot,
+                  pricePerUnit: toNumber(i.pricePerUnitSnapshot),
+                  subtotal: toNumber(i.subtotal),
+                })),
+                subtotal: toNumber(order.subtotalProduk),
+                ongkir: toNumber(order.ongkir),
+                total: toNumber(order.totalBayar),
+                paymentMethod: 'midtrans',
+                buyerAddress: orderWithItems.buyerAddress || '-',
+                buyerPhone: order.buyerPhone,
+                kurirNama: orderWithItems.kurirNama || '-',
+                notes: orderWithItems.notes || '-',
+                paidAt: new Date(),
+              })
+            } catch (err) {
+              console.error('Failed to send order confirmation email from polling:', err)
+            }
+          }
 
         // Re-fetch order dengan status baru
-        const updatedOrder = await db.tokoOrder.findFirst({
+        const updatedOrder = await db.pesananToko.findFirst({
           where: { OR: [{ orderNumber: orderId }, { midtransOrderId: orderId }] },
           select: {
             id: true,
@@ -202,14 +231,14 @@ export async function GET(req: NextRequest) {
         }
       } else if (ts === 'expire' || ts === 'cancel' || ts === 'deny') {
         // Update DB ke expired/gagal
-        await db.tokoOrder.update({
+        await db.pesananToko.update({
           where: { id: order.id },
           data: {
             paymentStatus: ts === 'expire' ? 'expired' : 'gagal',
             orderStatus: ts === 'expire' ? 'expired' : 'dibatalkan',
           },
         })
-        const updatedOrder = await db.tokoOrder.findFirst({
+        const updatedOrder = await db.pesananToko.findFirst({
           where: { OR: [{ orderNumber: orderId }, { midtransOrderId: orderId }] },
           select: {
             id: true,

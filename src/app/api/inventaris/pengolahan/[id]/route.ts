@@ -3,9 +3,9 @@ import { db } from '@/lib/db'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const tx = await db.processingTransaction.findUnique({
+  const tx = await db.transaksiPengolahan.findUnique({
     where: { id },
-    include: { inputs: { include: { wasteItem: { include: { category: true } } } }, outputs: { include: { product: true } }, createdBy: true },
+    include: { inputs: { include: { jenisSampah: { include: { category: true } } } }, outputs: { include: { produk: true } }, createdBy: true },
   })
   if (!tx) return NextResponse.json({ error: 'Transaksi tidak ditemukan' }, { status: 404 })
   return NextResponse.json(tx)

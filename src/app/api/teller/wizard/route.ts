@@ -24,17 +24,17 @@ export async function POST(req: NextRequest) {
   const receiptNo = await generateTxNo('KWT')
   const result: any = { receiptNo, steps: [] }
 
-  const { userId, anggotaId, operations } = body as {
-    userId: string
+  const { penggunaId, anggotaId, operations } = body as {
+    penggunaId: string
     anggotaId?: string
     operations: {
       type: 'nabung' | 'sedekah_sampah' | 'setor_simpanan' | 'tarik_sukarela' | 'pengajuan_pinjaman' | 'bayar_angsuran'
       // nabung
-      items?: { wasteItemId: string; quantityBeforeQc: number; quantityAfterQc?: number; qcReason?: string }[]
+      items?: { jenisSampahId: string; quantityBeforeQc: number; quantityAfterQc?: number; qcReason?: string }[]
       applyQc?: boolean
       skipQc?: boolean // TELLER menandai sampah bersih → langsung finalize, saldo masuk
       // sedekah sampah
-      sedekahItems?: { wasteItemId: string; quantityBeforeQc: number; quantityAfterQc?: number; qcReason?: string }[]
+      sedekahItems?: { jenisSampahId: string; quantityBeforeQc: number; quantityAfterQc?: number; qcReason?: string }[]
       qcMode?: 'bersih' | 'langsung' | 'nanti'
       // setor simpanan
       jenisSimpanan?: 'pokok' | 'wajib' | 'sukarela'
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     }[]
   }
 
-  if (!userId) return NextResponse.json({ error: 'Nasabah wajib dipilih' }, { status: 400 })
+  if (!penggunaId) return NextResponse.json({ error: 'Nasabah wajib dipilih' }, { status: 400 })
 
   let totalSaldoDitahan = 0
   let totalSaldoDiambil = 0
@@ -60,8 +60,8 @@ export async function POST(req: NextRequest) {
   for (const op of operations) {
     try {
       if (op.type === 'nabung' && op.items?.length) {
-        const wasteItems = await db.wasteItem.findMany({
-          where: { id: { in: op.items.map((i) => i.wasteItemId) } },
+        const jenisSampahs = await db.jenisSampah.findMany({
+          where: { id: { in: op.items.map((i) => i.jenisSampahId) } },
           include: { category: true, prices: { orderBy: { effectiveFrom: 'desc' }, take: 1 } },
         })
         // ============================================================
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
         const shouldFinalize = isSkipQc || isApplyQc
         let tw = 0, tv = 0
         const itemRows = op.items.map((it) => {
-          const wi = wasteItems.find((w) => w.id === it.wasteItemId)!
+          const wi = jenisSampahs.find((w) => w.id === it.jenisSampahId)!
           const price = wi.prices[0] ? toNumber(wi.prices[0].pricePerUnit) : toNumber(wi.pricePerUnit)
           const before = toNumber(it.quantityBeforeQc)
           // after = berat bersih final. Kalau tidak difinalize, pakai before (sebagai estimasi).
@@ -84,17 +84,17 @@ export async function POST(req: NextRequest) {
           const after = isSkipQc ? before : (isApplyQc && it.quantityAfterQc != null ? toNumber(it.quantityAfterQc) : before)
           const subtotal = after * price
           tw += after; tv += subtotal
-          return { wi, price, wastePriceId: wi.prices[0]?.id, before, after, subtotal }
+          return { wi, price, hargaSampahId: wi.prices[0]?.id, before, after, subtotal }
         })
-        const { points, rule } = await calcPointsForRupiah(tv)
+        const { points, rule, rupiahPerPointEarn } = await calcPointsForRupiah(tv)
         const qcStatus = isSkipQc ? 'tidak_perlu' : (isApplyQc ? (itemRows.some((r) => r.before > r.after) ? 'adjusted' : 'passed') : 'pending')
         const txStatus = shouldFinalize ? 'selesai' : 'menunggu_qc'
 
         // Generate kode NB SEBELUM create transaction
         const kodeNabung = await generateTxNo('NB')
-        const tx = await db.savingTransaction.create({
+        const tx = await db.transaksiNabung.create({
           data: {
-            userId,
+            penggunaId,
             kodeTransaksi: kodeNabung, // SIMPAN kode transaksi resmi (NB / DDMMYYYY / 00001)
             totalWeight: shouldFinalize ? tw : 0,
             totalValue: shouldFinalize ? tv : 0,
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
             qcById: shouldFinalize ? actor?.id : null,
             finalizedAt: shouldFinalize ? new Date() : null,
             items: { create: itemRows.map((r) => ({
-              wasteItemId: r.wi.id, wastePriceId: r.wastePriceId,
+              jenisSampahId: r.wi.id, hargaSampahId: r.hargaSampahId,
               itemCodeSnapshot: r.wi.code, itemNameSnapshot: r.wi.name,
               categoryNameSnapshot: r.wi.category.name, unitSnapshot: r.wi.unit,
               pricePerUnitSnapshot: r.price,
@@ -123,12 +123,12 @@ export async function POST(req: NextRequest) {
         })
 
         // ============================================================
-        // Saldo, poin, inventory HANYA kalau finalize (skipQc atau applyQc)
+        // Saldo, poin, inventaris HANYA kalau finalize (skipQc atau applyQc)
         // Kalau "menunggu_qc" → tidak ada perubahan saldo di sini
         // ============================================================
         if (shouldFinalize) {
-          await creditSaldoTertahan(userId, tv, 'saving_transaction', tx.id, `Nabung (Wizard ${receiptNo})`, actor?.id)
-          if (points > 0) await creditPoints(userId, points, 'saving_transaction', tx.id, `Poin nabung (Wizard ${receiptNo})`, actor?.id, rule?.id)
+          await creditSaldoTertahan(penggunaId, tv, 'saving_transaction', tx.id, `Nabung (Wizard ${receiptNo})`, actor?.id)
+          if (points > 0) await creditPoints(penggunaId, points, 'saving_transaction', tx.id, `Poin nabung (Wizard ${receiptNo})`, actor?.id, rule?.id)
           for (const r of itemRows) await addInventory(r.wi.id, 'nabung', r.after, 'saving', 'saving_transaction', tx.id, actor?.id)
           totalSaldoDitahan += tv; totalPoin += points; totalBerat += tw
         } else {
@@ -149,24 +149,24 @@ export async function POST(req: NextRequest) {
         result.steps.push({ type: 'nabung', status: 'ok', txId: tx.id, kodeTransaksi: kodeNabung, totalValue: tv, totalWeight: tw, points, items: nabungItemDetail, qcStatus: shouldFinalize ? (qcStatus === 'adjusted' ? 'Disesuaikan' : 'Lulus') : 'Menunggu QC', txStatus })
 
       } else if (op.type === 'sedekah_sampah' && op.sedekahItems?.length) {
-        // Sedekah Sampah - pure donation, no balance/points, but inventory goes to bank
+        // Sedekah Sampah - pure donation, no saldo/points, but inventaris goes to bank
         const isSkipQc = op.qcMode === 'bersih' || op.skipQc === true
         const isApplyQc = op.qcMode === 'langsung' || (op.applyQc === true && !isSkipQc)
         const isPendingQc = op.qcMode === 'nanti' || (!isApplyQc && !isSkipQc && op.qcMode !== undefined)
         const shouldFinalize = !isPendingQc
 
-        const wasteItems = await db.wasteItem.findMany({
-          where: { id: { in: op.sedekahItems.map((i) => i.wasteItemId) } },
+        const jenisSampahs = await db.jenisSampah.findMany({
+          where: { id: { in: op.sedekahItems.map((i) => i.jenisSampahId) } },
           include: { category: true },
         })
         let totalKotor = 0, totalBersih = 0
         const itemRows = op.sedekahItems.map((it) => {
-          const wi = wasteItems.find((w) => w.id === it.wasteItemId)!
+          const wi = jenisSampahs.find((w) => w.id === it.jenisSampahId)!
           const before = toNumber(it.quantityBeforeQc)
           const after = isApplyQc && it.quantityAfterQc != null ? toNumber(it.quantityAfterQc) : before
           totalKotor += before; totalBersih += after
           return {
-            wasteItemId: wi.id,
+            jenisSampahId: wi.id,
             itemCodeSnapshot: wi.code,
             itemNameSnapshot: wi.name,
             categoryNameSnapshot: wi.category.name,
@@ -184,9 +184,9 @@ export async function POST(req: NextRequest) {
 
         // Generate kode SD SEBELUM create transaction agar sequence benar (00001 untuk transaksi pertama)
         const kodeSedekah = await generateTxNo('SD')
-        const tx = await db.sedekahTransaction.create({
+        const tx = await db.transaksiSedekah.create({
           data: {
-            userId,
+            penggunaId,
             totalWeight: shouldFinalize ? totalBersih : totalKotor,
             totalWeightKotor: totalKotor,
             totalWeightBersih: shouldFinalize ? totalBersih : null,
@@ -204,10 +204,10 @@ export async function POST(req: NextRequest) {
           },
         })
 
-        // Add to inventory as bank asset (source: sedekah)
+        // Add to inventaris as bank asset (source: sedekah)
         if (shouldFinalize) {
           for (const row of itemRows) {
-            await addInventory(row.wasteItemId, 'sedekah', toNumber(row.quantity), 'sedekah', 'sedekah_transaction', tx.id, actor?.id, `Sedekah sampah (Wizard ${receiptNo})`)
+            await addInventory(row.jenisSampahId, 'sedekah', toNumber(row.quantity), 'sedekah', 'sedekah_transaction', tx.id, actor?.id, `Sedekah sampah (Wizard ${receiptNo})`)
           }
         }
 
@@ -224,12 +224,78 @@ export async function POST(req: NextRequest) {
         }))
         result.steps.push({ type: 'sedekah_sampah', status: 'ok', txId: tx.id, kodeTransaksi: kodeSedekah, totalWeight: shouldFinalize ? totalBersih : totalKotor, totalWeightKotor: totalKotor, itemCount: itemRows.length, items: sedekahItemDetail, qcStatus: shouldFinalize ? (qcStatus === 'adjusted' ? 'Disesuaikan' : (qcStatus === 'tidak_perlu' ? 'Sampah Bersih' : 'Lulus')) : 'Menunggu QC', txStatus })
 
-      } else if (op.type === 'setor_simpanan' && anggotaId && op.jenisSimpanan && op.jumlah) {
-        const tx = await setorSimpanan(anggotaId, op.jenisSimpanan, op.jumlah, actor?.id, `Setor ${op.jenisSimpanan} (Wizard ${receiptNo})`)
-        result.steps.push({ type: 'setor_simpanan', status: 'ok', txId: tx.id, kodeTransaksi: tx.nomorTransaksi, jenis: op.jenisSimpanan, jumlah: op.jumlah, saldoSetelahnya: tx.saldoSesudah })
+      } else if (op.type === 'setor_simpanan' && op.jenisSimpanan && op.jumlah) {
+        let targetAnggotaId = anggotaId
+        if (!targetAnggotaId) {
+          if (op.jenisSimpanan === 'pokok') {
+            const nasabah = await db.pengguna.findUnique({ where: { id: penggunaId } })
+            if (!nasabah) throw new Error('Nasabah tidak ditemukan')
+            const counter = await db.koperasiAnggota.count()
+            const nomor = `KP${String(counter + 1).padStart(3, '0')}`
+            const agt = await db.koperasiAnggota.create({
+              data: {
+                nomorAnggota: nomor,
+                nama: nasabah.name,
+                noKtp: nasabah.nik || '',
+                noTelepon: nasabah.phone,
+                alamat: nasabah.address,
+                status: 'aktif',
+                tanggalBergabung: new Date(),
+                penggunaId: nasabah.id,
+              }
+            })
+            await db.koperasiSimpananSaldo.createMany({
+              data: [
+                { koperasiAnggotaId: agt.id, jenisSimpanan: 'pokok', saldo: 0 },
+                { koperasiAnggotaId: agt.id, jenisSimpanan: 'wajib', saldo: 0 },
+                { koperasiAnggotaId: agt.id, jenisSimpanan: 'sukarela', saldo: 0 },
+              ]
+            })
+            targetAnggotaId = agt.id
+          } else {
+            throw new Error('Nasabah belum terdaftar sebagai anggota koperasi. Harus menyetor Simpanan Pokok terlebih dahulu.')
+          }
+        }
+
+        const ket = op.keterangan ? `${op.keterangan} (Wizard ${receiptNo})` : `Setor ${op.jenisSimpanan} (Wizard ${receiptNo})`
+        const tx = await setorSimpanan(targetAnggotaId, op.jenisSimpanan, op.jumlah, actor?.id, ket, { skipEmail: true })
+        const setting = await db.koperasiSetting.findFirst()
+        const nominalWajib = setting ? toNumber(setting.nominalSimpananWajib) : 10000
+        const countMonths = (op.jenisSimpanan === 'wajib' && nominalWajib > 0) ? Math.floor(op.jumlah / nominalWajib) : 1
+
+        const MONTHS_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+        let periodeBulanWajib = ''
+        if (op.jenisSimpanan === 'wajib' && nominalWajib > 0) {
+          const anggotaDb = await db.koperasiAnggota.findUnique({ where: { id: targetAnggotaId }, select: { tanggalBergabung: true, createdAt: true } })
+          const startMonthIndex = Math.floor(toNumber(tx.saldoSebelum) / nominalWajib)
+          const joinDate = anggotaDb?.tanggalBergabung ? new Date(anggotaDb.tanggalBergabung) : new Date(anggotaDb?.createdAt || new Date())
+          const joinYear = joinDate.getFullYear()
+          const joinMonth = joinDate.getMonth() + 1
+          const monthLabels: string[] = []
+          for (let i = 0; i < countMonths; i++) {
+            const idx = startMonthIndex + i
+            const mYear = joinYear + Math.floor((joinMonth - 1 + idx) / 12)
+            const mMonth = ((joinMonth - 1 + idx) % 12) + 1
+            monthLabels.push(`${MONTHS_ID[mMonth - 1]} ${mYear}`)
+          }
+          periodeBulanWajib = monthLabels.join(', ')
+        }
+
+        result.steps.push({
+          type: 'setor_simpanan',
+          status: 'ok',
+          txId: tx.id,
+          kodeTransaksi: tx.nomorTransaksi,
+          jenis: op.jenisSimpanan,
+          jumlah: op.jumlah,
+          saldoSetelahnya: tx.saldoSesudah,
+          keterangan: op.keterangan,
+          countMonths,
+          periodeBulan: periodeBulanWajib || op.keterangan,
+        })
 
       } else if (op.type === 'tarik_sukarela' && anggotaId && op.jumlah) {
-        const tx = await tarikSimpananSukarela(anggotaId, op.jumlah, actor?.id, `Tarik sukarela (Wizard ${receiptNo})`)
+        const tx = await tarikSimpananSukarela(anggotaId, op.jumlah, actor?.id, `Tarik sukarela (Wizard ${receiptNo})`, { skipEmail: true })
         totalSaldoDiambil += op.jumlah
         result.steps.push({ type: 'tarik_sukarela', status: 'ok', txId: tx.id, kodeTransaksi: tx.nomorTransaksi, jumlah: op.jumlah, saldoSetelahnya: tx.saldoSesudah })
 
@@ -242,6 +308,21 @@ export async function POST(req: NextRequest) {
         if (!anggotaData) throw new Error('Anggota koperasi tidak ditemukan')
 
         const setting = await db.koperasiSetting.findFirst()
+
+        const saldoPokok = await db.koperasiSimpananSaldo.findUnique({
+          where: {
+            koperasiAnggotaId_jenisSimpanan: {
+              koperasiAnggotaId: anggotaId,
+              jenisSimpanan: 'pokok',
+            },
+          },
+        })
+        const nominalSimpananPokok = setting ? toNumber(setting.nominalSimpananPokok) : 50000
+        const saldoPokokVal = toNumber(saldoPokok?.saldo ?? 0)
+        if (saldoPokokVal <= 0 || (nominalSimpananPokok > 0 && saldoPokokVal < nominalSimpananPokok)) {
+          throw new Error(`Anggota belum melunasi Simpanan Pokok (wajib bayar ${nominalSimpananPokok > 0 ? 'Rp ' + nominalSimpananPokok.toLocaleString('id-ID') : 'Simpanan Pokok'} terlebih dahulu).`)
+        }
+
         const minimalBulan = setting?.minimalBulanAnggota ?? 3
         const nowMs = Date.now()
         const joinMs = new Date(anggotaData.tanggalBergabung).getTime()
@@ -258,7 +339,8 @@ export async function POST(req: NextRequest) {
         }
 
         const sukuBunga = setting ? toNumber(setting.sukuBungaPinjaman) : 0
-        const { angsuranPerBulan } = calcAngsuranSchedule(op.jumlahPinjaman, op.tenorBulan, sukuBunga)
+        const biayaAdmin = setting ? toNumber(setting.biayaAdminPinjaman) : 0
+        const { angsuranPerBulan } = calcAngsuranSchedule(op.jumlahPinjaman, op.tenorBulan, sukuBunga, biayaAdmin)
         const nomor = await generateTxNo('PNJ')
         const pinjaman = await db.koperasiPinjaman.create({
           data: {
@@ -267,14 +349,14 @@ export async function POST(req: NextRequest) {
             jumlahPinjaman: op.jumlahPinjaman,
             tenorBulan: op.tenorBulan,
             angsuranPerBulan,
-            biayaAdmin: setting ? toNumber(setting.biayaAdminPinjaman) : 0,
+            biayaAdmin,
             tanggalPengajuan: new Date(),
             tanggalPencairan: new Date(),
             status: 'berjalan',
             sisaPinjaman: op.jumlahPinjaman,
             sukuBunga,
             keterangan: op.keterangan || `Pinjaman via Teller Wizard ${receiptNo}`,
-            userId: actor?.id,
+            penggunaId: actor?.id,
           },
         })
         // Record kas keluar koperasi langsung
@@ -294,7 +376,7 @@ export async function POST(req: NextRequest) {
         })
 
       } else if (op.type === 'bayar_angsuran' && op.pinjamanId) {
-        const res = await bayarAngsuran(op.pinjamanId, actor?.id, `Bayar angsuran (Wizard ${receiptNo})`, undefined, op.jumlahAngsuran)
+        const res = await bayarAngsuran(op.pinjamanId, actor?.id, `Bayar angsuran (Wizard ${receiptNo})`, undefined, op.jumlahAngsuran, { skipEmail: true })
         // Get all kode angsuran
         const kodeAngsuranList = res.angsurans.map((a: any) => a.nomorAngsuran)
         result.steps.push({
@@ -308,6 +390,8 @@ export async function POST(req: NextRequest) {
           sisaAngsuran: res.sisaAngsuran,
           sisaPinjaman: toNumber(res.pinjaman.sisaPinjaman),
           lunas: res.isLunas,
+          periodeBulan: res.periodeBulan,
+          paidMonths: res.paidMonths,
         })
       }
     } catch (e: any) {
@@ -325,8 +409,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // final balance snapshot
-  const balance = await db.balance.findUnique({ where: { userId } })
+  // final saldo snapshot
+  const saldo = await db.saldo.findUnique({ where: { penggunaId } })
   result.summary = {
     receiptNo,
     totalSaldoDitahan,
@@ -334,8 +418,8 @@ export async function POST(req: NextRequest) {
     totalPoin,
     totalBerat,
     totalSedekahBerat,
-    saldoTertahanAkhir: balance ? toNumber(balance.saldoTertahan) : 0,
-    poinAkhir: balance?.points || 0,
+    saldoTertahanAkhir: saldo ? toNumber(saldo.saldoTertahan) : 0,
+    poinAkhir: saldo?.points || 0,
     transactedAt: new Date().toISOString(),
     teller: actor?.name,
   }
@@ -357,11 +441,11 @@ export async function POST(req: NextRequest) {
     }
   } else {
     try {
-      const user = await db.user.findUnique({
-        where: { id: userId },
+      const pengguna = await db.pengguna.findUnique({
+        where: { id: penggunaId },
         select: { email: true, name: true, memberCode: true },
       })
-      if (user?.email) {
+      if (pengguna?.email) {
         const { sendStrukEmail } = await import('@/lib/email')
         const fmtIDR = (n: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n)
         const ddmmyyyy = `${String(new Date().getDate()).padStart(2, '0')}${String(new Date().getMonth() + 1).padStart(2, '0')}${new Date().getFullYear()}`
@@ -381,7 +465,7 @@ export async function POST(req: NextRequest) {
         const txTitle = uniqueTitles.length > 0 ? uniqueTitles.join(' & ') : 'Multi Transaksi'
 
         let html = `<div class="struk-header"><div class="icon">🧾</div><h2>Bank Sampah</h2><div class="sub">Sukamaju Sejahtera</div><div class="desc">Teller Wizard — Multi Transaksi</div><div class="badge">KUITANSI TRANSAKSI</div></div>`
-        html += `<div class="struk-section"><h3 style="margin:0 0 12px 0; color:#064e3b; font-size:15px; text-transform:uppercase; text-align:center;">${txTitle}</h3><div class="info-row"><span class="key">No. Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${user.name}</span></div><div class="info-row"><span class="key">Kode</span><span class="val mono">${user.memberCode || '-'}</span></div><div class="info-row"><span class="key">Teller</span><span class="val">${actor?.name || '-'}</span></div></div>`
+        html += `<div class="struk-section"><h3 style="margin:0 0 12px 0; color:#064e3b; font-size:15px; text-transform:uppercase; text-align:center;">${txTitle}</h3><div class="info-row"><span class="key">No. Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${pengguna.name}</span></div><div class="info-row"><span class="key">Kode</span><span class="val mono">${pengguna.memberCode || '-'}</span></div><div class="info-row"><span class="key">Teller</span><span class="val">${actor?.name || '-'}</span></div></div>`
 
         // Detail per operasi dengan kode transaksi
         if (okSteps.length > 0) {
@@ -392,10 +476,16 @@ export async function POST(req: NextRequest) {
             let detail = ''
             if (s.type === 'nabung') detail = `${fmtIDR(s.totalValue)} (${toNumber(s.totalWeight)} kg)`
             else if (s.type === 'sedekah_sampah') detail = `${toNumber(s.totalWeight)} kg`
-            else if (s.type === 'setor_simpanan') detail = `${fmtIDR(s.jumlah)} (${s.jenis})`
+            else if (s.type === 'setor_simpanan') {
+              const bln = s.periodeBulan ? ` · Bulan: ${s.periodeBulan}` : (s.countMonths > 1 ? ` · ${s.countMonths} Bulan` : '')
+              detail = `${fmtIDR(s.jumlah)} (${s.jenis}${bln})`
+            }
             else if (s.type === 'tarik_sukarela') detail = `${fmtIDR(s.jumlah)}`
             else if (s.type === 'pengajuan_pinjaman') detail = `${fmtIDR(s.jumlahPinjaman)} (${s.tenorBulan} bln)`
-            else if (s.type === 'bayar_angsuran') detail = `${fmtIDR(s.totalPaid)}`
+            else if (s.type === 'bayar_angsuran') {
+              const bln = s.periodeBulan ? ` · Bulan: ${s.periodeBulan}` : ''
+              detail = `${fmtIDR(s.totalPaid)} (${s.countPaid || 1}x Angsuran${bln})`
+            }
             const kode = s.kodeTransaksi || '-'
             html += `<tr><td>${label}</td><td class="mono">${kode}</td><td class="right">${detail}</td></tr>`
           }
@@ -440,12 +530,40 @@ export async function POST(req: NextRequest) {
         }
 
         // Summary
-        html += `<div class="struk-section"><div class="summary-row"><span class="key">Total Saldo Ditahan</span><span class="val">${fmtIDR(totalSaldoDitahan)}</span></div><div class="summary-row"><span class="key">Total Saldo Diambil</span><span class="val">${fmtIDR(totalSaldoDiambil)}</span></div><div class="summary-row"><span class="key">Total Berat Nabung</span><span class="val">${toNumber(totalBerat)} kg</span></div><div class="summary-row"><span class="key">Total Berat Sedekah</span><span class="val">${toNumber(totalSedekahBerat)} kg</span></div><div class="summary-row highlight"><span class="key">Poin Didapat</span><span class="val">${totalPoin}</span></div><div class="summary-row"><span class="key">Saldo Tertahan Akhir</span><span class="val">${fmtIDR(toNumber(balance?.saldoTertahan || 0))}</span></div><div class="summary-row"><span class="key">Poin Akhir</span><span class="val">${balance?.points || 0}</span></div></div>`
+        let grandTotalBayar = 0
+        for (const s of okSteps) {
+          if (s.type === 'setor_simpanan') grandTotalBayar += toNumber(s.jumlah)
+          else if (s.type === 'bayar_angsuran') grandTotalBayar += toNumber(s.totalPaid)
+        }
+
+        const angsuranStep = okSteps.find((s: any) => s.type === 'bayar_angsuran')
+        const simpananStep = okSteps.find((s: any) => s.type === 'setor_simpanan' && s.jenis === 'wajib')
+
+        if (simpananStep?.periodeBulan || angsuranStep?.periodeBulan) {
+          html += `<div class="struk-section"><div class="label">Rincian Bulan yang Dibayar</div>`
+          if (simpananStep?.periodeBulan) {
+            html += `<div class="summary-row highlight"><span class="key">Simpanan Wajib</span><span class="val bold" style="color:#065f46">${simpananStep.periodeBulan} (${simpananStep.countMonths || 1} Bulan)</span></div>`
+          }
+          if (angsuranStep?.periodeBulan) {
+            html += `<div class="summary-row highlight"><span class="key">Angsuran Pinjaman</span><span class="val bold" style="color:#065f46">${angsuranStep.periodeBulan} (${angsuranStep.countPaid || 1}x Angsuran)</span></div>`
+          }
+          html += `</div>`
+        }
+
+        if (grandTotalBayar > 0) {
+          html += `<div class="struk-section"><div class="summary-row highlight"><span class="key">Total Pembayaran / Setoran</span><span class="val bold">${fmtIDR(grandTotalBayar)}</span></div></div>`
+        }
+
+        html += `<div class="struk-section"><div class="summary-row"><span class="key">Total Saldo Ditahan</span><span class="val">${fmtIDR(totalSaldoDitahan)}</span></div><div class="summary-row"><span class="key">Total Saldo Diambil</span><span class="val">${fmtIDR(totalSaldoDiambil)}</span></div><div class="summary-row"><span class="key">Total Berat Nabung</span><span class="val">${toNumber(totalBerat)} kg</span></div><div class="summary-row"><span class="key">Total Berat Sedekah</span><span class="val">${toNumber(totalSedekahBerat)} kg</span></div><div class="summary-row highlight"><span class="key">Poin Didapat</span><span class="val">${totalPoin}</span></div><div class="summary-row"><span class="key">Saldo Tertahan Akhir</span><span class="val">${fmtIDR(toNumber(saldo?.saldoTertahan || 0))}</span></div><div class="summary-row"><span class="key">Poin Akhir</span><span class="val">${saldo?.points || 0}</span></div></div>`
         html += `<div class="struk-footer"><div class="thanks">Terima kasih telah bertransaksi</div></div>`
 
+        let extraInfo = ''
+        if (angsuranStep && angsuranStep.countPaid > 1) extraInfo += ` · ${angsuranStep.countPaid}x Angsuran`
+        if (simpananStep && simpananStep.countMonths > 1) extraInfo += ` · ${simpananStep.countMonths} Bulan Wajib`
+
         await sendStrukEmail({
-          to: user.email,
-          subject: `Kuitansi Transaksi ${kodeTransaksi}`,
+          to: pengguna.email,
+          subject: `Kuitansi Transaksi ${kodeTransaksi} (${txTitle}${extraInfo})`,
           strukHtml: html,
         })
       }

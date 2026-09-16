@@ -11,7 +11,7 @@ export async function getDailyTaskLogs(dateString?: string) {
   try {
     const targetDate = dateString || getLocalDateString()
     const logs: any[] = await db.$queryRawUnsafe(
-      `SELECT * FROM AdminDailyTaskLog WHERE dateString = ?`,
+      `SELECT * FROM LogTugasHarianAdmin WHERE dateString = ?`,
       targetDate
     )
     return logs || []
@@ -40,7 +40,7 @@ export async function recordDailyTaskLog({
     const targetDate = dateString || getLocalDateString()
     const id = `tasklog_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
     await db.$executeRawUnsafe(
-      `INSERT INTO AdminDailyTaskLog (id, taskKey, dateString, action, sentCount, failedCount, notes, createdAt, updatedAt)
+      `INSERT INTO LogTugasHarianAdmin (id, taskKey, dateString, action, sentCount, failedCount, notes, createdAt, updatedAt)
        VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
        ON DUPLICATE KEY UPDATE 
          action = VALUES(action),

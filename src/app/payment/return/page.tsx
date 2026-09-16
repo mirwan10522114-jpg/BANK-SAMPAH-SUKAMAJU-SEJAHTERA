@@ -7,7 +7,7 @@ import { Loader2, CheckCircle2, XCircle, Clock, RefreshCw } from 'lucide-react'
 // =====================================================================
 // Halaman Return dari Midtrans
 // ---------------------------------------------------------------------
-// Setelah user bayar (atau batal) di halaman Midtrans, user di-redirect
+// Setelah pengguna bayar (atau batal) di halaman Midtrans, pengguna di-redirect
 // balik ke halaman ini. Halaman ini akan:
 //   1. Ambil orderNumber dari URL query
 //   2. Poll /api/payment/status setiap 3 detik

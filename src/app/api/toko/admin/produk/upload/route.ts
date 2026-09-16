@@ -15,7 +15,7 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/gif': 'gif',
 }
 
-// POST: Upload product image to /public/uploads/products/
+// POST: Upload produk image to /public/uploads/produks/
 export async function POST(req: NextRequest) {
   const actor = await getActingUser(req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -47,13 +47,13 @@ export async function POST(req: NextRequest) {
   const timestamp = Date.now()
   const filename = `produk-${timestamp}-${rand}.${ext}`
 
-  const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'products')
+  const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'produks')
   await mkdir(uploadDir, { recursive: true })
 
   const fullPath = path.join(uploadDir, filename)
   const buffer = Buffer.from(await file.arrayBuffer())
   await writeFile(fullPath, buffer)
 
-  const url = `/uploads/products/${filename}`
+  const url = `/uploads/produks/${filename}`
   return NextResponse.json({ url }, { status: 201 })
 }

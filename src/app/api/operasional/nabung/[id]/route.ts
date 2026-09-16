@@ -5,9 +5,9 @@ import { toNumber } from '@/lib/format'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const tx = await db.savingTransaction.findUnique({
+  const tx = await db.transaksiNabung.findUnique({
     where: { id },
-    include: { user: true, items: { include: { wasteItem: { include: { category: true } } } }, createdBy: true, qcBy: true },
+    include: { pengguna: true, items: { include: { jenisSampah: { include: { category: true } } } }, createdBy: true, qcBy: true },
   })
   if (!tx) return NextResponse.json({ error: 'Transaksi tidak ditemukan' }, { status: 404 })
   return NextResponse.json(tx)
@@ -28,16 +28,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json()
   const actor = await getActingUser(req)
   let editItems = body.items
-  const { qcNotes, rejectAll, rejectReason } = body as {
+  const { qcNotes, rejectAll, rejectReason, rejectedAction } = body as {
     qcNotes?: string | null
     rejectAll?: boolean
     rejectReason?: string | null
+    rejectedAction?: string | null
   }
 
   // Fetch existing transaction
-  const existing = await db.savingTransaction.findUnique({
+  const existing = await db.transaksiNabung.findUnique({
     where: { id },
-    include: { items: true, user: { select: { email: true, name: true, memberCode: true } } },
+    include: { items: true, pengguna: { select: { email: true, name: true, memberCode: true } } },
   })
   if (!existing) {
     return NextResponse.json({ error: 'Transaksi tidak ditemukan' }, { status: 404 })
@@ -66,7 +67,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // KASUS KHUSUS: PENOLAKAN TOTAL (rejectAll)
   // ============================================================
   if (rejectAll) {
-    const updated = await db.savingTransaction.update({
+    const isSedekah = rejectedAction === 'sedekah'
+    const isAmbilKembali = rejectedAction === 'ambil_kembali'
+    
+    const updated = await db.transaksiNabung.update({
       where: { id },
       data: {
         status: 'dibatalkan',
@@ -75,6 +79,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         qcById: actor?.id ?? null,
         qcNotes: qcNotes ?? null,
         qcReason: rejectReason || 'Ditolak total saat QC',
+        rejectedAction: rejectedAction || null,
+        isRejectedWastePickedUp: isAmbilKembali ? false : true, // If sedekah, it's immediately picked up (kept)
         // Update semua item: berat bersih = 0
         items: {
           updateMany: editItems?.map((ei: any) => ({
@@ -92,15 +98,79 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     })
 
     // Update susut per item manual (karena updateMany tidak support computed)
+    let sedekahItemsData: any[] = []
+    
     for (const item of existing.items) {
       const before = toNumber(item.quantityBeforeQc)
-      await db.savingTransactionItem.update({
+      
+      // Cari input berat bersih dari frontend jika disedekahkan
+      const inputItem = (editItems as any[])?.find((ei) => ei.id === item.id)
+      const after = inputItem && inputItem.quantityAfterQc !== undefined ? toNumber(inputItem.quantityAfterQc) : before
+      const susut = before - after > 0 ? before - after : 0
+
+      await db.itemTransaksiNabung.update({
         where: { id: item.id },
         data: { susutQc: before, subtotal: 0, quantity: 0, quantityAfterQc: 0 },
       })
+      
+      // Jika sedekah, kumpulkan data untuk TransaksiSedekah
+      if (isSedekah && before > 0) {
+        sedekahItemsData.push({
+          jenisSampahId: item.jenisSampahId,
+          itemCodeSnapshot: item.itemCodeSnapshot,
+          itemNameSnapshot: item.itemNameSnapshot,
+          categoryNameSnapshot: item.categoryNameSnapshot,
+          unitSnapshot: item.unitSnapshot,
+          quantity: after, // stok yang masuk gudang = berat bersih
+          quantityBeforeQc: before,
+          quantityAfterQc: after,
+          susutQc: susut,
+        })
+      }
     }
 
-    return NextResponse.json({ ...updated, _meta: { rejected: true, saldoCredited: false } })
+    // Buat transaksi sedekah otomatis agar tercatat di riwayat sedekah dan laporan
+    if (isSedekah && sedekahItemsData.length > 0) {
+      const { generateTxNo } = await import('@/lib/business')
+      const kodeTransaksiSedekah = await generateTxNo('SD')
+      
+      const newSedekahTx = await db.transaksiSedekah.create({
+        data: {
+          kodeTransaksi: kodeTransaksiSedekah,
+          penggunaId: existing.penggunaId, // nasabah yang sama
+          totalWeight: sedekahItemsData.reduce((acc, curr) => acc + curr.quantity, 0),
+          totalWeightKotor: sedekahItemsData.reduce((acc, curr) => acc + curr.quantityBeforeQc, 0),
+          totalWeightBersih: sedekahItemsData.reduce((acc, curr) => acc + curr.quantityAfterQc, 0),
+          status: 'selesai',
+          qcStatus: 'passed',
+          qcAt: new Date(),
+          qcById: actor?.id ?? null,
+          qcNotes: 'Otomatis dibuat dari penolakan tabungan',
+          finalizedAt: new Date(),
+          createdById: actor?.id ?? null,
+          items: {
+            create: sedekahItemsData
+          }
+        },
+        include: { items: true }
+      })
+
+      // Masukkan ke inventaris sedekah berdasarkan transaksi sedekah yang baru
+      for (const item of newSedekahTx.items) {
+        await addInventory(
+          item.jenisSampahId,
+          'sedekah',
+          toNumber(item.quantity),
+          `Sedekah dari penolakan tabungan ${existing.kodeTransaksi || id}`,
+          'sedekah_transaction',
+          newSedekahTx.id,
+          actor?.id,
+          qcNotes || 'Dialihkan menjadi sedekah bank sampah'
+        )
+      }
+    }
+
+    return NextResponse.json({ ...updated, _meta: { rejected: true, saldoCredited: false, rejectedAction } })
   }
 
   // ============================================================
@@ -113,7 +183,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (qty < 0) {
       return NextResponse.json({ error: 'Berat bersih tidak boleh negatif' }, { status: 400 })
     }
-    const targetId = ei.id || existing.items.find((it) => it.wasteItemId === ei.wasteItemId || it.id === ei.id)?.id || existing.items[0]?.id
+    const targetId = ei.id || existing.items.find((it) => it.jenisSampahId === ei.jenisSampahId || it.id === ei.id)?.id || existing.items[0]?.id
     if (targetId) {
       editMap.set(targetId, { quantityAfterQc: qty, qcReason: ei.qcReason ?? null })
     }
@@ -129,7 +199,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     susutQc: number
     subtotal: number
     qcReason: string | null
-    wasteItemId: string
+    jenisSampahId: string
     pricePerUnit: number
     quantityBeforeQc: number
   }[] = []
@@ -151,7 +221,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       susutQc: susut,
       subtotal,
       qcReason: edit.qcReason,
-      wasteItemId: item.wasteItemId,
+      jenisSampahId: item.jenisSampahId,
       pricePerUnit: price,
       quantityBeforeQc: before,
     })
@@ -168,7 +238,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   // Hitung poin baru
-  const { points: newPoints } = await calcPointsForRupiah(newTotalValue)
+  const { points: newPoints, rule: activeRule, rupiahPerPointEarn } = await calcPointsForRupiah(newTotalValue)
   const newQcStatus = itemUpdates.some((u) => u.susutQc > 0) ? 'adjusted' : 'passed'
 
   // ============================================================
@@ -177,7 +247,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const updated = await db.$transaction(async (prisma) => {
     // Update setiap item
     for (const upd of itemUpdates) {
-      await prisma.savingTransactionItem.update({
+      await prisma.itemTransaksiNabung.update({
         where: { id: upd.id },
         data: {
           quantity: upd.quantity,
@@ -190,7 +260,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     // Update header transaksi
-    const tx = await prisma.savingTransaction.update({
+    const tx = await prisma.transaksiNabung.update({
       where: { id },
       data: {
         totalWeight: newTotalWeight,
@@ -214,26 +284,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Sesuai permintaan: penambahan saldo HANYA di titik ini
   // (saat transaksi pindah status → "selesai")
   // ============================================================
-  const userId = existing.userId
+  const penggunaId = existing.penggunaId
 
   // 1. Credit saldo tersedia (full amount, bukan delta)
   if (newTotalValue > 0) {
-    await creditSaldoTertahan(userId, newTotalValue, 'saving_transaction', id, `Setoran sampah (QC selesai) ${id.slice(-6)}`, actor?.id)
+    await creditSaldoTertahan(penggunaId, newTotalValue, 'saving_transaction', id, `Setoran sampah (QC selesai) ${id.slice(-6)}`, actor?.id)
   }
 
   // 2. Credit poin
   if (newPoints > 0) {
     const { rule } = await calcPointsForRupiah(newTotalValue)
-    await creditPoints(userId, newPoints, 'saving_transaction', id, `Reward poin setoran sampah (QC selesai)`, actor?.id, rule?.id)
+    await creditPoints(penggunaId, newPoints, 'saving_transaction', id, `Reward poin setoran sampah (QC selesai)`, actor?.id, rule?.id)
   }
 
-  // 3. Add inventory (full berat bersih, bukan delta)
+  // 3. Add inventaris (full berat bersih, bukan delta)
   for (const upd of itemUpdates) {
     if (upd.quantityAfterQc > 0) {
       try {
-        await addInventory(upd.wasteItemId, 'nabung', upd.quantityAfterQc, 'saving', 'saving_transaction', id, actor?.id, `Setoran dari nasabah (QC selesai)`)
+        await addInventory(upd.jenisSampahId, 'nabung', upd.quantityAfterQc, 'saving', 'saving_transaction', id, actor?.id, `Setoran dari nasabah (QC selesai)`)
       } catch (e) {
-        console.error('[QC Confirm] Failed to add inventory:', e)
+        console.error('[QC Confirm] Failed to add inventaris:', e)
       }
     }
   }
@@ -243,14 +313,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // ============================================================
   try {
     const { sendStrukEmail } = await import('@/lib/email')
-    if (existing.user?.email) {
+    if (existing.pengguna?.email) {
       const kodeTransaksi = updated.kodeTransaksi || existing.kodeTransaksi || `NB / ${new Date(updated.transactedAt).getDate().toString().padStart(2, '0')}${(new Date(updated.transactedAt).getMonth() + 1).toString().padStart(2, '0')}${new Date(updated.transactedAt).getFullYear()} / ${updated.id.slice(-5)}`
       const fmtIDR = (n: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n)
       
-      const latestBalance = await db.balance.findUnique({ where: { userId } })
+      const latestBalance = await db.saldo.findUnique({ where: { penggunaId } })
       
       let html = `<div class="struk-header"><div class="icon">✅</div><h2>Bank Sampah</h2><div class="sub">Sukamaju Sejahtera</div><div class="desc">Verifikasi Mutu & Timbang Bersih (QC)</div><div class="badge">STRUK TABUNGAN — QC SELESAI</div></div>`
-      html += `<div class="struk-section"><h3 style="margin:0 0 12px 0; color:#064e3b; font-size:15px; text-transform:uppercase; text-align:center;">Verifikasi QC Tabungan</h3><div class="info-row"><span class="key">No. Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal Setor</span><span class="val">${new Date(existing.transactedAt).toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Waktu Verifikasi QC</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${existing.user.name}</span></div><div class="info-row"><span class="key">Kode Member</span><span class="val mono">${existing.user.memberCode || '-'}</span></div><div class="info-row"><span class="key">Petugas QC</span><span class="val">${actor?.name || 'Petugas QC'}</span></div><div class="info-row"><span class="key">Hasil QC</span><span class="val bold" style="color:#047857;">${newQcStatus === 'passed' ? 'Lolos Bersih' : 'Disesuaikan'}</span></div></div>`
+      html += `<div class="struk-section"><h3 style="margin:0 0 12px 0; color:#064e3b; font-size:15px; text-transform:uppercase; text-align:center;">Verifikasi QC Tabungan</h3><div class="info-row"><span class="key">No. Transaksi</span><span class="val mono">${kodeTransaksi}</span></div><div class="info-row"><span class="key">Tanggal Setor</span><span class="val">${new Date(existing.transactedAt).toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Waktu Verifikasi QC</span><span class="val">${new Date().toLocaleString('id-ID')}</span></div><div class="info-row"><span class="key">Nasabah</span><span class="val bold">${existing.pengguna.name}</span></div><div class="info-row"><span class="key">Kode Member</span><span class="val mono">${existing.pengguna.memberCode || '-'}</span></div><div class="info-row"><span class="key">Petugas QC</span><span class="val">${actor?.name || 'Petugas QC'}</span></div><div class="info-row"><span class="key">Hasil QC</span><span class="val bold" style="color:#047857;">${newQcStatus === 'passed' ? 'Lolos Bersih' : 'Disesuaikan'}</span></div></div>`
       
       if (qcNotes) {
         html += `<div class="struk-section"><div class="info-row"><span class="key">Catatan QC</span><span class="val" style="color:#b45309;font-style:italic;">${qcNotes}</span></div></div>`
@@ -269,11 +339,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       html += `</tbody></table></div>`
 
-      html += `<div class="struk-section"><div class="summary-row"><span class="key">Total Berat Bersih</span><span class="val bold">${newTotalWeight} kg</span></div><div class="summary-row highlight"><span class="key">Total Nilai Saldo Masuk</span><span class="val bold">${fmtIDR(newTotalValue)}</span></div><div class="summary-row"><span class="key">Poin Reward Diperoleh</span><span class="val">${newPoints} pt</span></div>${latestBalance ? `<div class="summary-row"><span class="key">Saldo Tersedia Saat Ini</span><span class="val">${fmtIDR(toNumber(latestBalance.saldoTersedia))}</span></div>` : ''}</div>`
+      html += `<div class="struk-section"><div class="summary-row"><span class="key">Total Berat Bersih</span><span class="val bold">${newTotalWeight} kg</span></div><div class="summary-row highlight"><span class="key">Total Nilai Saldo Masuk</span><span class="val bold">${fmtIDR(newTotalValue)}</span></div><div class="summary-row"><span class="key">Aturan Konversi Poin</span><span class="val">1 Poin / Rp ${(rupiahPerPointEarn || 1000).toLocaleString('id-ID')}</span></div><div class="summary-row highlight"><span class="key">Poin Reward Diperoleh</span><span class="val">${newPoints} pt</span></div>${latestBalance ? `<div class="summary-row"><span class="key">Saldo Tersedia Saat Ini</span><span class="val">${fmtIDR(toNumber(latestBalance.saldoTersedia))}</span></div>` : ''}</div>`
       html += `<div class="struk-footer"><div class="thanks">Saldo tabungan sampah Anda telah berhasil ditambahkan.<br>Terima kasih telah berpartisipasi menjaga kelestarian lingkungan bersama Bank Sampah Sukamaju Sejahtera.</div></div>`
       
       await sendStrukEmail({
-        to: existing.user.email,
+        to: existing.pengguna.email,
         subject: `✅ Struk Tabungan Sampah (Lolos QC) — ${kodeTransaksi}`,
         strukHtml: html,
       })
@@ -317,9 +387,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function LIST_QC_QUEUE() {
   // Catatan: ini bukan handler standar, tapi helper untuk dipakai di API lain
   // atau bisa dipanggil via GET dengan query param ?queue=menunggu_qc
-  return db.savingTransaction.findMany({
+  return db.transaksiNabung.findMany({
     where: { status: 'menunggu_qc' },
     orderBy: { transactedAt: 'asc' }, // FIFO: terlama dulu
-    include: { user: { select: { name: true, memberCode: true } }, items: true, createdBy: true },
+    include: { pengguna: { select: { name: true, memberCode: true } }, items: true, createdBy: true },
   })
 }

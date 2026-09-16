@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getActingUser } from '@/lib/business'
+import { getActingUser, expirePendingOnlineOrders } from '@/lib/business'
 import { toNumber } from '@/lib/format'
 import { Prisma } from '@prisma/client'
 
@@ -9,6 +9,9 @@ export async function GET(req: NextRequest) {
   const actor = await getActingUser(req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Auto-expire online orders older than 30 minutes
+  await expirePendingOnlineOrders()
+
   const url = new URL(req.url)
   const status = url.searchParams.get('status') || ''
   const paymentStatus = url.searchParams.get('paymentStatus') || ''
@@ -16,7 +19,7 @@ export async function GET(req: NextRequest) {
   const sampai = url.searchParams.get('sampai') || ''
   const q = url.searchParams.get('q') || ''
 
-  const where: Prisma.TokoOrderWhereInput = {}
+  const where: Prisma.PesananTokoWhereInput = {}
 
   if (status) where.orderStatus = status
   if (paymentStatus) where.paymentStatus = paymentStatus
@@ -40,7 +43,7 @@ export async function GET(req: NextRequest) {
     ]
   }
 
-  const orders = await db.tokoOrder.findMany({
+  const orders = await db.pesananToko.findMany({
     where,
     orderBy: { createdAt: 'desc' },
     include: {
@@ -89,7 +92,7 @@ export async function GET(req: NextRequest) {
     midtransLastWebhookAt: o.midtransLastWebhookAt,
     items: o.items.map((i) => ({
       id: i.id,
-      productId: i.productId,
+      produkId: i.produkId,
       productNameSnapshot: i.productNameSnapshot,
       unitSnapshot: i.unitSnapshot,
       pricePerUnitSnapshot: toNumber(i.pricePerUnitSnapshot),

@@ -7,11 +7,11 @@ import { z } from 'zod'
 // =====================================================================
 // POST /api/point/cashout
 // Tukar poin dengan saldo tunai
-// Body: { userId, points }
+// Body: { penggunaId, points }
 // =====================================================================
 
 const BodySchema = z.object({
-  userId: z.string().min(1),
+  penggunaId: z.string().min(1),
   points: z.number().int().positive(),
 })
 
@@ -24,10 +24,10 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Data tidak valid', details: parsed.error.issues }, { status: 400 })
   }
-  const { userId, points } = parsed.data
+  const { penggunaId, points } = parsed.data
 
   // 1) Cek point rule aktif
-  const rule = await db.pointRule.findFirst({ where: { isActive: true }, orderBy: { effectiveFrom: 'desc' } })
+  const rule = await db.aturanPoin.findFirst({ where: { isActive: true }, orderBy: { effectiveFrom: 'desc' } })
   if (!rule) return NextResponse.json({ error: 'Aturan poin belum dikonfigurasi' }, { status: 400 })
 
   const rupiahPerPoint = toNumber(rule.rupiahPerPoint)
@@ -43,8 +43,8 @@ export async function POST(req: NextRequest) {
   }
 
   // 3) Cek saldo poin
-  const balance = await db.balance.findUnique({ where: { userId } })
-  const currentPoints = balance ? toNumber(balance.points) : 0
+  const saldo = await db.saldo.findUnique({ where: { penggunaId } })
+  const currentPoints = saldo ? toNumber(saldo.points) : 0
   if (currentPoints < points) {
     return NextResponse.json({
       error: `Poin tidak mencukupi. Dibutuhkan: ${points} pt, tersedia: ${currentPoints} pt.`,
@@ -57,19 +57,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Nilai tunai tidak valid' }, { status: 400 })
   }
 
-  // 5) Proses: debit poin + kredit saldo tunai + catat PointCashOut
+  // 5) Proses: debit poin + kredit saldo tunai + catat PencairanPoin
   try {
     // Debit poin
-    await debitPoints(userId, points, 'cash_out', 'point_cashout', 'manual', `Cash out ${points} pt → Rp ${cashAmount}`, actor.id)
+    await debitPoints(penggunaId, points, 'cash_out', 'point_cashout', 'manual', `Cash out ${points} pt → Rp ${cashAmount}`, actor.id)
 
     // Kredit saldo tunai
-    await creditSaldoTersedia(userId, cashAmount, 'point_cashout', userId, `Cash out poin: ${points} pt → Rp ${cashAmount}`, actor.id)
+    await creditSaldoTersedia(penggunaId, cashAmount, 'point_cashout', penggunaId, `Cash out poin: ${points} pt → Rp ${cashAmount}`, actor.id)
 
-    // Catat PointCashOut
-    const cashOut = await db.pointCashOut.create({
+    // Catat PencairanPoin
+    const cashOut = await db.pencairanPoin.create({
       data: {
-        userId,
-        pointRuleId: rule.id,
+        penggunaId,
+        aturanPoinId: rule.id,
         pointsUsed: points,
         rateSnapshot: rupiahPerPoint,
         cashAmount,
@@ -78,8 +78,8 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Get updated balance
-    const updatedBalance = await db.balance.findUnique({ where: { userId } })
+    // Get updated saldo
+    const updatedBalance = await db.saldo.findUnique({ where: { penggunaId } })
     const remainingPoints = updatedBalance ? toNumber(updatedBalance.points) : 0
     const newSaldo = updatedBalance ? toNumber(updatedBalance.saldoTersedia) : 0
 

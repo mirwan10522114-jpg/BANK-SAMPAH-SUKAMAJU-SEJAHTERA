@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getActingUser, reduceProductStock } from '@/lib/business'
+import { getActingUser, reduceProductStock, generateTxNo } from '@/lib/business'
 import { toNumber } from '@/lib/format'
 
-// GET: list product sales
+// GET: list produk sales
 // Query params:
 //   paymentMethod — 'cash' | 'transfer'
 //   dari          — ISO date (gte transactedAt)
@@ -33,21 +33,21 @@ export async function GET(req: NextRequest) {
       { buyerPhone: { contains: q } },
     ]
   }
-  const list = await db.productSale.findMany({
+  const list = await db.penjualanProduk.findMany({
     where,
     orderBy: { transactedAt: 'desc' },
-    include: { items: { include: { product: true } }, createdBy: true },
+    include: { items: { include: { produk: true } }, createdBy: true },
     take: 100,
   })
   return NextResponse.json(list)
 }
 
-// POST: create product sale (reduces product stock, records revenue)
+// POST: create produk sale (reduces produk stock, records revenue)
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const actor = await getActingUser(req)
   const { items, buyerName, buyerPhone, buyerUserId, paymentMethod, notes } = body as {
-    items: { productId: string; pricePerUnit: number; quantity: number; productPriceId?: string }[]
+    items: { produkId: string; pricePerUnit: number; quantity: number; hargaProdukId?: string }[]
     buyerName: string
     buyerPhone: string
     buyerUserId?: string
@@ -57,20 +57,20 @@ export async function POST(req: NextRequest) {
   if (!items?.length) return NextResponse.json({ error: 'Minimal 1 item' }, { status: 400 })
   if (!buyerName || !buyerPhone) return NextResponse.json({ error: 'Nama & telepon pembeli wajib' }, { status: 400 })
 
-  const products = await db.product.findMany({ where: { id: { in: items.map((i) => i.productId) } } })
+  const produks = await db.produk.findMany({ where: { id: { in: items.map((i) => i.produkId) } } })
 
   let totalQty = 0
   let totalValue = 0
   const itemRows = items.map((it) => {
-    const p = products.find((pr) => pr.id === it.productId)!
+    const p = produks.find((pr) => pr.id === it.produkId)!
     const price = toNumber(it.pricePerUnit)
     const qty = toNumber(it.quantity)
     const subtotal = price * qty
     totalQty += qty
     totalValue += subtotal
     return {
-      productId: it.productId,
-      productPriceId: it.productPriceId || null,
+      produkId: it.produkId,
+      hargaProdukId: it.hargaProdukId || null,
       productNameSnapshot: p.name,
       unitSnapshot: p.unit,
       pricePerUnitSnapshot: price,
@@ -79,8 +79,10 @@ export async function POST(req: NextRequest) {
     }
   })
 
-  const tx = await db.productSale.create({
+  const invoiceNumber = await generateTxNo('TKOFF')
+  const tx = await db.penjualanProduk.create({
     data: {
+      invoiceNumber,
       buyerUserId: buyerUserId || null,
       buyerName,
       buyerPhone,
@@ -95,19 +97,19 @@ export async function POST(req: NextRequest) {
     include: { items: true },
   })
 
-  // Reduce product stock
+  // Reduce produk stock
   for (const it of items) {
     try {
-      await reduceProductStock(it.productId, toNumber(it.quantity), 'sale', 'product_sale', tx.id, actor?.id, `Penjualan produk ${tx.id.slice(-6)}`)
+      await reduceProductStock(it.produkId, toNumber(it.quantity), 'sale', 'product_sale', tx.id, actor?.id, `Penjualan produk ${tx.id.slice(-6)}`)
     } catch (e: any) {
       return NextResponse.json({ error: `Stok produk tidak cukup: ${e.message}` }, { status: 400 })
     }
   }
 
-  // Record kas masuk ke Buku Kas Utama institusi (Cash Inward from product sale)
+  // Record kas masuk ke Buku Kas Utama institusi (Cash Inward from produk sale)
   try {
     const { recordBankSampahKas } = await import('@/lib/business')
-    await recordBankSampahKas('masuk', 'penjualan_produk', totalValue, `Penjualan produk ${tx.id.slice(-6)}`, actor?.id, { productSaleId: tx.id })
+    await recordBankSampahKas('masuk', 'penjualan_produk', totalValue, `Penjualan produk ${tx.id.slice(-6)}`, actor?.id, { penjualanProdukId: tx.id })
   } catch (e) {
     console.error('Failed to record bank sampah kas:', e)
   }

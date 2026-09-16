@@ -75,3 +75,79 @@ export function roleLabel(roles: string[]): string {
   }
   return roles.map((r) => map[r] || r).join(', ') || 'Nasabah'
 }
+
+/**
+ * Robust date parser for filter start date:
+ * Handles YYYY-MM-DD, YYYY-MM (month only), DD/MM/YYYY, DD-MM-YYYY, ISO strings.
+ * Sets time to 00:00:00.000.
+ */
+export function parseFilterStartDate(val: string | null | undefined): Date | null {
+  if (!val || typeof val !== 'string' || !val.trim()) return null
+  const s = val.trim()
+
+  // Match YYYY-MM (e.g. 2026-09 -> start of month 2026-09-01 00:00:00)
+  if (/^\d{4}-\d{2}$/.test(s)) {
+    const [y, m] = s.split('-').map(Number)
+    return new Date(y, m - 1, 1, 0, 0, 0, 0)
+  }
+
+  // Match YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split('-').map(Number)
+    return new Date(y, m - 1, d, 0, 0, 0, 0)
+  }
+
+  // Match DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)
+  if (dmyMatch) {
+    const d = parseInt(dmyMatch[1], 10)
+    const m = parseInt(dmyMatch[2], 10)
+    const y = parseInt(dmyMatch[3], 10)
+    return new Date(y, m - 1, d, 0, 0, 0, 0)
+  }
+
+  const parsed = new Date(s)
+  if (!isNaN(parsed.getTime())) {
+    parsed.setHours(0, 0, 0, 0)
+    return parsed
+  }
+  return null
+}
+
+/**
+ * Robust date parser for filter end date:
+ * Handles YYYY-MM-DD, YYYY-MM (month only -> end of entire month), DD/MM/YYYY, DD-MM-YYYY, ISO strings.
+ * Sets time to 23:59:59.999.
+ */
+export function parseFilterEndDate(val: string | null | undefined): Date | null {
+  if (!val || typeof val !== 'string' || !val.trim()) return null
+  const s = val.trim()
+
+  // Match YYYY-MM (e.g. 2026-09 -> end of entire month 2026-09-30 23:59:59.999)
+  if (/^\d{4}-\d{2}$/.test(s)) {
+    const [y, m] = s.split('-').map(Number)
+    return new Date(y, m, 0, 23, 59, 59, 999)
+  }
+
+  // Match YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split('-').map(Number)
+    return new Date(y, m - 1, d, 23, 59, 59, 999)
+  }
+
+  // Match DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)
+  if (dmyMatch) {
+    const d = parseInt(dmyMatch[1], 10)
+    const m = parseInt(dmyMatch[2], 10)
+    const y = parseInt(dmyMatch[3], 10)
+    return new Date(y, m - 1, d, 23, 59, 59, 999)
+  }
+
+  const parsed = new Date(s)
+  if (!isNaN(parsed.getTime())) {
+    parsed.setHours(23, 59, 59, 999)
+    return parsed
+  }
+  return null
+}

@@ -4,30 +4,30 @@ import { getActingUser } from '@/lib/business'
 import { toNumber } from '@/lib/format'
 
 // =====================================================================
-// GET /api/point/info?userId=xxx
+// GET /api/point/info?penggunaId=xxx
 // Returns: saldo poin, tier, rule aktif, produk yang bisa diredeem,
-//          riwayat poin, riwayat redemption, next reset info
+//          riwayat poin, riwayat penukaranPoin, next reset info
 // =====================================================================
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const userId = searchParams.get('userId') || ''
+  const penggunaId = searchParams.get('penggunaId') || ''
 
-  if (!userId) {
-    return NextResponse.json({ error: 'userId wajib' }, { status: 400 })
+  if (!penggunaId) {
+    return NextResponse.json({ error: 'penggunaId wajib' }, { status: 400 })
   }
 
-  // Validate user exists
-  const user = await db.user.findUnique({ where: { id: userId }, select: { id: true } })
-  if (!user) {
+  // Validate pengguna exists
+  const pengguna = await db.pengguna.findUnique({ where: { id: penggunaId }, select: { id: true } })
+  if (!pengguna) {
     return NextResponse.json({ error: 'Nasabah tidak ditemukan' }, { status: 404 })
   }
 
-  // 1) Balance (poin)
-  const balance = await db.balance.findUnique({ where: { userId } })
-  const points = balance ? toNumber(balance.points) : 0
+  // 1) Saldo (poin)
+  const saldo = await db.saldo.findUnique({ where: { penggunaId } })
+  const points = saldo ? toNumber(saldo.points) : 0
 
   // 2) Point rule aktif
-  const rule = await db.pointRule.findFirst({ where: { isActive: true }, orderBy: { effectiveFrom: 'desc' } })
+  const rule = await db.aturanPoin.findFirst({ where: { isActive: true }, orderBy: { effectiveFrom: 'desc' } })
 
   // 3) Tentukan tier
   let tier = 'Bronze'
@@ -40,21 +40,41 @@ export async function GET(req: NextRequest) {
   }
 
   // 4) Produk yang bisa diredeem dengan poin
-  const redeemableProducts = await db.product.findMany({
-    where: { dijualDenganPoin: true, isActive: true, pointsCost: { gt: 0 } },
+  const rupiahPerPoint = rule && toNumber(rule.rupiahPerPoint) > 0 ? toNumber(rule.rupiahPerPoint) : 40
+
+  const rawProducts = await db.produk.findMany({
+    where: { dijualDenganPoin: true, isActive: true },
     select: {
       id: true,
       name: true,
       unit: true,
+      price: true,
       pointsCost: true,
       stock: true,
       image: true,
     },
   })
 
+  const redeemableProducts = rawProducts
+    .map((p) => {
+      const effPoints = p.pointsCost > 0
+        ? p.pointsCost
+        : (rupiahPerPoint > 0 && toNumber(p.price) > 0 ? Math.ceil(toNumber(p.price) / rupiahPerPoint) : 0)
+      return {
+        id: p.id,
+        name: p.name,
+        unit: p.unit,
+        price: toNumber(p.price),
+        pointsCost: effPoints,
+        stock: toNumber(p.stock),
+        image: p.image,
+      }
+    })
+    .filter((p) => p.pointsCost > 0)
+
   // 5) Riwayat poin (10 terbaru)
-  const pointHistory = await db.pointHistory.findMany({
-    where: { userId },
+  const riwayatPoin = await db.riwayatPoin.findMany({
+    where: { penggunaId },
     orderBy: { createdAt: 'desc' },
     take: 10,
     select: {
@@ -67,9 +87,9 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  // 6) Riwayat redemption (5 terbaru)
-  const redemptions = await db.redemption.findMany({
-    where: { userId },
+  // 6) Riwayat penukaranPoin (5 terbaru)
+  const penukaranPoins = await db.penukaranPoin.findMany({
+    where: { penggunaId },
     orderBy: { redeemedAt: 'desc' },
     take: 5,
     select: {
@@ -83,8 +103,8 @@ export async function GET(req: NextRequest) {
   })
 
   // 7) Riwayat cash out (5 terbaru)
-  const cashOuts = await db.pointCashOut.findMany({
-    where: { userId },
+  const cashOuts = await db.pencairanPoin.findMany({
+    where: { penggunaId },
     orderBy: { cashedOutAt: 'desc' },
     take: 5,
     select: {
@@ -111,6 +131,7 @@ export async function GET(req: NextRequest) {
     tierMultiplier: tierMult,
     rule: rule ? {
       id: rule.id,
+      rupiahPerPointEarn: rule.rupiahPerPointEarn || (toNumber(rule.pointsPerRupiah) > 0 ? Math.round(1 / toNumber(rule.pointsPerRupiah)) : 1000),
       pointsPerRupiah: toNumber(rule.pointsPerRupiah),
       rupiahPerPoint: toNumber(rule.rupiahPerPoint),
       resetPeriod: rule.resetPeriod,
@@ -126,8 +147,8 @@ export async function GET(req: NextRequest) {
       ...p,
       stock: toNumber(p.stock),
     })),
-    pointHistory,
-    redemptions,
+    riwayatPoin,
+    penukaranPoins,
     cashOuts: cashOuts.map((c) => ({
       ...c,
       cashAmount: toNumber(c.cashAmount),

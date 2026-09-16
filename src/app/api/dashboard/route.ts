@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { toNumber } from '@/lib/format'
+import { toNumber, parseFilterStartDate, parseFilterEndDate } from '@/lib/format'
 
 // Helper: format date as DDMMYYYY
 function ddMMYY(d: Date): string {
@@ -10,7 +10,7 @@ function ddMMYY(d: Date): string {
 
 // Executive Dashboard API (Bank Sampah)
 // Returns: top metrics, today summary, time series (dynamic based on chartRange),
-// composition, leaderboard, balance structure, transaction log
+// composition, leaderboard, saldo structure, transaction log
 
 function formatBucketLabel(d: Date, granularity: 'day' | 'week' | 'month'): string {
   if (granularity === 'day') return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })
@@ -101,30 +101,32 @@ export async function GET(req: NextRequest) {
   let periodLabel = '1 Tahun Terakhir'
 
   if (chartRange === 'custom' && chartDari && chartSampai) {
-    chartStart = new Date(chartDari)
-    chartStart.setHours(0, 0, 0, 0)
-    chartEnd = new Date(chartSampai)
-    chartEnd.setHours(23, 59, 59, 999)
+    const sDate = parseFilterStartDate(chartDari)
+    const eDate = parseFilterEndDate(chartSampai)
+    chartStart = sDate || new Date(now.getFullYear(), 0, 1)
+    chartEnd = eDate || endOfToday
     periodLabel = `${chartDari} s/d ${chartSampai}`
+  } else if (chartRange === 'bulan_ini') {
+    chartStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    chartEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+    periodLabel = 'Bulan Ini'
   } else if (chartRange === '1bul') {
-    chartStart = new Date(now)
-    chartStart.setDate(chartStart.getDate() - 29)
-    chartStart.setHours(0, 0, 0, 0)
-    periodLabel = '1 Bulan Terakhir'
+    chartStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    chartEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+    periodLabel = '1 Bulan'
   } else if (chartRange === '3bul') {
-    chartStart = new Date(now)
-    chartStart.setDate(chartStart.getDate() - 89)
-    chartStart.setHours(0, 0, 0, 0)
+    chartStart = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+    chartEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
     periodLabel = '3 Bulan Terakhir'
   } else if (chartRange === '6bul') {
     chartStart = new Date(now.getFullYear(), now.getMonth() - 5, 1)
-    chartStart.setHours(0, 0, 0, 0)
+    chartEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
     periodLabel = '6 Bulan Terakhir'
   } else {
     // 1thn (default)
-    chartStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
-    chartStart.setHours(0, 0, 0, 0)
-    periodLabel = '1 Tahun Terakhir'
+    chartStart = new Date(now.getFullYear(), 0, 1)
+    chartEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999)
+    periodLabel = '1 Tahun (Tahun Ini)'
   }
 
   // Transaction log range: default to match global chart period unless specifically overridden
@@ -132,10 +134,10 @@ export async function GET(req: NextRequest) {
   let logRangeEnd: Date = chartEnd
   if (logRange && logRange !== 'inherit' && logRange !== 'all') {
     if (logRange === 'custom' && logDari && logSampai) {
-      logRangeStart = new Date(logDari)
-      logRangeStart.setHours(0, 0, 0, 0)
-      logRangeEnd = new Date(logSampai)
-      logRangeEnd.setHours(23, 59, 59, 999)
+      const sDate = parseFilterStartDate(logDari)
+      const eDate = parseFilterEndDate(logSampai)
+      logRangeStart = sDate || chartStart
+      logRangeEnd = eDate || chartEnd
     } else {
       const rangeDays = parseInt(logRange, 10) || 30
       logRangeStart = new Date(now)
@@ -146,21 +148,21 @@ export async function GET(req: NextRequest) {
 
   // ===== TOP METRICS (QC-passed & tidak_perlu, filtered by chosen period) =====
   const [allSaving, allSedekah, nasabahCount, allTimeSaving, allTimeSedekah] = await Promise.all([
-    db.savingTransaction.findMany({
+    db.transaksiNabung.findMany({
       where: { transactedAt: { gte: chartStart, lte: chartEnd }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       select: { totalValue: true, totalWeight: true },
     }),
-    db.sedekahTransaction.findMany({
+    db.transaksiSedekah.findMany({
       where: { transactedAt: { gte: chartStart, lte: chartEnd }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       select: { totalWeightBersih: true },
     }),
-    db.user.count({ where: { OR: [{ roles: { contains: 'nasabah' } }, { roles: { contains: 'koperasi' } }] } }),
+    db.pengguna.count({ where: { roles: { contains: 'nasabah' } } }),
     // All-time totals for reference
-    db.savingTransaction.aggregate({
+    db.transaksiNabung.aggregate({
       where: { qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       _sum: { totalValue: true, totalWeight: true },
     }),
-    db.sedekahTransaction.aggregate({
+    db.transaksiSedekah.aggregate({
       where: { qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       _sum: { totalWeightBersih: true },
     }),
@@ -172,21 +174,21 @@ export async function GET(req: NextRequest) {
 
   // ===== TODAY SUMMARY (always today, not affected by chart range) =====
   const [todaySaving, todaySedekah, todaySavingNasabah, pendingQcSaving, pendingQcSedekah] = await Promise.all([
-    db.savingTransaction.findMany({
+    db.transaksiNabung.findMany({
       where: { transactedAt: { gte: startOfToday, lte: endOfToday }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
-      select: { totalValue: true, totalWeight: true, userId: true },
+      select: { totalValue: true, totalWeight: true, penggunaId: true },
     }),
-    db.sedekahTransaction.findMany({
+    db.transaksiSedekah.findMany({
       where: { transactedAt: { gte: startOfToday, lte: endOfToday }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       select: { totalWeightBersih: true },
     }),
-    db.savingTransaction.findMany({
+    db.transaksiNabung.findMany({
       where: { transactedAt: { gte: startOfToday, lte: endOfToday }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
-      select: { userId: true },
-      distinct: ['userId'],
+      select: { penggunaId: true },
+      distinct: ['penggunaId'],
     }),
-    db.savingTransaction.count({ where: { qcStatus: 'pending' } }),
-    db.sedekahTransaction.count({ where: { qcStatus: 'pending' } }),
+    db.transaksiNabung.count({ where: { qcStatus: 'pending' } }),
+    db.transaksiSedekah.count({ where: { qcStatus: 'pending' } }),
   ])
 
   const todayNabungCount = todaySaving.length
@@ -200,11 +202,11 @@ export async function GET(req: NextRequest) {
   const { keys: tsKeys, labels: tsLabels, granularity } = buildBuckets(chartStart, chartEnd)
 
   const [savingTs, sedekahTs] = await Promise.all([
-    db.savingTransaction.findMany({
+    db.transaksiNabung.findMany({
       where: { transactedAt: { gte: chartStart, lte: chartEnd }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       select: { transactedAt: true, totalWeight: true, totalValue: true },
     }),
-    db.sedekahTransaction.findMany({
+    db.transaksiSedekah.findMany({
       where: { transactedAt: { gte: chartStart, lte: chartEnd }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } },
       select: { transactedAt: true, totalWeightBersih: true },
     }),
@@ -231,12 +233,12 @@ export async function GET(req: NextRequest) {
   }))
 
   // ===== COMPOSITION BY CATEGORY (filtered by chart range, QC-passed & tidak_perlu) =====
-  const savingItemsForComp = await db.savingTransactionItem.findMany({
-    where: { savingTransaction: { transactedAt: { gte: chartStart, lte: chartEnd }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } } },
+  const savingItemsForComp = await db.itemTransaksiNabung.findMany({
+    where: { transaksiNabung: { transactedAt: { gte: chartStart, lte: chartEnd }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } } },
     select: { quantity: true, categoryNameSnapshot: true },
   })
-  const sedekahItemsForComp = await db.sedekahTransactionItem.findMany({
-    where: { sedekahTransaction: { transactedAt: { gte: chartStart, lte: chartEnd }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } } },
+  const sedekahItemsForComp = await db.itemTransaksiSedekah.findMany({
+    where: { transaksiSedekah: { transactedAt: { gte: chartStart, lte: chartEnd }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } } },
     select: { quantity: true, categoryNameSnapshot: true },
   })
   const compMap: Record<string, number> = {}
@@ -248,15 +250,15 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.value - a.value)
 
   // ===== TOP 10 LEADERBOARD (filtered by chart range, by valid kg) =====
-  const savingItemsForLb = await db.savingTransactionItem.findMany({
-    where: { savingTransaction: { transactedAt: { gte: chartStart, lte: chartEnd }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } } },
-    select: { quantity: true, savingTransaction: { select: { userId: true, user: { select: { id: true, name: true, memberCode: true } } } } },
+  const savingItemsForLb = await db.itemTransaksiNabung.findMany({
+    where: { transaksiNabung: { transactedAt: { gte: chartStart, lte: chartEnd }, qcStatus: { in: ['passed', 'adjusted', 'tidak_perlu'] } } },
+    select: { quantity: true, transaksiNabung: { select: { penggunaId: true, pengguna: { select: { id: true, name: true, memberCode: true } } } } },
   })
   const lbMap: Record<string, { name: string; memberCode: string | null; kg: number }> = {}
   for (const it of savingItemsForLb) {
-    const uid = it.savingTransaction.user?.id
+    const uid = it.transaksiNabung.pengguna?.id
     if (!uid) continue
-    if (!lbMap[uid]) lbMap[uid] = { name: it.savingTransaction.user?.name || '-', memberCode: it.savingTransaction.user?.memberCode || null, kg: 0 }
+    if (!lbMap[uid]) lbMap[uid] = { name: it.transaksiNabung.pengguna?.name || '-', memberCode: it.transaksiNabung.pengguna?.memberCode || null, kg: 0 }
     lbMap[uid].kg += toNumber(it.quantity)
   }
   const leaderboard = Object.values(lbMap)
@@ -265,7 +267,7 @@ export async function GET(req: NextRequest) {
     .slice(0, 10)
 
   // ===== BALANCE STRUCTURE (always all-time, not affected by chart range) =====
-  const balanceAgg = await db.balance.aggregate({
+  const balanceAgg = await db.saldo.aggregate({
     _sum: { saldoTertahan: true, saldoTersedia: true },
   })
   const totalAset = toNumber(balanceAgg._sum.saldoTertahan) + toNumber(balanceAgg._sum.saldoTersedia)
@@ -274,35 +276,35 @@ export async function GET(req: NextRequest) {
   const savingWhere: any = { transactedAt: { gte: logRangeStart, lte: logRangeEnd } }
   if (logStatusQc) savingWhere.qcStatus = logStatusQc
   if (logSearch) {
-    savingWhere.user = { OR: [{ name: { contains: logSearch } }, { memberCode: { contains: logSearch } }] }
+    savingWhere.pengguna = { OR: [{ name: { contains: logSearch } }, { memberCode: { contains: logSearch } }] }
   }
   const sedekahWhere: any = { transactedAt: { gte: logRangeStart, lte: logRangeEnd } }
   if (logStatusQc) sedekahWhere.qcStatus = logStatusQc
   if (logSearch) {
     sedekahWhere.OR = [
       { donorName: { contains: logSearch } },
-      { user: { name: { contains: logSearch } } },
-      { user: { memberCode: { contains: logSearch } } },
+      { pengguna: { name: { contains: logSearch } } },
+      { pengguna: { memberCode: { contains: logSearch } } },
     ]
   }
 
   const [savingLogs, sedekahLogs] = await Promise.all([
-    logTipe === 'sedekah' ? [] : db.savingTransaction.findMany({
+    logTipe === 'sedekah' ? [] : db.transaksiNabung.findMany({
       where: savingWhere,
       orderBy: { transactedAt: 'desc' },
       take: 200,
       include: {
-        user: { select: { id: true, name: true, memberCode: true } },
-        items: { select: { id: true, categoryNameSnapshot: true, itemNameSnapshot: true, quantity: true, subtotal: true, wasteItemId: true } },
+        pengguna: { select: { id: true, name: true, memberCode: true } },
+        items: { select: { id: true, categoryNameSnapshot: true, itemNameSnapshot: true, quantity: true, subtotal: true, jenisSampahId: true } },
       },
     }),
-    logTipe === 'nabung' ? [] : db.sedekahTransaction.findMany({
+    logTipe === 'nabung' ? [] : db.transaksiSedekah.findMany({
       where: sedekahWhere,
       orderBy: { transactedAt: 'desc' },
       take: 200,
       include: {
-        user: { select: { id: true, name: true, memberCode: true } },
-        items: { select: { id: true, categoryNameSnapshot: true, itemNameSnapshot: true, quantity: true, wasteItemId: true } },
+        pengguna: { select: { id: true, name: true, memberCode: true } },
+        items: { select: { id: true, categoryNameSnapshot: true, itemNameSnapshot: true, quantity: true, jenisSampahId: true } },
       },
     }),
   ])
@@ -335,13 +337,13 @@ export async function GET(req: NextRequest) {
     const seq = nabungDateCount[dateKey]
     for (const it of t.items) {
       if (logKategori && it.categoryNameSnapshot !== logKategori) continue
-      if (logBarang && it.wasteItemId !== logBarang) continue
+      if (logBarang && it.jenisSampahId !== logBarang) continue
       logRows.push({
         id: `${t.id}-${it.id}`,
         tipe: 'nabung',
         transactedAt: t.transactedAt,
-        nasabah: t.user?.name || '-',
-        memberCode: t.user?.memberCode || null,
+        nasabah: t.pengguna?.name || '-',
+        memberCode: t.pengguna?.memberCode || null,
         kodeTransaksi: t.kodeTransaksi || `NB / ${dateKey} / ${String(seq).padStart(5, '0')}`,
         kategori: it.categoryNameSnapshot,
         barang: it.itemNameSnapshot,
@@ -357,13 +359,13 @@ export async function GET(req: NextRequest) {
     const seq = sedekahDateCount[dateKey]
     for (const it of t.items) {
       if (logKategori && it.categoryNameSnapshot !== logKategori) continue
-      if (logBarang && it.wasteItemId !== logBarang) continue
+      if (logBarang && it.jenisSampahId !== logBarang) continue
       logRows.push({
         id: `${t.id}-${it.id}`,
         tipe: 'sedekah',
         transactedAt: t.transactedAt,
-        nasabah: t.user?.name || t.donorName || 'Donatur',
-        memberCode: t.user?.memberCode || null,
+        nasabah: t.pengguna?.name || t.donorName || 'Donatur',
+        memberCode: t.pengguna?.memberCode || null,
         kodeTransaksi: t.kodeTransaksi || `SD / ${dateKey} / ${String(seq).padStart(5, '0')}`,
         kategori: it.categoryNameSnapshot,
         barang: it.itemNameSnapshot,
@@ -382,8 +384,8 @@ export async function GET(req: NextRequest) {
 
   // ===== FILTER OPTIONS =====
   const [kategoriOpts, barangOpts] = await Promise.all([
-    db.wasteCategory.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-    db.wasteItem.findMany({ where: { isActive: true }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' } }),
+    db.kategoriSampah.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    db.jenisSampah.findMany({ where: { isActive: true }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' } }),
   ])
 
   return NextResponse.json({

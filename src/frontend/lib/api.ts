@@ -1,6 +1,6 @@
 // Frontend API client for Bank Sampah + Koperasi
 
-const ACTING_USER_KEY = 'bs-acting-user'
+const ACTING_USER_KEY = 'bs-acting-pengguna'
 
 export function getActingUserHeader(): string | null {
   if (typeof window === 'undefined') return null
@@ -14,15 +14,29 @@ export function setActingUser(id: string) {
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const actingUser = getActingUserHeader()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (actingUser) headers['x-acting-user'] = actingUser
+  if (actingUser) headers['x-acting-pengguna'] = actingUser
   const sep = path.includes('?') ? '&' : '?'
   const url = actingUser ? `/api${path}${sep}actingUser=${actingUser}` : `/api${path}`
   const res = await fetch(url, { ...options, headers: { ...headers, ...(options?.headers as any) } })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Request failed' }))
-    throw new Error(err.error || `HTTP ${res.status}`)
+    const errorObj = new Error(err.error || `HTTP ${res.status}`)
+    Object.assign(errorObj, err)
+    throw errorObj
   }
   return res.json()
+}
+
+function cleanQuery(params?: Record<string, any>) {
+  if (!params) return ''
+  const sp = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '' && v !== 'undefined') {
+      sp.set(k, String(v))
+    }
+  }
+  const str = sp.toString()
+  return str ? '?' + str : ''
 }
 
 export const api = {
@@ -30,7 +44,8 @@ export const api = {
   auth: {
     login: (email: string, password: string) => fetchApi<any>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
     register: (data: any) => fetchApi<any>('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
-    verifyOtp: (userId: string, otp: string) => fetchApi<any>('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ userId, otp }) }),
+    verifyOtp: (penggunaId: string, otp: string) => fetchApi<any>('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ penggunaId, otp }) }),
+    resendOtp: (penggunaId: string) => fetchApi<any>('/auth/resend-otp', { method: 'POST', body: JSON.stringify({ penggunaId }) }),
     me: (token: string) => fetchApi<any>('/auth/me', { headers: { 'x-auth-token': token } as any }),
   },
   public: {
@@ -39,15 +54,15 @@ export const api = {
 
   // Dashboard Bank Sampah
   dashboard: (filters?: { q?: string; tipe?: string; statusQc?: string; kategori?: string; barang?: string; range?: string; logDari?: string; logSampai?: string; chartRange?: string; chartDari?: string; chartSampai?: string }) =>
-    fetchApi<any>(`/dashboard${filters ? '?' + new URLSearchParams(filters as any).toString() : ''}`),
+    fetchApi<any>(`/dashboard${cleanQuery(filters as any)}`),
 
   // Dashboard Koperasi
   dashboardKoperasi: (filters?: { periode?: string; dari?: string; sampai?: string; q?: string; waktu?: string; logDari?: string; logSampai?: string; jenis?: string; status?: string }) =>
-    fetchApi<any>(`/dashboard-koperasi${filters ? '?' + new URLSearchParams(filters as any).toString() : ''}`),
+    fetchApi<any>(`/dashboard-koperasi${cleanQuery(filters as any)}`),
 
   // Dashboard Penjualan Produk (offline + online)
   dashboardPenjualanProduk: (filters?: { periode?: string; dari?: string; sampai?: string }) =>
-    fetchApi<any>(`/dashboard-penjualan-produk${filters ? '?' + new URLSearchParams(filters as any).toString() : ''}`),
+    fetchApi<any>(`/dashboard-penjualan-produk${cleanQuery(filters as any)}`),
 
   // Master - Nasabah
   nasabah: {
@@ -107,12 +122,12 @@ export const api = {
   },
 
   // Master - Point Rules
-  pointRules: {
+  aturanPoins: {
     list: () => fetchApi<any[]>('/master/point-rules'),
     create: (data: any) => fetchApi<any>('/master/point-rules', { method: 'POST', body: JSON.stringify(data) }),
   },
 
-  // Master - Manajemen Akun (sync-integrated user management)
+  // Master - Manajemen Akun (sync-integrated pengguna management)
   manajemenAkun: {
     list: (q = '', role = '') => fetchApi<any[]>(`/master/manajemen-akun?q=${encodeURIComponent(q)}&role=${role}`),
     create: (data: any) => fetchApi<any>('/master/manajemen-akun', { method: 'POST', body: JSON.stringify(data) }),
@@ -122,9 +137,9 @@ export const api = {
 
   // Operasional
   operasional: {
-    nabungList: (userId = '', filters?: { qcStatus?: string; dari?: string; sampai?: string; q?: string }) => {
+    nabungList: (penggunaId = '', filters?: { qcStatus?: string; dari?: string; sampai?: string; q?: string }) => {
       const params = new URLSearchParams()
-      if (userId) params.set('userId', userId)
+      if (penggunaId) params.set('penggunaId', penggunaId)
       if (filters?.qcStatus) params.set('qcStatus', filters.qcStatus)
       if (filters?.dari) params.set('dari', filters.dari)
       if (filters?.sampai) params.set('sampai', filters.sampai)
@@ -135,9 +150,9 @@ export const api = {
     nabungGet: (id: string) => fetchApi<any>(`/operasional/nabung/${id}`),
     nabungCreate: (data: any) => fetchApi<any>('/operasional/nabung', { method: 'POST', body: JSON.stringify(data) }),
     nabungEditQc: (id: string, data: any) => fetchApi<any>(`/operasional/nabung/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    sedekahList: (userId = '', filters?: { qcStatus?: string; dari?: string; sampai?: string; q?: string }) => {
+    sedekahList: (penggunaId = '', filters?: { qcStatus?: string; dari?: string; sampai?: string; q?: string }) => {
       const params = new URLSearchParams()
-      if (userId) params.set('userId', userId)
+      if (penggunaId) params.set('penggunaId', penggunaId)
       if (filters?.qcStatus) params.set('qcStatus', filters.qcStatus)
       if (filters?.dari) params.set('dari', filters.dari)
       if (filters?.sampai) params.set('sampai', filters.sampai)
@@ -149,7 +164,7 @@ export const api = {
     sedekahGet: (id: string) => fetchApi<any>(`/operasional/sedekah/${id}`),
     sedekahEditQc: (id: string, data: any) => fetchApi<any>(`/operasional/sedekah/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     nasabahList: (q = '') => fetchApi<any[]>(`/operasional/nasabah-list?q=${encodeURIComponent(q)}`),
-    nasabahBalance: (userId: string) => fetchApi<any>(`/operasional/nasabah-balance/${userId}`),
+    nasabahBalance: (penggunaId: string) => fetchApi<any>(`/operasional/nasabah-balance/${penggunaId}`),
   },
 
   // Koperasi
@@ -210,6 +225,7 @@ export const api = {
       const qs = params.toString()
       return fetchApi<any>(`/koperasi/kas${qs ? '?' + qs : ''}`)
     },
+    kasCreate: (data: any) => fetchApi<any>('/koperasi/kas', { method: 'POST', body: JSON.stringify(data) }),
     checkPinjamanEligibility: (anggotaId: string) => fetchApi<any>(`/koperasi/pinjaman/check-eligibility?anggotaId=${anggotaId}`),
     perbaikanList: (anggotaId = '', status = '') => fetchApi<any[]>(`/koperasi/pinjaman-perbaikan?anggotaId=${anggotaId}&status=${status}`),
     perbaikanCreate: (data: any) => fetchApi<any>('/koperasi/pinjaman-perbaikan', { method: 'POST', body: JSON.stringify(data) }),
@@ -227,9 +243,9 @@ export const api = {
       return fetchApi<any[]>(`/inventaris/pengolahan${qs ? '?' + qs : ''}`)
     },
     pengolahanCreate: (data: any) => fetchApi<any>('/inventaris/pengolahan', { method: 'POST', body: JSON.stringify(data) }),
-    penjualanMitraList: (filters?: { partnerId?: string; dari?: string; sampai?: string; q?: string }) => {
+    penjualanMitraList: (filters?: { mitraId?: string; dari?: string; sampai?: string; q?: string }) => {
       const params = new URLSearchParams()
-      if (filters?.partnerId) params.set('partnerId', filters.partnerId)
+      if (filters?.mitraId) params.set('mitraId', filters.mitraId)
       if (filters?.dari) params.set('dari', filters.dari)
       if (filters?.sampai) params.set('sampai', filters.sampai)
       if (filters?.q) params.set('q', filters.q)
@@ -255,30 +271,30 @@ export const api = {
   },
 
   // Personal Dashboards
-  personalDashboard: (userId: string, filters?: { chartRange?: string; chartDari?: string; chartSampai?: string }) => {
+  personalDashboard: (penggunaId: string, filters?: { chartRange?: string; chartDari?: string; chartSampai?: string }) => {
     const params = new URLSearchParams()
     if (filters?.chartRange) params.set('chartRange', filters.chartRange)
     if (filters?.chartDari) params.set('chartDari', filters.chartDari)
     if (filters?.chartSampai) params.set('chartSampai', filters.chartSampai)
     const qs = params.toString()
-    return fetchApi<any>(`/personal-dashboard/${userId}${qs ? '?' + qs : ''}`)
+    return fetchApi<any>(`/personal-dashboard/${penggunaId}${qs ? '?' + qs : ''}`)
   },
   personalDashboardKoperasi: (anggotaId: string) => fetchApi<any>(`/personal-dashboard-koperasi/${anggotaId}`),
 
   // Profile (self-service)
   profile: {
-    get: (userId: string) => fetchApi<{ user: any }>(`/profile/${userId}`),
-    update: (userId: string, data: { name?: string; phone?: string; address?: string; nik?: string; currentPassword?: string; newPassword?: string }) =>
-      fetchApi<{ user: any; message: string }>(`/profile/${userId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    get: (penggunaId: string) => fetchApi<{ pengguna: any }>(`/profile/${penggunaId}`),
+    update: (penggunaId: string, data: { name?: string; phone?: string; address?: string; nik?: string; currentPassword?: string; newPassword?: string }) =>
+      fetchApi<{ pengguna: any; message: string }>(`/profile/${penggunaId}`, { method: 'PATCH', body: JSON.stringify(data) }),
   },
 
-  // Notifications (user)
-  notifications: (userId: string, filters?: { type?: string; limit?: number }) => {
+  // Notifications (pengguna)
+  notifikasis: (penggunaId: string, filters?: { type?: string; limit?: number }) => {
     const params = new URLSearchParams()
     if (filters?.type) params.set('type', filters.type)
     if (filters?.limit) params.set('limit', String(filters.limit))
     const qs = params.toString()
-    return fetchApi<any>(`/notifications/user/${userId}${qs ? '?' + qs : ''}`)
+    return fetchApi<any>(`/notifikasis/pengguna/${penggunaId}${qs ? '?' + qs : ''}`)
   },
 
   // Edukasi (articles)
@@ -307,11 +323,11 @@ export const api = {
     releaseList: () => fetchApi<any>('/finansial/release-saldo'),
     releaseSaldo: (data: any) => fetchApi<any>('/finansial/release-saldo', { method: 'POST', body: JSON.stringify(data) }),
     penarikanList: (
-      userId = '',
+      penggunaId = '',
       filters?: { status?: string; method?: string; dari?: string; sampai?: string; q?: string },
     ) => {
       const params = new URLSearchParams()
-      if (userId) params.set('userId', userId)
+      if (penggunaId) params.set('penggunaId', penggunaId)
       if (filters?.status) params.set('status', filters.status)
       if (filters?.method) params.set('method', filters.method)
       if (filters?.dari) params.set('dari', filters.dari)
@@ -321,16 +337,26 @@ export const api = {
       return fetchApi<any>(`/finansial/penarikan${qs ? '?' + qs : ''}`)
     },
     penarikanExecute: (data: any) => fetchApi<any>('/finansial/penarikan', { method: 'POST', body: JSON.stringify(data) }),
-    kasBankSampah: (tipe = '', sumber = '', dari = '', sampai = '') => {
+    kasBankSampah: (tipe = '', sumber = '', dari = '', sampai = '', buku = '') => {
       const params = new URLSearchParams()
       if (tipe) params.set('tipe', tipe)
       if (sumber) params.set('sumber', sumber)
+      if (buku) params.set('buku', buku)
       if (dari) params.set('dari', dari)
       if (sampai) params.set('sampai', sampai)
       const qs = params.toString()
       return fetchApi<any>(`/finansial/kas-bank-sampah${qs ? '?' + qs : ''}`)
     },
     kasTopUp: (data: any) => fetchApi<any>('/finansial/kas-bank-sampah', { method: 'POST', body: JSON.stringify(data) }),
+    saldoNasabah: (filters?: { dari?: string; sampai?: string; q?: string }) => {
+      const params = new URLSearchParams()
+      if (filters?.dari) params.set('dari', filters.dari)
+      if (filters?.sampai) params.set('sampai', filters.sampai)
+      if (filters?.q) params.set('q', filters.q)
+      const qs = params.toString()
+      return fetchApi<any>(`/finansial/saldo-nasabah${qs ? '?' + qs : ''}`)
+    },
+    saldoNasabahDetail: (penggunaId: string) => fetchApi<any>(`/finansial/saldo-nasabah/${penggunaId}`),
   },
 
   // Toko Online & Kasir Offline
@@ -357,13 +383,14 @@ export const api = {
     adminProdukCreate: (data: any) => fetchApi<any>('/toko/admin/produk', { method: 'POST', body: JSON.stringify(data) }),
     adminProdukUpdate: (id: string, data: any) => fetchApi<any>(`/toko/admin/produk/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     adminProdukDelete: (id: string) => fetchApi<any>(`/toko/admin/produk/${id}`, { method: 'DELETE' }),
+    adminProdukRiwayatStok: (id: string) => fetchApi<any[]>(`/toko/admin/produk/${id}/riwayat-stok`),
     adminStokAdjust: (data: any) => fetchApi<any>('/toko/admin/stok/adjust', { method: 'POST', body: JSON.stringify(data) }),
     adminPenjualan: (params?: string) => fetchApi<any>(`/toko/admin/penjualan${params ? '?' + params : ''}`),
   },
 
   // Laporan Laba Rugi
   laporan: {
-    bankSampah: (filters?: { periode?: string; dari?: string; sampai?: string }) =>
+    bankSampah: (filters?: { periode?: string; dari?: string; sampai?: string; buku?: string }) =>
       fetchApi<any>(`/laporan/bank-sampah${filters ? '?' + new URLSearchParams(filters as any).toString() : ''}`),
     koperasi: (filters?: { periode?: string; dari?: string; sampai?: string }) =>
       fetchApi<any>(`/laporan/koperasi${filters ? '?' + new URLSearchParams(filters as any).toString() : ''}`),

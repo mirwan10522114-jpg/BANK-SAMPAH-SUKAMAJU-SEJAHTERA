@@ -9,27 +9,27 @@ export async function POST(req: NextRequest) {
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const productId = body.productId || body.id
+  const produkId = body.produkId || body.id
   let quantity = body.stokAktual !== undefined ? Number(body.stokAktual) : (body.quantity !== undefined ? Number(body.quantity) : (body.stok !== undefined ? Number(body.stok) : 0))
   let reason = body.reason || 'penyesuaian'
   const notes = body.notes || body.alasan || 'Penyesuaian stok'
 
-  if (!productId) return NextResponse.json({ error: 'Produk wajib diisi' }, { status: 400 })
+  if (!produkId) return NextResponse.json({ error: 'Produk wajib diisi' }, { status: 400 })
   if (quantity < 0) return NextResponse.json({ error: 'Jumlah tidak boleh negatif' }, { status: 400 })
   if (!['masuk', 'keluar', 'penyesuaian'].includes(reason)) {
     reason = 'penyesuaian'
   }
 
-  const product = await db.product.findFirst({
+  const produk = await db.produk.findFirst({
     where: {
-      OR: [{ id: productId }, { slug: productId }, { name: productId }],
+      OR: [{ id: produkId }, { slug: produkId }, { name: produkId }],
     },
   })
-  if (!product) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
+  if (!produk) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
 
   if (reason === 'masuk') {
     const updated = await addProductStock(
-      productId,
+      produkId,
       quantity,
       'adjustment',
       'manual_adjustment',
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   if (reason === 'keluar') {
     try {
       const updated = await reduceProductStock(
-        productId,
+        produkId,
         quantity,
         'adjustment',
         'manual_adjustment',
@@ -64,12 +64,12 @@ export async function POST(req: NextRequest) {
   }
 
   // penyesuaian: set absolute stock value
-  const currentStock = toNumber(product.stock)
+  const currentStock = toNumber(produk.stock)
   const diff = quantity - currentStock
 
   if (diff > 0) {
     await addProductStock(
-      productId,
+      produkId,
       diff,
       'adjustment',
       'manual_adjustment',
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
   } else if (diff < 0) {
     try {
       await reduceProductStock(
-        productId,
+        produkId,
         Math.abs(diff),
         'adjustment',
         'manual_adjustment',
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const finalProduct = await db.product.findUnique({ where: { id: product.id } })
+  const finalProduct = await db.produk.findUnique({ where: { id: produk.id } })
 
   return NextResponse.json({
     message: `Stok disesuaikan dari ${currentStock} ke ${quantity}`,

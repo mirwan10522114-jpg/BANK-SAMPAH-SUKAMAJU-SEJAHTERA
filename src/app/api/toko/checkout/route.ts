@@ -13,7 +13,7 @@ async function generateOrderNumber(): Promise<string> {
   const oldYmd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
   const oldPrefix = `TKO-${oldYmd}-`
 
-  const lastOrder = await db.tokoOrder.findFirst({
+  const lastOrder = await db.pesananToko.findFirst({
     where: { orderNumber: { startsWith: prefix } },
     select: { orderNumber: true },
     orderBy: { orderNumber: 'desc' },
@@ -25,7 +25,7 @@ async function generateOrderNumber(): Promise<string> {
     if (m) seq = parseInt(m[1], 10) + 1
   } else {
     // Check old format
-    const oldOrder = await db.tokoOrder.findFirst({
+    const oldOrder = await db.pesananToko.findFirst({
       where: { orderNumber: { startsWith: oldPrefix } },
       select: { orderNumber: true },
       orderBy: { orderNumber: 'desc' },
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
 
   // Support flat, nested, and Indonesian field formats
-  let items: { productId: string; quantity: number }[] = body.items
+  let items: { produkId: string; quantity: number }[] = body.items
   let buyerName = ''
   let buyerPhone = ''
   let buyerEmail: string | undefined = undefined
@@ -125,27 +125,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Toko online sedang tidak aktif' }, { status: 503 })
   }
 
-  // Fetch products
-  const productIds = items.map((i) => i.productId)
-  const products = await db.product.findMany({
+  // Fetch produks
+  const productIds = items.map((i) => i.produkId)
+  const produks = await db.produk.findMany({
     where: { id: { in: productIds } },
     include: { category: true },
   })
 
-  // Validate products
+  // Validate produks
   for (const item of items) {
-    const product = products.find((p) => p.id === item.productId)
-    if (!product) return NextResponse.json({ error: `Produk ${item.productId} tidak ditemukan` }, { status: 400 })
-    if (!product.dijualOnline) return NextResponse.json({ error: `Produk "${product.name}" tidak dijual online` }, { status: 400 })
-    if (!product.isActive) return NextResponse.json({ error: `Produk "${product.name}" tidak aktif` }, { status: 400 })
-    if (toNumber(product.stock) < item.quantity) {
+    const produk = produks.find((p) => p.id === item.produkId)
+    if (!produk) return NextResponse.json({ error: `Produk ${item.produkId} tidak ditemukan` }, { status: 400 })
+    if (!produk.dijualOnline) return NextResponse.json({ error: `Produk "${produk.name}" tidak dijual online` }, { status: 400 })
+    if (!produk.isActive) return NextResponse.json({ error: `Produk "${produk.name}" tidak aktif` }, { status: 400 })
+    if (toNumber(produk.stock) < item.quantity) {
       return NextResponse.json({ error: 'Stok tidak mencukupi' }, { status: 400 })
     }
-    if (item.quantity < product.minOrderQty) {
-      return NextResponse.json({ error: `Minimal pembelian "${product.name}" adalah ${product.minOrderQty}` }, { status: 400 })
+    if (item.quantity < produk.minOrderQty) {
+      return NextResponse.json({ error: `Minimal pembelian "${produk.name}" adalah ${produk.minOrderQty}` }, { status: 400 })
     }
-    if (product.maxOrderQty > 0 && item.quantity > product.maxOrderQty) {
-      return NextResponse.json({ error: `Maksimal pembelian "${product.name}" adalah ${product.maxOrderQty}` }, { status: 400 })
+    if (produk.maxOrderQty > 0 && item.quantity > produk.maxOrderQty) {
+      return NextResponse.json({ error: `Maksimal pembelian "${produk.name}" adalah ${produk.maxOrderQty}` }, { status: 400 })
     }
   }
 
@@ -153,19 +153,19 @@ export async function POST(req: NextRequest) {
   let subtotalProduk = 0
   let totalWeightGram = 0
   const orderItems = items.map((item) => {
-    const product = products.find((p) => p.id === item.productId)!
-    const price = toNumber(product.price)
+    const produk = produks.find((p) => p.id === item.produkId)!
+    const price = toNumber(produk.price)
     const qty = item.quantity
     const subtotal = price * qty
     subtotalProduk += subtotal
-    totalWeightGram += (product.weightGram || 0) * qty
+    totalWeightGram += (produk.weightGram || 0) * qty
     return {
-      productId: product.id,
-      productNameSnapshot: product.name,
-      unitSnapshot: product.unit,
+      produkId: produk.id,
+      productNameSnapshot: produk.name,
+      unitSnapshot: produk.unit,
       pricePerUnitSnapshot: price,
       quantity: qty,
-      weightGramSnapshot: product.weightGram || 0,
+      weightGramSnapshot: produk.weightGram || 0,
       subtotal,
     }
   })
@@ -207,7 +207,7 @@ export async function POST(req: NextRequest) {
   const midtransOrderId = `MIDTRANS-${orderNumber.replace(/[^a-zA-Z0-9._~-]/g, '')}`
 
   // Create order
-  const order = await db.tokoOrder.create({
+  const order = await db.pesananToko.create({
     data: {
       orderNumber,
       buyerName,
@@ -231,16 +231,16 @@ export async function POST(req: NextRequest) {
   // Reserve stock
   for (const item of items) {
     try {
-      await reduceProductStock(item.productId, item.quantity, 'online_reserve', 'toko_order', order.id, undefined, `Reservasi pesanan ${orderNumber}`)
+      await reduceProductStock(item.produkId, item.quantity, 'online_reserve', 'toko_order', order.id, undefined, `Reservasi pesanan ${orderNumber}`)
     } catch (e: any) {
       return NextResponse.json({ error: `Gagal reservasi stok: ${e.message}` }, { status: 400 })
     }
   }
 
   // Create initial status history
-  await db.tokoOrderStatusHistory.create({
+  await db.riwayatStatusPesananToko.create({
     data: {
-      tokoOrderId: order.id,
+      pesananTokoId: order.id,
       status: 'menunggu_pembayaran',
       keterangan: 'Pesanan dibuat, menunggu pembayaran',
     },
@@ -310,7 +310,7 @@ export async function POST(req: NextRequest) {
       if (midtransRes.ok) {
         const midtransData = await midtransRes.json()
         snapToken = midtransData.token
-        await db.tokoOrder.update({
+        await db.pesananToko.update({
           where: { id: order.id },
           data: { midtransSnapToken: snapToken },
         })
@@ -322,7 +322,7 @@ export async function POST(req: NextRequest) {
 
   if (!snapToken) {
     snapToken = `snap-token-${order.id}`
-    await db.tokoOrder.update({
+    await db.pesananToko.update({
       where: { id: order.id },
       data: { midtransSnapToken: snapToken },
     })

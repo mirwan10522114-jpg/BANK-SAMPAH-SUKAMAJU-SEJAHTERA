@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { toNumber } from '@/lib/format'
+import { toNumber, parseFilterStartDate, parseFilterEndDate } from '@/lib/format'
 
 // Koperasi Executive Dashboard API
 // Returns: 5 metric cards, arus kas trend (monthly), komposisi simpanan, transaction log
@@ -9,46 +9,53 @@ import { toNumber } from '@/lib/format'
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const periode = searchParams.get('periode') || 'bulan_ini'
-  const dari = searchParams.get('dari') // yyyy-mm-dd
-  const sampai = searchParams.get('sampai') // yyyy-mm-dd
+  const dari = searchParams.get('dari') // yyyy-mm-dd or dd/mm/yyyy
+  const sampai = searchParams.get('sampai') // yyyy-mm-dd or dd/mm/yyyy
   const logSearch = searchParams.get('q') || ''
   const logWaktu = searchParams.get('waktu') || 'Semua Waktu'
-  const logDari = searchParams.get('logDari') // yyyy-mm-dd (custom log range)
-  const logSampai = searchParams.get('logSampai') // yyyy-mm-dd (custom log range)
+  const logDari = searchParams.get('logDari')
+  const logSampai = searchParams.get('logSampai')
   const logJenis = searchParams.get('jenis') || 'Semua Jenis'
   const logStatus = searchParams.get('status') || 'Semua Status'
 
-  // Compute period range
+  // Compute period range (full month boundary friendly)
   const now = new Date()
+  const endOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
   let rangeStart: Date
-  let rangeEnd: Date = now
+  let rangeEnd: Date = endOfCurrentMonth
+
   if (periode === 'custom' && dari && sampai) {
-    rangeStart = new Date(dari)
-    rangeStart.setHours(0, 0, 0, 0)
-    rangeEnd = new Date(sampai)
-    rangeEnd.setHours(23, 59, 59, 999)
+    const sDate = parseFilterStartDate(dari)
+    const eDate = parseFilterEndDate(sampai)
+    rangeStart = sDate || new Date(now.getFullYear(), 0, 1)
+    rangeEnd = eDate || endOfCurrentMonth
   } else if (periode === '1bul') {
-    rangeStart = new Date(now); rangeStart.setDate(rangeStart.getDate() - 29); rangeStart.setHours(0, 0, 0, 0)
+    rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    rangeEnd = endOfCurrentMonth
   } else if (periode === '3bul') {
-    rangeStart = new Date(now); rangeStart.setDate(rangeStart.getDate() - 89); rangeStart.setHours(0, 0, 0, 0)
+    rangeStart = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+    rangeEnd = endOfCurrentMonth
   } else if (periode === '6bul') {
     rangeStart = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+    rangeEnd = endOfCurrentMonth
   } else if (periode === '1thn') {
-    rangeStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+    rangeStart = new Date(now.getFullYear(), 0, 1)
+    rangeEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999)
   } else {
     // bulan_ini (default)
     rangeStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    rangeEnd = now
+    rangeEnd = endOfCurrentMonth
   }
 
-  // ===== 5 METRIC CARDS (use period range) =====
-  const [kasMasukAgg, kasKeluarAgg, simpananSaldoAgg, pinjamanAktif, dendaAgg, anggotaCount] = await Promise.all([
+  // ===== 5 METRIC CARDS =====
+  const [kasMasukAll, kasKeluarAll, simpananSaldoAgg, pinjamanAktif, dendaAgg, dendaAllAgg, anggotaCount] = await Promise.all([
+    // Saldo kas koperasi (all-time current saldo, just like total simpanan & pinjaman)
     db.koperasiKasTransaksi.aggregate({
-      where: { tipe: 'masuk', tanggalTransaksi: { gte: rangeStart, lte: rangeEnd } },
+      where: { tipe: 'masuk' },
       _sum: { jumlah: true },
     }),
     db.koperasiKasTransaksi.aggregate({
-      where: { tipe: 'keluar', tanggalTransaksi: { gte: rangeStart, lte: rangeEnd } },
+      where: { tipe: 'keluar' },
       _sum: { jumlah: true },
     }),
     db.koperasiSimpananSaldo.aggregate({ _sum: { saldo: true } }),
@@ -60,13 +67,16 @@ export async function GET(req: NextRequest) {
       where: { tanggalBayar: { gte: rangeStart, lte: rangeEnd } },
       _sum: { dendaBayar: true },
     }),
+    db.koperasiPinjamanAngsuran.aggregate({
+      _sum: { dendaBayar: true },
+    }),
     db.koperasiAnggota.count({ where: { status: 'aktif' } }),
   ])
 
-  const totalKas = toNumber(kasMasukAgg._sum.jumlah) - toNumber(kasKeluarAgg._sum.jumlah)
+  const totalKas = toNumber(kasMasukAll._sum.jumlah) - toNumber(kasKeluarAll._sum.jumlah)
   const totalSimpanan = toNumber(simpananSaldoAgg._sum.saldo)
   const sisaPinjaman = pinjamanAktif.reduce((s, p) => s + toNumber(p.sisaPinjaman), 0)
-  const pemasukanDenda = toNumber(dendaAgg._sum.dendaBayar)
+  const pemasukanDenda = toNumber(dendaAgg._sum.dendaBayar) || toNumber(dendaAllAgg._sum.dendaBayar)
   const totalAnggota = anggotaCount
 
   // ===== ARUS KAS TREND (uses period rangeStart/rangeEnd with dynamic bucketing) =====
@@ -322,6 +332,23 @@ export async function GET(req: NextRequest) {
   const totalPemasukan = filteredRows.filter((r) => r.tipe === 'masuk').reduce((s, r) => s + r.nominal, 0)
   const totalPengeluaran = filteredRows.filter((r) => r.tipe === 'keluar').reduce((s, r) => s + r.nominal, 0)
 
+  // ===== TODAY SUMMARY =====
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+  const todayRange = { gte: todayStart, lte: todayEnd }
+
+  const [todaySimpanan, todayPenarikan, todayPinjaman, todayAngsuran] = await Promise.all([
+    db.koperasiSimpananTransaksi.aggregate({ where: { tanggalTransaksi: todayRange, tipe: 'masuk' }, _sum: { jumlah: true } }),
+    db.koperasiPenarikanSukarela.aggregate({ where: { tanggalPencairan: todayRange, status: 'dicairkan' }, _sum: { jumlah: true } }),
+    db.koperasiPinjaman.aggregate({ where: { tanggalPencairan: todayRange, status: { in: ['berjalan', 'lunas'] } }, _sum: { jumlahPinjaman: true } }),
+    db.koperasiPinjamanAngsuran.findMany({ where: { tanggalBayar: todayRange } })
+  ])
+  
+  const simpananHariIni = toNumber(todaySimpanan._sum.jumlah)
+  const penarikanHariIni = toNumber(todayPenarikan._sum.jumlah)
+  const pinjamanCairHariIni = toNumber(todayPinjaman._sum.jumlahPinjaman)
+  const angsuranHariIni = todayAngsuran.reduce((s, a) => s + toNumber(a.jumlahBayar) + toNumber(a.dendaBayar), 0)
+
   return NextResponse.json({
     metrics: {
       totalKas,
@@ -329,6 +356,14 @@ export async function GET(req: NextRequest) {
       sisaPinjaman,
       pemasukanDenda,
       totalAnggota,
+    },
+    todaySummary: {
+      simpananMasuk: simpananHariIni,
+      penarikanKeluar: penarikanHariIni,
+      pinjamanCair: pinjamanCairHariIni,
+      angsuranMasuk: angsuranHariIni,
+      totalPemasukan: simpananHariIni + angsuranHariIni,
+      totalPengeluaran: penarikanHariIni + pinjamanCairHariIni
     },
     arusKasTrend,
     komposisiSimpanan,

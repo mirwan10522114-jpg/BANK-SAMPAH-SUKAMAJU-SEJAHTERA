@@ -5,11 +5,13 @@ import { toNumber } from '@/lib/format'
 // GET /api/public/stats — public stats for landing page
 // Pisahkan total sampah nabung vs sedekah (tidak digabung lagi)
 // HANYA menghitung transaksi dengan status='selesai' (sudah QC)
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   const [nasabahCount, savingTx, sedekahTx, edukasiCount, kegiatanCount] = await Promise.all([
-    db.user.count({ where: { OR: [{ roles: { contains: 'nasabah' } }, { roles: { contains: 'koperasi' } }] } }),
-    db.savingTransaction.findMany({ where: { status: 'selesai' }, select: { totalWeight: true } }),
-    db.sedekahTransaction.findMany({ where: { status: 'selesai' }, select: { totalWeightBersih: true, totalWeight: true } }),
+    db.pengguna.count({ where: { OR: [{ roles: { contains: 'nasabah' } }, { roles: { contains: 'koperasi' } }] } }),
+    db.transaksiNabung.findMany({ where: { status: 'selesai' }, select: { totalWeight: true } }),
+    db.transaksiSedekah.findMany({ where: { status: 'selesai' }, select: { totalWeightBersih: true, totalWeight: true } }),
     db.article.count({ where: { publishedAt: { not: null } } }),
     db.kegiatan.count({ where: { publishedAt: { not: null } } }),
   ])

@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { getActingUser, addProductStock, reduceProductStock } from '@/lib/business'
 import { toNumber } from '@/lib/format'
 
-// GET: Full product with category and recent movements
+// GET: Full produk with category and recent movements
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -12,7 +12,7 @@ export async function GET(
   const actor = await getActingUser(_req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const product = await db.product.findUnique({
+  const produk = await db.produk.findUnique({
     where: { id },
     include: {
       category: true,
@@ -28,31 +28,31 @@ export async function GET(
     },
   })
 
-  if (!product) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
+  if (!produk) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
 
   return NextResponse.json({
-    id: product.id,
-    name: product.name,
-    slug: product.slug,
-    description: product.description,
-    image: product.image,
-    images: product.images,
-    unit: product.unit,
-    price: toNumber(product.price),
-    pointsCost: product.pointsCost,
-    stock: toNumber(product.stock),
-    isActive: product.isActive,
-    productCategoryId: product.productCategoryId,
-    weightGram: product.weightGram,
-    lengthCm: product.lengthCm,
-    widthCm: product.widthCm,
-    heightCm: product.heightCm,
-    dijualOnline: product.dijualOnline,
-    dijualOffline: product.dijualOffline,
-    minOrderQty: product.minOrderQty,
-    maxOrderQty: product.maxOrderQty,
-    category: product.category || null,
-    recentMovements: product.movements.map((m) => ({
+    id: produk.id,
+    name: produk.name,
+    slug: produk.slug,
+    description: produk.description,
+    image: produk.image,
+    images: produk.images,
+    unit: produk.unit,
+    price: toNumber(produk.price),
+    pointsCost: produk.pointsCost,
+    stock: toNumber(produk.stock),
+    isActive: produk.isActive,
+    kategoriProdukId: produk.kategoriProdukId,
+    weightGram: produk.weightGram,
+    lengthCm: produk.lengthCm,
+    widthCm: produk.widthCm,
+    heightCm: produk.heightCm,
+    dijualOnline: produk.dijualOnline,
+    dijualOffline: produk.dijualOffline,
+    minOrderQty: produk.minOrderQty,
+    maxOrderQty: produk.maxOrderQty,
+    category: produk.category || null,
+    recentMovements: produk.movements.map((m) => ({
       id: m.id,
       direction: m.direction,
       reason: m.reason,
@@ -64,12 +64,12 @@ export async function GET(
       createdBy: m.createdBy,
       createdAt: m.createdAt,
     })),
-    createdAt: product.createdAt,
-    updatedAt: product.updatedAt,
+    createdAt: produk.createdAt,
+    updatedAt: produk.updatedAt,
   })
 }
 
-// PUT: Update product fields
+// PUT: Update produk fields
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -78,8 +78,8 @@ export async function PUT(
   const actor = await getActingUser(req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const product = await db.product.findUnique({ where: { id } })
-  if (!product) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
+  const produk = await db.produk.findUnique({ where: { id } })
+  if (!produk) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
 
   const body = await req.json()
   const name = body.name !== undefined ? body.name : body.nama
@@ -88,7 +88,7 @@ export async function PUT(
   const images = body.images
   const unit = body.unit !== undefined ? body.unit : body.satuan
   const price = body.price !== undefined ? body.price : (body.hargaJual !== undefined ? body.hargaJual : body.harga)
-  const productCategoryId = body.productCategoryId !== undefined ? body.productCategoryId : body.kategoriId
+  const kategoriProdukId = body.kategoriProdukId !== undefined ? body.kategoriProdukId : body.kategoriId
   const weightGram = body.weightGram !== undefined ? body.weightGram : body.beratGram
   const lengthCm = body.lengthCm
   const widthCm = body.widthCm
@@ -108,7 +108,7 @@ export async function PUT(
   if (images !== undefined) updateData.images = images || '[]'
   if (unit !== undefined) updateData.unit = unit
   if (price !== undefined) updateData.price = Number(price)
-  if (productCategoryId !== undefined) updateData.productCategoryId = productCategoryId
+  if (kategoriProdukId !== undefined) updateData.kategoriProdukId = kategoriProdukId
   if (weightGram !== undefined) updateData.weightGram = Number(weightGram)
   if (lengthCm !== undefined) updateData.lengthCm = Number(lengthCm)
   if (widthCm !== undefined) updateData.widthCm = Number(widthCm)
@@ -122,12 +122,12 @@ export async function PUT(
   if (dijualDenganPoin !== undefined) updateData.dijualDenganPoin = Boolean(dijualDenganPoin)
 
   // Validate category if provided
-  if (productCategoryId && productCategoryId !== product.productCategoryId) {
-    const cat = await db.productCategory.findUnique({ where: { id: productCategoryId } })
+  if (kategoriProdukId && kategoriProdukId !== produk.kategoriProdukId) {
+    const cat = await db.kategoriProduk.findUnique({ where: { id: kategoriProdukId } })
     if (!cat) return NextResponse.json({ error: 'Kategori tidak ditemukan' }, { status: 400 })
   }
 
-  const updated = await db.product.update({
+  const updated = await db.produk.update({
     where: { id },
     data: updateData,
     include: { category: true },
@@ -145,19 +145,19 @@ export async function DELETE(
   const actor = await getActingUser(_req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const product = await db.product.findUnique({
+  const produk = await db.produk.findUnique({
     where: { id },
   })
 
-  if (!product) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
+  if (!produk) return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
 
-  const updated = await db.product.update({
+  const updated = await db.produk.update({
     where: { id },
     data: { isActive: false, dijualOnline: false, dijualOffline: false },
   })
   return NextResponse.json({
     message: 'Produk dinonaktifkan (soft delete)',
-    product: updated,
+    produk: updated,
     is_active: false,
     isActive: false,
   })

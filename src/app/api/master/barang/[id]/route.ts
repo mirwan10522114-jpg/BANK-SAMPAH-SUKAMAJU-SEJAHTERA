@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const item = await db.wasteItem.findUnique({
+  const item = await db.jenisSampah.findUnique({
     where: { id },
     include: { category: true, prices: { orderBy: { effectiveFrom: 'desc' } } },
   })
@@ -15,8 +15,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params
   const body = await req.json()
   // If price changed, create a new price record
-  const current = await db.wasteItem.findUnique({ where: { id } })
-  const item = await db.wasteItem.update({
+  const current = await db.jenisSampah.findUnique({ where: { id } })
+  const item = await db.jenisSampah.update({
     where: { id },
     data: {
       name: body.name,
@@ -25,13 +25,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       pricePerUnit: body.pricePerUnit,
       description: body.description,
       isActive: body.isActive,
-      wasteCategoryId: body.wasteCategoryId,
+      kategoriSampahId: body.kategoriSampahId,
     },
   })
   if (current && body.pricePerUnit && Number(body.pricePerUnit) !== Number(current.pricePerUnit)) {
-    await db.wastePrice.create({
+    await db.hargaSampah.create({
       data: {
-        wasteItemId: id,
+        jenisSampahId: id,
         pricePerUnit: body.pricePerUnit,
         effectiveFrom: new Date(),
         notes: 'Update harga.',
@@ -43,6 +43,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  await db.wasteItem.update({ where: { id }, data: { isActive: false } })
+  await db.jenisSampah.update({ where: { id }, data: { isActive: false } })
   return NextResponse.json({ ok: true })
 }

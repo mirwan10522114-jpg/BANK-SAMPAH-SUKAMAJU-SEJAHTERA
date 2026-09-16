@@ -170,7 +170,8 @@ function NasabahTab() {
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
-  const [roleFilter, setRoleFilter] = useState('')
+  const [roleFilter, setRoleFilter] = useState('nasabah')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [dashboardUserId, setDashboardUserId] = useState<string | null>(null)
   const [dashboardOpen, setDashboardOpen] = useState(false)
 
@@ -178,13 +179,14 @@ function NasabahTab() {
     setLoading(true)
     try {
       const res = await api.nasabah.list(q, roleFilter)
-      setData(res)
+      const filtered = statusFilter === 'all' ? res : res.filter((u: any) => u.verificationStatus === statusFilter)
+      setData(filtered)
     } catch (e: any) {
       toast.error(e?.message || 'Gagal memuat data nasabah')
     } finally {
       setLoading(false)
     }
-  }, [q, roleFilter])
+  }, [q, roleFilter, statusFilter])
 
   useEffect(() => {
     const t = setTimeout(() => { load() }, 300)
@@ -194,6 +196,19 @@ function NasabahTab() {
   const openDashboard = (u: any) => {
     setDashboardUserId(u.id)
     setDashboardOpen(true)
+  }
+
+  const handleApprove = async (id: string) => {
+    if (!confirm('Setujui nasabah ini? Mereka akan bisa login ke aplikasi.')) return
+    try {
+      const res = await fetch(`/api/master/nasabah/${id}/approve`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Gagal approve')
+      toast.success('Berhasil menyetujui nasabah!')
+      load()
+    } catch (e: any) {
+      toast.error(e.message)
+    }
   }
 
   return (
@@ -218,21 +233,22 @@ function NasabahTab() {
               className={`pl-9 ${inputCls}`}
             />
           </div>
-          <Select value={roleFilter} onValueChange={setRoleFilter}>
+          {/* Role filter hidden, forced to nasabah */}
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className={`sm:w-52 ${triggerCls}`}>
-              <SelectValue placeholder="Semua Role" />
+              <SelectValue placeholder="Semua Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Semua Role</SelectItem>
-              {ROLE_OPTIONS.map((r) => (
-                <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-              ))}
+              <SelectItem value="all">Semua Status</SelectItem>
+              <SelectItem value="verified">Verified (Aktif)</SelectItem>
+              <SelectItem value="pending_admin">Pending Admin</SelectItem>
+              <SelectItem value="pending_otp">Pending OTP</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         {loading ? (
-          <TableSkeleton rows={6} cols={7} />
+          <TableSkeleton rows={6} cols={8} />
         ) : data.length === 0 ? (
           <EmptyState icon={Users} message="Belum ada data nasabah" />
         ) : (
@@ -244,14 +260,16 @@ function NasabahTab() {
                 <TableHead className="text-emerald-900">Email</TableHead>
                 <TableHead className="text-emerald-900">Telepon</TableHead>
                 <TableHead className="text-emerald-900">Role</TableHead>
-                <TableHead className="text-emerald-900">Status Anggota</TableHead>
+                <TableHead className="text-emerald-900">Verifikasi</TableHead>
                 <TableHead className="text-right text-emerald-900">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {data.map((u) => {
                 const roles = parseRoles(u.roles)
-                const isNasabah = roles.includes('nasabah')
+                const isPendingAdmin = u.verificationStatus === 'pending_admin'
+                const isPendingOtp = u.verificationStatus === 'pending_otp'
+                
                 return (
                   <TableRow key={u.id}>
                     <TableCell className="font-mono text-xs text-emerald-800">{u.memberCode || '-'}</TableCell>
@@ -262,13 +280,13 @@ function NasabahTab() {
                       <span className="text-sm">{roleLabel(roles)}</span>
                     </TableCell>
                     <TableCell>
-                      {isNasabah ? (
+                      {isPendingAdmin ? (
+                        <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">Pending Admin</Badge>
+                      ) : isPendingOtp ? (
+                        <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700">Pending OTP</Badge>
+                      ) : (
                         <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
                           <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" /> Aktif
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="border-zinc-200 bg-zinc-100 text-zinc-500 hover:bg-zinc-100">
-                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-zinc-400" /> Tidak Aktif
                         </Badge>
                       )}
                     </TableCell>
@@ -290,7 +308,7 @@ function NasabahTab() {
         )}
       </CardContent>
 
-      <NasabahDashboardModal userId={dashboardUserId} open={dashboardOpen} onOpenChange={setDashboardOpen} />
+      <NasabahDashboardModal penggunaId={dashboardUserId} open={dashboardOpen} onOpenChange={setDashboardOpen} />
     </Card>
   )
 }
@@ -506,7 +524,7 @@ function BarangTab() {
   const [editing, setEditing] = useState<any | null>(null)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<any>({
-    wasteCategoryId: '', code: '', name: '', unit: 'kg', pricePerUnit: 0,
+    kategoriSampahId: '', code: '', name: '', unit: 'kg', pricePerUnit: 0,
     description: '', isActive: true,
   })
 
@@ -539,7 +557,7 @@ function BarangTab() {
   const openAdd = () => {
     setEditing(null)
     setForm({
-      wasteCategoryId: categories[0]?.id || '', code: '', name: '', unit: 'kg',
+      kategoriSampahId: categories[0]?.id || '', code: '', name: '', unit: 'kg',
       pricePerUnit: 0, description: '', isActive: true,
     })
     setOpen(true)
@@ -547,7 +565,7 @@ function BarangTab() {
   const openEdit = (b: any) => {
     setEditing(b)
     setForm({
-      wasteCategoryId: b.wasteCategoryId || '',
+      kategoriSampahId: b.kategoriSampahId || '',
       code: b.code || '',
       name: b.name || '',
       unit: b.unit || 'kg',
@@ -558,7 +576,7 @@ function BarangTab() {
     setOpen(true)
   }
   const save = async () => {
-    if (!form.name || !form.code || !form.wasteCategoryId) {
+    if (!form.name || !form.code || !form.kategoriSampahId) {
       toast.error('Kategori, kode, dan nama wajib diisi')
       return
     }
@@ -699,8 +717,8 @@ function BarangTab() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FieldShell label="Kategori" full>
               <Select
-                value={form.wasteCategoryId}
-                onValueChange={(v) => setForm({ ...form, wasteCategoryId: v })}
+                value={form.kategoriSampahId}
+                onValueChange={(v) => setForm({ ...form, kategoriSampahId: v })}
               >
                 <SelectTrigger className={triggerCls}>
                   <SelectValue placeholder="Pilih kategori" />
@@ -745,8 +763,8 @@ function BarangTab() {
             <FieldShell label="Harga per Satuan" hint="Rp">
               <Input
                 type="number" min={0}
-                value={form.pricePerUnit}
-                onChange={(e) => setForm({ ...form, pricePerUnit: Number(e.target.value) })}
+                value={form.pricePerUnit || ''}
+                onChange={(e) => setForm({ ...form, pricePerUnit: Number(e.target.value) || 0 })}
                 placeholder="0"
                 className={inputCls}
               />
@@ -781,187 +799,6 @@ function BarangTab() {
 }
 
 // ============================================================
-// 4. Pengaturan Koperasi Tab
-// ============================================================
-function KoperasiSettingTab() {
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState<any>({
-    namaKoperasi: '', telepon: '', email: '', alamat: '',
-    nominalSimpananPokok: 0, nominalSimpananWajib: 0, biayaAdminPinjaman: 0,
-    minimalBulanAnggota: 3, dendaTerlambatPerHari: 0, sukuBungaPinjaman: 0,
-  })
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const s = await api.koperasiSetting.get()
-      if (s) {
-        setForm({
-          namaKoperasi: s.namaKoperasi || '',
-          telepon: s.telepon || '',
-          email: s.email || '',
-          alamat: s.alamat || '',
-          nominalSimpananPokok: toNumber(s.nominalSimpananPokok),
-          nominalSimpananWajib: toNumber(s.nominalSimpananWajib),
-          biayaAdminPinjaman: toNumber(s.biayaAdminPinjaman),
-          minimalBulanAnggota: toNumber(s.minimalBulanAnggota),
-          dendaTerlambatPerHari: toNumber(s.dendaTerlambatPerHari),
-          sukuBungaPinjaman: toNumber(s.sukuBungaPinjaman),
-        })
-      }
-    } catch (e: any) {
-      toast.error(e?.message || 'Gagal memuat pengaturan')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { load() }, [load])
-
-  const save = async () => {
-    if (!form.namaKoperasi) {
-      toast.error('Nama koperasi wajib diisi')
-      return
-    }
-    setSaving(true)
-    try {
-      await api.koperasiSetting.update(form)
-      toast.success('Pengaturan koperasi disimpan')
-      load()
-    } catch (e: any) {
-      toast.error(e?.message || 'Gagal menyimpan pengaturan')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Card className="border-emerald-200">
-      <CardHead
-        icon={Settings}
-        title="Pengaturan Koperasi"
-        description="Konfigurasi parameter dasar koperasi simpan pinjam."
-        action={
-          <EmeraldButton loading={saving} onClick={save} className="shrink-0">
-            <Save className="size-4" /> Simpan
-          </EmeraldButton>
-        }
-      />
-      <CardContent className="pt-4">
-        {loading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-12" />
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-emerald-900">Identitas Koperasi</h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FieldShell label="Nama Koperasi" full>
-                  <Input
-                    value={form.namaKoperasi}
-                    onChange={(e) => setForm({ ...form, namaKoperasi: e.target.value })}
-                    placeholder="Koperasi Sukamaju Sejahtera"
-                    className={inputCls}
-                  />
-                </FieldShell>
-                <FieldShell label="Telepon">
-                  <Input
-                    value={form.telepon}
-                    onChange={(e) => setForm({ ...form, telepon: e.target.value })}
-                    placeholder="08xx..."
-                    className={inputCls}
-                  />
-                </FieldShell>
-                <FieldShell label="Email">
-                  <Input
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    placeholder="koperasi@contoh.com"
-                    className={inputCls}
-                  />
-                </FieldShell>
-                <FieldShell label="Alamat" full>
-                  <Textarea
-                    rows={2}
-                    value={form.alamat}
-                    onChange={(e) => setForm({ ...form, alamat: e.target.value })}
-                    placeholder="Alamat kantor koperasi"
-                    className={inputCls}
-                  />
-                </FieldShell>
-              </div>
-            </section>
-
-            <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-emerald-900">Parameter Simpanan & Pinjaman</h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FieldShell label="Nominal Simpanan Pokok" hint="Rp">
-                  <Input
-                    type="number" min={0}
-                    value={form.nominalSimpananPokok}
-                    onChange={(e) => setForm({ ...form, nominalSimpananPokok: Number(e.target.value) })}
-                    className={inputCls}
-                  />
-                </FieldShell>
-                <FieldShell label="Nominal Simpanan Wajib" hint="Rp / bulan">
-                  <Input
-                    type="number" min={0}
-                    value={form.nominalSimpananWajib}
-                    onChange={(e) => setForm({ ...form, nominalSimpananWajib: Number(e.target.value) })}
-                    className={inputCls}
-                  />
-                </FieldShell>
-                <FieldShell label="Biaya Admin Pinjaman" hint="Rp">
-                  <Input
-                    type="number" min={0}
-                    value={form.biayaAdminPinjaman}
-                    onChange={(e) => setForm({ ...form, biayaAdminPinjaman: Number(e.target.value) })}
-                    className={inputCls}
-                  />
-                </FieldShell>
-                <FieldShell label="Minimal Bulan Anggota" hint="bulan">
-                  <Input
-                    type="number" min={0}
-                    value={form.minimalBulanAnggota}
-                    onChange={(e) => setForm({ ...form, minimalBulanAnggota: Number(e.target.value) })}
-                    className={inputCls}
-                  />
-                </FieldShell>
-                <FieldShell label="Denda Terlambat per Hari" hint="Rp">
-                  <Input
-                    type="number" min={0}
-                    value={form.dendaTerlambatPerHari}
-                    onChange={(e) => setForm({ ...form, dendaTerlambatPerHari: Number(e.target.value) })}
-                    className={inputCls}
-                  />
-                </FieldShell>
-                <FieldShell label="Suku Bunga Pinjaman" hint="% / tahun">
-                  <Input
-                    type="number" min={0} step="0.1"
-                    value={form.sukuBungaPinjaman}
-                    onChange={(e) => setForm({ ...form, sukuBungaPinjaman: Number(e.target.value) })}
-                    className={inputCls}
-                  />
-                </FieldShell>
-              </div>
-            </section>
-
-            <div className="flex flex-col gap-2 rounded-md border border-emerald-100 bg-emerald-50/40 p-3 text-xs text-emerald-800 sm:flex-row sm:justify-between sm:gap-4">
-              <span>Simpanan Pokok: <strong>{formatRupiah(form.nominalSimpananPokok)}</strong></span>
-              <span>Simpanan Wajib: <strong>{formatRupiah(form.nominalSimpananWajib)}</strong></span>
-              <span>Bunga: <strong>{formatNumber(form.sukuBungaPinjaman, 1)}%</strong></span>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
 
 // ============================================================
 // 5. Anggota Koperasi Tab
@@ -1003,7 +840,7 @@ function AnggotaTab() {
           <span>Semua operasi (tambah, edit, hapus, atur role koperasi) terpusat di <b>Manajemen Akun</b>. Tab ini bersifat read-only.</span>
         </div>
         {loading ? (
-          <TableSkeleton rows={6} cols={7} />
+          <TableSkeleton rows={6} cols={8} />
         ) : data.length === 0 ? (
           <EmptyState icon={UserCircle} message="Belum ada anggota koperasi" />
         ) : (
@@ -1012,6 +849,7 @@ function AnggotaTab() {
               <TableRow className="bg-emerald-50/60 hover:bg-emerald-50/60">
                 <TableHead className="text-emerald-900">Nomor Anggota</TableHead>
                 <TableHead className="text-emerald-900">Nama</TableHead>
+                <TableHead className="text-emerald-900">Simpanan Pokok</TableHead>
                 <TableHead className="text-emerald-900">No KTP</TableHead>
                 <TableHead className="text-emerald-900">Telepon</TableHead>
                 <TableHead className="text-emerald-900">Status</TableHead>
@@ -1020,25 +858,42 @@ function AnggotaTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell className="font-mono text-xs text-emerald-800">{a.nomorAnggota}</TableCell>
-                  <TableCell className="font-medium">{a.nama}</TableCell>
-                  <TableCell className="text-muted-foreground">{a.noKtp || '-'}</TableCell>
-                  <TableCell>{a.noTelepon || '-'}</TableCell>
-                  <TableCell>
-                    {a.status === 'aktif' ? (
-                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
-                        <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" /> Aktif
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="border-zinc-200 bg-zinc-100 text-zinc-500 hover:bg-zinc-100">
-                        <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-zinc-400" /> Tidak Aktif
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>{formatDate(a.tanggalBergabung)}</TableCell>
-                  <TableCell className="text-right">
+              {data.map((a) => {
+                const pokokSaldo = Number(a.simpananSaldos?.find((s: any) => s.jenisSimpanan === 'pokok')?.saldo ?? 0)
+                const isPokokLunas = pokokSaldo > 0
+
+                return (
+                  <TableRow key={a.id}>
+                    <TableCell className="font-mono text-xs text-emerald-800">{a.nomorAnggota}</TableCell>
+                    <TableCell className="font-medium">{a.nama}</TableCell>
+                    <TableCell>
+                      {isPokokLunas ? (
+                        <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 font-medium">
+                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          Lunas ({formatRupiah(pokokSaldo)})
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-50 font-semibold">
+                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                          Belum Bayar
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{a.noKtp || '-'}</TableCell>
+                    <TableCell>{a.noTelepon || '-'}</TableCell>
+                    <TableCell>
+                      {a.status === 'aktif' ? (
+                        <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" /> Aktif
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="border-zinc-200 bg-zinc-100 text-zinc-500 hover:bg-zinc-100">
+                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-zinc-400" /> Tidak Aktif
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>{formatDate(a.tanggalBergabung)}</TableCell>
+                    <TableCell className="text-right">
                     <Button
                       size="sm"
                       variant="outline"
@@ -1049,8 +904,9 @@ function AnggotaTab() {
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
+              )
+            })}
+          </TableBody>
           </ScrollTable>
         )}
       </CardContent>
@@ -1180,7 +1036,7 @@ function MitraTab() {
                   <TableCell className="max-w-xs truncate text-muted-foreground">{m.address || '-'}</TableCell>
                   <TableCell><StatusBadge active={!!m.isActive} /></TableCell>
                   <TableCell className="text-right font-mono text-sm">
-                    {m._count?.salesTransactions ?? 0}
+                    {m._count?.transaksiPenjualanMitras ?? 0}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="inline-flex gap-1">
@@ -1472,24 +1328,26 @@ function ProdukTab() {
             <FieldShell label="Stok" hint={form.unit}>
               <Input
                 type="number" min={0}
-                value={form.stock}
-                onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })}
+                value={form.stock || ''}
+                placeholder="0"
+                onChange={(e) => setForm({ ...form, stock: Number(e.target.value) || 0 })}
                 className={inputCls}
               />
             </FieldShell>
             <FieldShell label="Harga" hint="Rp">
               <Input
                 type="number" min={0}
-                value={form.price}
-                onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+                value={form.price || ''}
+                placeholder="0"
+                onChange={(e) => setForm({ ...form, price: Number(e.target.value) || 0 })}
                 className={inputCls}
               />
             </FieldShell>
             <FieldShell label="Poin / Tukar" hint="points">
               <Input
                 type="number" min={0}
-                value={form.pointsCost}
-                onChange={(e) => setForm({ ...form, pointsCost: Number(e.target.value) })}
+                value={form.pointsCost || ''}
+                onChange={(e) => setForm({ ...form, pointsCost: Number(e.target.value) || 0 })}
                 placeholder="0 = tidak bisa ditukar poin"
                 className={inputCls}
               />
@@ -1533,13 +1391,13 @@ function PointRulesTab() {
   const [saving, setSaving] = useState(false)
   const today = new Date().toISOString().slice(0, 10)
   const [form, setForm] = useState<any>({
-    pointsPerRupiah: 0, rupiahPerPoint: 0, effectiveFrom: today, notes: '', isActive: true,
+    rupiahPerPointEarn: 1000, rupiahPerPoint: 40, effectiveFrom: today, notes: '', isActive: true,
   })
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setData(await api.pointRules.list())
+      setData(await api.aturanPoins.list())
     } catch (e: any) {
       toast.error(e?.message || 'Gagal memuat point rules')
     } finally {
@@ -1551,19 +1409,25 @@ function PointRulesTab() {
 
   const openAdd = () => {
     setForm({
-      pointsPerRupiah: 0, rupiahPerPoint: 0, effectiveFrom: today, notes: '', isActive: true,
+      rupiahPerPointEarn: 1000, rupiahPerPoint: 40, effectiveFrom: today, notes: '', isActive: true,
     })
     setOpen(true)
   }
   const save = async () => {
-    if (form.pointsPerRupiah <= 0 && form.rupiahPerPoint <= 0) {
-      toast.error('Isi minimal salah satu: Points/Rupiah atau Rupiah/Point')
+    const earnRp = Number(form.rupiahPerPointEarn)
+    if (!earnRp || earnRp <= 0) {
+      toast.error('Nilai Rupiah Tabungan per 1 Poin harus > 0 (contoh: 1000)')
       return
     }
     setSaving(true)
     try {
-      await api.pointRules.create(form)
-      toast.success('Aturan poin ditambahkan')
+      await api.aturanPoins.create({
+        ...form,
+        rupiahPerPointEarn: earnRp,
+        pointsPerRupiah: 1 / earnRp,
+        rupiahPerPoint: Number(form.rupiahPerPoint || 0),
+      })
+      toast.success('Aturan poin berhasil ditambahkan')
       setOpen(false)
       load()
     } catch (e: any) {
@@ -1577,8 +1441,8 @@ function PointRulesTab() {
     <Card className="border-emerald-200">
       <CardHead
         icon={Award}
-        title="Point Rules"
-        description="Aturan konversi poin ke Rupiah dan sebaliknya. Hanya satu aturan aktif pada satu waktu."
+        title="Point Rules (Aturan Loyalty Poin)"
+        description="Konfigurasi dinamis konversi tabungan rupiah ke loyalty point dan nilai tukar produk. Berat sampah dihitung ke rupiah dulu, baru dikonversi ke poin."
         action={
           <EmeraldButton onClick={openAdd} className="shrink-0">
             <Plus className="size-4" /> Tambah Aturan
@@ -1586,12 +1450,16 @@ function PointRulesTab() {
         }
       />
       <CardContent className="pt-4">
-        <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-          <Award className="size-4 shrink-0" />
-          <span>
-            Hanya <strong>satu aturan aktif</strong> pada satu waktu. Menambah aturan baru dengan status aktif
-            akan otomatis menonaktifkan aturan lainnya.
-          </span>
+        <div className="mb-4 flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50/80 p-3 text-xs text-emerald-900">
+          <Award className="size-4 shrink-0 text-emerald-700 mt-0.5" />
+          <div className="space-y-1">
+            <p>
+              <strong>Prinsip Resmi:</strong> Loyalty point dihitung dari <strong>Total Nilai Tabungan (Rp)</strong> dibagi <strong>Nilai Rupiah per 1 Poin</strong>.
+            </p>
+            <p className="text-emerald-700">
+              Berat sampah (kg) tidak dikalikan poin secara langsung karena setiap jenis sampah memiliki harga per kg yang berbeda.
+            </p>
+          </div>
         </div>
 
         {loading ? (
@@ -1602,39 +1470,46 @@ function PointRulesTab() {
           <ScrollTable>
             <TableHeader>
               <TableRow className="bg-emerald-50/60 hover:bg-emerald-50/60">
-                <TableHead className="text-emerald-900">Points / Rupiah</TableHead>
-                <TableHead className="text-emerald-900">Rupiah / Point</TableHead>
+                <TableHead className="text-emerald-900">Nilai Tabungan per 1 Poin</TableHead>
+                <TableHead className="text-emerald-900">Nilai Tukar Produk / 1 Poin</TableHead>
                 <TableHead className="text-emerald-900">Berlaku Dari</TableHead>
                 <TableHead className="text-emerald-900">Catatan</TableHead>
                 <TableHead className="text-emerald-900">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-mono text-emerald-800">
-                    {formatNumber(toNumber(r.pointsPerRupiah), 4)}
-                  </TableCell>
-                  <TableCell className="font-mono text-emerald-800">
-                    {formatRupiah(toNumber(r.rupiahPerPoint))}
-                  </TableCell>
-                  <TableCell>{formatDate(r.effectiveFrom)}</TableCell>
-                  <TableCell className="max-w-xs truncate text-muted-foreground">
-                    {r.notes || '-'}
-                  </TableCell>
-                  <TableCell>
-                    {r.isActive ? (
-                      <Badge className="border-emerald-200 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                        Aktif
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="border-zinc-200 bg-zinc-100 text-zinc-600">
-                        Nonaktif
-                      </Badge>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {data.map((r) => {
+                const earnRp = r.rupiahPerPointEarn || (toNumber(r.pointsPerRupiah) > 0 ? Math.round(1 / toNumber(r.pointsPerRupiah)) : 1000)
+                const redeemRp = toNumber(r.rupiahPerPoint)
+                return (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-semibold text-emerald-900">
+                      {formatRupiah(earnRp)} = 1 Poin
+                      <div className="text-[11px] font-normal text-muted-foreground">
+                        ({formatNumber(1 / earnRp, 6)} poin/Rp)
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-emerald-800">
+                      {redeemRp > 0 ? `${formatRupiah(redeemRp)} / poin` : 'Belum diatur'}
+                    </TableCell>
+                    <TableCell>{formatDate(r.effectiveFrom)}</TableCell>
+                    <TableCell className="max-w-xs truncate text-muted-foreground">
+                      {r.notes || '-'}
+                    </TableCell>
+                    <TableCell>
+                      {r.isActive ? (
+                        <Badge className="border-emerald-200 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                          Aktif
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="border-zinc-200 bg-zinc-100 text-zinc-600">
+                          Nonaktif
+                        </Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </ScrollTable>
         )}
@@ -1643,30 +1518,46 @@ function PointRulesTab() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-emerald-900">Tambah Aturan Poin</DialogTitle>
+            <DialogTitle className="text-emerald-900">Tambah Aturan Loyalty Poin</DialogTitle>
             <DialogDescription>
-              Menambah aturan dengan status aktif akan menonaktifkan aturan lainnya.
+              Tentukan nilai rupiah tabungan untuk mendapatkan 1 poin dan nilai tukar per poin saat penukaran produk.
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FieldShell label="Points per Rupiah" hint="cth. 0.01">
+            <FieldShell label="Nilai Tabungan per 1 Poin (Rp)" hint="Contoh: 1000 (Tiap Rp 1.000 = 1 Poin)">
               <Input
-                type="number" min={0} step="0.0001"
-                value={form.pointsPerRupiah}
-                onChange={(e) => setForm({ ...form, pointsPerRupiah: Number(e.target.value) })}
-                placeholder="0"
+                type="number" min={1} step={100}
+                value={form.rupiahPerPointEarn || ''}
+                onChange={(e) => setForm({ ...form, rupiahPerPointEarn: Number(e.target.value) || 0 })}
+                placeholder="1000"
                 className={inputCls}
               />
             </FieldShell>
-            <FieldShell label="Rupiah per Point" hint="Rp">
+            <FieldShell label="Nilai Tukar 1 Poin Produk (Rp)" hint="Contoh: 40 (1 Poin bernilai Rp 40 barang)">
               <Input
-                type="number" min={0}
-                value={form.rupiahPerPoint}
-                onChange={(e) => setForm({ ...form, rupiahPerPoint: Number(e.target.value) })}
-                placeholder="0"
+                type="number" min={0} step={5}
+                value={form.rupiahPerPoint || ''}
+                onChange={(e) => setForm({ ...form, rupiahPerPoint: Number(e.target.value) || 0 })}
+                placeholder="40"
                 className={inputCls}
               />
             </FieldShell>
+
+            {/* Kotak Simulasi Live */}
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900 sm:col-span-2">
+              <div className="font-semibold text-emerald-950 mb-1">
+                ⚡ Simulasi Perhitungan Transaksi:
+              </div>
+              <ul className="space-y-1 text-emerald-800">
+                <li>• Warga menyetor <strong>Plastik (2 kg × Rp 1.000 = Rp 2.000)</strong> + <strong>Besi (1 kg × Rp 5.000 = Rp 5.000)</strong></li>
+                <li>• <strong>Total Nilai Tabungan:</strong> Rp 7.000 (Masuk ke saldo warga 100%)</li>
+                <li>• <strong>Loyalty Point Diperoleh:</strong> Rp 7.000 ÷ Rp {Number(form.rupiahPerPointEarn || 1000).toLocaleString('id-ID')} = <strong className="text-emerald-950 underline">{Math.floor(7000 / (Number(form.rupiahPerPointEarn) || 1000))} Poin</strong></li>
+                {Number(form.rupiahPerPoint) > 0 && (
+                  <li>• <strong>Penukaran Produk:</strong> 100 Poin setara subsidi produk senilai <strong>{formatRupiah(100 * Number(form.rupiahPerPoint))}</strong></li>
+                )}
+              </ul>
+            </div>
+
             <FieldShell label="Berlaku Dari" full>
               <Input
                 type="date"
@@ -1675,19 +1566,19 @@ function PointRulesTab() {
                 className={inputCls}
               />
             </FieldShell>
-            <FieldShell label="Catatan" full>
+            <FieldShell label="Catatan Aturan" full>
               <Textarea
                 rows={2}
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                placeholder="Keterangan aturan"
+                placeholder="Contoh: Kebijakan loyalitas tahun 2026 (Rp 1.000 tabungan = 1 poin)"
                 className={inputCls}
               />
             </FieldShell>
             <div className="flex items-center justify-between rounded-md border border-emerald-100 bg-emerald-50/30 p-3 sm:col-span-2">
               <div>
-                <Label>Aktif</Label>
-                <p className="text-xs text-muted-foreground">Hanya satu aturan boleh aktif pada satu waktu.</p>
+                <Label>Aktifkan Sekarang</Label>
+                <p className="text-xs text-muted-foreground">Menonaktifkan aturan lama dan langsung memberlakukan aturan ini.</p>
               </div>
               <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
             </div>
@@ -1710,10 +1601,7 @@ const TABS = [
   { value: 'nasabah', label: 'Nasabah', icon: Users },
   { value: 'kategori', label: 'Kategori', icon: Tag },
   { value: 'barang', label: 'Barang Sampah', icon: Recycle },
-  { value: 'koperasi-setting', label: 'Pengaturan Koperasi', icon: Settings },
   { value: 'anggota', label: 'Anggota Koperasi', icon: UserCircle },
-  { value: 'mitra', label: 'Mitra', icon: Handshake },
-  { value: 'produk', label: 'Produk', icon: ShoppingBag },
   { value: 'point-rules', label: 'Point Rules', icon: Award },
 ] as const
 
@@ -1746,10 +1634,7 @@ export function MasterData() {
         <TabsContent value="nasabah"><NasabahTab /></TabsContent>
         <TabsContent value="kategori"><KategoriTab /></TabsContent>
         <TabsContent value="barang"><BarangTab /></TabsContent>
-        <TabsContent value="koperasi-setting"><KoperasiSettingTab /></TabsContent>
         <TabsContent value="anggota"><AnggotaTab /></TabsContent>
-        <TabsContent value="mitra"><MitraTab /></TabsContent>
-        <TabsContent value="produk"><ProdukTab /></TabsContent>
         <TabsContent value="point-rules"><PointRulesTab /></TabsContent>
       </Tabs>
     </div>

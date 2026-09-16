@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const order = await db.tokoOrder.findFirst({
+  const order = await db.pesananToko.findFirst({
     where: {
       OR: [
         { orderNumber },
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
   }
 
   // Update order status
-  await db.tokoOrder.update({
+  await db.pesananToko.update({
     where: { id: order.id },
     data: {
       paymentStatus: 'dibayar',
@@ -64,9 +64,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
     },
   })
 
-  await db.tokoOrderStatusHistory.create({
+  await db.riwayatStatusPesananToko.create({
     data: {
-      tokoOrderId: order.id,
+      pesananTokoId: order.id,
       status: 'dibayar',
       keterangan: `Pembayaran dikonfirmasi manual oleh admin (${actorInfo.name})`,
     },
@@ -76,10 +76,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
   for (const item of order.items) {
     const qty = toNumber(item.quantity)
     try {
-      await addProductStock(item.productId, qty, 'online_release', 'toko_order', order.id, undefined, `Konfirmasi pesanan ${order.orderNumber}`)
+      await addProductStock(item.produkId, qty, 'online_release', 'toko_order', order.id, undefined, `Konfirmasi pesanan ${order.orderNumber}`)
     } catch {}
     try {
-      await reduceProductStock(item.productId, qty, 'online_sale', 'toko_order', order.id, undefined, `Penjualan online ${order.orderNumber}`)
+      await reduceProductStock(item.produkId, qty, 'online_sale', 'toko_order', order.id, undefined, `Penjualan online ${order.orderNumber}`)
     } catch {}
   }
 
@@ -89,9 +89,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
     console.error('Failed to record kas from online sale:', e)
   }
 
-  const existingSale = await db.productSale.findFirst({ where: { notes: { contains: order.orderNumber } } })
+  const existingSale = await db.penjualanProduk.findFirst({ where: { notes: { contains: order.orderNumber } } })
   if (!existingSale) {
-    await db.productSale.create({
+    await db.penjualanProduk.create({
       data: {
         buyerName: order.buyerName,
         buyerPhone: order.buyerPhone,
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
         transactedAt: new Date(),
         items: {
           create: order.items.map((i) => ({
-            productId: i.productId,
+            produkId: i.produkId,
             productNameSnapshot: i.productNameSnapshot,
             unitSnapshot: i.unitSnapshot,
             pricePerUnitSnapshot: i.pricePerUnitSnapshot,

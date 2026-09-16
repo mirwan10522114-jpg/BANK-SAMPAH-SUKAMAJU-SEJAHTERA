@@ -11,7 +11,7 @@ export async function PUT(
   const actor = await getActingUser(req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const category = await db.productCategory.findUnique({ where: { id } })
+  const category = await db.kategoriProduk.findUnique({ where: { id } })
   if (!category) return NextResponse.json({ error: 'Kategori tidak ditemukan' }, { status: 404 })
 
   const body = await req.json()
@@ -28,7 +28,7 @@ export async function PUT(
   if (image !== undefined) updateData.image = image || null
   if (isActive !== undefined) updateData.isActive = isActive
 
-  const updated = await db.productCategory.update({
+  const updated = await db.kategoriProduk.update({
     where: { id },
     data: updateData,
   })
@@ -36,7 +36,7 @@ export async function PUT(
   return NextResponse.json(updated)
 }
 
-// DELETE: Delete category if no products linked
+// DELETE: Delete category if no produks linked
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -45,17 +45,17 @@ export async function DELETE(
   const actor = await getActingUser(_req)
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const category = await db.productCategory.findUnique({
+  const category = await db.kategoriProduk.findUnique({
     where: { id },
-    include: { _count: { select: { products: true } } },
+    include: { _count: { select: { produks: true } } },
   })
 
   if (!category) return NextResponse.json({ error: 'Kategori tidak ditemukan' }, { status: 404 })
-  if (category._count.products > 0) {
-    return NextResponse.json({ error: `Tidak bisa menghapus kategori yang masih memiliki ${category._count.products} produk` }, { status: 400 })
+  if (category._count.produks > 0) {
+    return NextResponse.json({ error: `Tidak bisa menghapus kategori yang masih memiliki ${category._count.produks} produk` }, { status: 400 })
   }
 
-  await db.productCategory.delete({ where: { id } })
+  await db.kategoriProduk.delete({ where: { id } })
 
   return NextResponse.json({ message: 'Kategori dihapus' })
 }

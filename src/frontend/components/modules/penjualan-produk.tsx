@@ -42,6 +42,7 @@ import {
   formatDateTime,
   toNumber,
 } from '@/lib/format'
+import { sanitizeName, sanitizeNumber } from '@/lib/validation'
 import { printStruk } from '@/lib/print-struk'
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -68,7 +69,7 @@ import {
 // ============================================================================
 // Types
 // ============================================================================
-interface ProductCategory {
+interface KategoriProduk {
   id: string
   name: string
   slug: string
@@ -83,7 +84,7 @@ interface TokoProduk {
   slug: string
   deskripsi?: string
   kategoriId?: string
-  kategori?: ProductCategory
+  kategori?: KategoriProduk
   hargaJual: string | number
   satuan: string
   stok: string | number
@@ -126,6 +127,7 @@ interface OrderRow {
   ongkir?: string | number
   namaPembeli: string
   telpPembeli?: string
+  emailPembeli?: string
   alamatPengiriman?: string
   items: OrderItem[]
   createdAt: string
@@ -167,7 +169,7 @@ function mapProduk(r: any): TokoProduk {
     nama: r.name,
     slug: r.slug,
     deskripsi: r.description,
-    kategoriId: r.productCategoryId,
+    kategoriId: r.kategoriProdukId,
     kategori: r.category,
     hargaJual: r.price,
     satuan: r.unit || 'pcs',
@@ -200,10 +202,11 @@ function mapOrderRow(r: any): OrderRow {
     ongkir: r.ongkir,
     namaPembeli: r.buyerName || '',
     telpPembeli: r.buyerPhone,
+    emailPembeli: r.buyerEmail,
     alamatPengiriman: r.buyerAddress,
     items: (r.items || []).map((it: any) => ({
       id: it.id,
-      produkId: it.productId,
+      produkId: it.produkId,
       namaProduk: it.productNameSnapshot || it.productName || '',
       hargaSatuan: it.pricePerUnitSnapshot || it.price || 0,
       qty: it.quantity,
@@ -234,7 +237,7 @@ function mapSettings(r: any): TokoSettings {
 function mapAturan(r: any): AturanRow {
   return {
     id: r.id,
-    kategoriId: r.productCategoryId,
+    kategoriId: r.kategoriProdukId,
     kategori: r.category,
     kategoriNama: r.category?.name || '',
     minPembelian: r.minPembelian,
@@ -249,7 +252,7 @@ function unmapProduk(p: TokoProduk) {
     name: p.nama,
     slug: p.slug,
     description: p.deskripsi,
-    productCategoryId: p.kategoriId || null,
+    kategoriProdukId: p.kategoriId || null,
     price: Number(p.hargaJual) || 0,
     unit: p.satuan || 'pcs',
     stock: Number(p.stok) || 0,
@@ -363,7 +366,26 @@ function ManajemenProdukTab() {
   const [editing, setEditing] = React.useState<TokoProduk | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
 
-  const [kategoriList, setKategoriList] = React.useState<ProductCategory[]>([])
+  const [kategoriList, setKategoriList] = React.useState<KategoriProduk[]>([])
+
+  const [stokHistoryOpen, setStokHistoryOpen] = React.useState(false)
+  const [stokHistoryProduct, setStokHistoryProduct] = React.useState<TokoProduk | null>(null)
+  const [stokHistory, setStokHistory] = React.useState<any[]>([])
+  const [loadingHistory, setLoadingHistory] = React.useState(false)
+
+  const openStokHistory = async (p: TokoProduk) => {
+    setStokHistoryProduct(p)
+    setStokHistoryOpen(true)
+    setLoadingHistory(true)
+    try {
+      const res = await api.toko.adminProdukRiwayatStok(p.id)
+      setStokHistory(res || [])
+    } catch (e: any) {
+      toast.error('Gagal memuat riwayat stok', { description: e.message })
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
 
   // Form fields
   const [fNama, setFNama] = React.useState('')
@@ -389,6 +411,7 @@ function ManajemenProdukTab() {
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   const [settings, setSettings] = React.useState<TokoSettings | null>(null)
+  const [activePointRate, setActivePointRate] = React.useState(40)
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -405,7 +428,7 @@ function ManajemenProdukTab() {
   const loadKategori = React.useCallback(async () => {
     try {
       const res = await api.toko.adminKategori()
-      setKategoriList(res as ProductCategory[])
+      setKategoriList(res as KategoriProduk[])
     } catch {}
   }, [])
 
@@ -413,6 +436,14 @@ function ManajemenProdukTab() {
     try {
       const res = await api.toko.adminSettings()
       setSettings(mapSettings(res))
+    } catch {}
+    try {
+      const rules = await api.aturanPoins.list()
+      const active = rules?.find((r: any) => r.isActive)
+      if (active) {
+        const rate = toNumber(active.rupiahPerPoint)
+        if (rate > 0) setActivePointRate(rate)
+      }
     } catch {}
   }, [])
 
@@ -511,10 +542,11 @@ function ManajemenProdukTab() {
     // Validasi harga poin
     if (fDijualPoin) {
       const harga = Number(fHargaJual) || 0
-      const minPoin = Math.ceil(harga / 100) // 1 poin = Rp 100 (dari point rule)
+      const rate = activePointRate > 0 ? activePointRate : 40
+      const minPoin = Math.ceil(harga / rate)
       const inputPoin = Number(fHargaPoin) || 0
       if (inputPoin <= 0) { toast.error('Harga poin wajib diisi jika "Dijual dengan Poin" aktif'); return }
-      if (inputPoin < minPoin) { toast.error(`Harga poin tidak boleh kurang dari ${minPoin} pt (harga produk Rp ${harga.toLocaleString('id-ID')} ÷ Rp 100/poin)`); return }
+      if (inputPoin < minPoin) { toast.error(`Harga poin tidak boleh kurang dari ${minPoin} pt (harga produk Rp ${harga.toLocaleString('id-ID')} ÷ Rp ${rate}/poin)`); return }
     }
 
     const payload = unmapProduk({
@@ -606,9 +638,9 @@ function ManajemenProdukTab() {
         {/* Stats */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard icon={Package} label="Total Produk" value={formatNumber(totalProduk, 0)} accent="emerald" />
-          <StatCard icon={Layers} label="Stok Tersedia" value={formatNumber(totalStok, 0)} sub="unit total" accent="teal" />
+          <StatCard icon={Layers} label="Stok Tersedia" value={formatNumber(totalStok, 0)} sub="pcs total" accent="teal" />
           <StatCard icon={Globe} label="Dijual Online" value={formatNumber(dijualOnline, 0)} sub="produk aktif online" accent="teal" />
-          <StatCard icon={AlertTriangle} label="Stok Rendah" value={formatNumber(stokRendah, 0)} sub={`< ${settings ? formatNumber(toNumber(settings.ambangBatasStokRendah), 0) : '?'} unit`} accent="amber" />
+          <StatCard icon={AlertTriangle} label="Stok Rendah" value={formatNumber(stokRendah, 0)} sub={`< ${settings ? formatNumber(toNumber(settings.ambangBatasStokRendah), 0) : '?'} pcs`} accent="amber" />
         </div>
 
         <Separator className="my-4 bg-emerald-100" />
@@ -693,7 +725,7 @@ function ManajemenProdukTab() {
                       <TableCell className="text-right font-semibold text-emerald-900">
                         {formatRupiah(toNumber(p.hargaJual))}
                       </TableCell>
-                      <TableCell className={`text-right font-semibold ${lowStock ? 'text-amber-600' : 'text-emerald-900'}`}>
+                      <TableCell className={`text-right font-semibold cursor-pointer hover:underline ${lowStock ? 'text-amber-600' : 'text-emerald-900'}`} onClick={() => openStokHistory(p)}>
                         {formatNumber(toNumber(p.stok), 0)}
                         {lowStock && (
                           <Badge variant="outline" className="ml-1 border-amber-300 bg-amber-50 text-amber-700 text-[9px] px-1 py-0">
@@ -739,6 +771,61 @@ function ManajemenProdukTab() {
           </div>
         )}
       </CardContent>
+
+      {/* Stok History Dialog */}
+      <Dialog open={stokHistoryOpen} onOpenChange={setStokHistoryOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-900">
+              <Layers className="h-5 w-5 text-emerald-600" />
+              Riwayat Stok: {stokHistoryProduct?.nama}
+            </DialogTitle>
+            <DialogDescription>
+              Detail pergerakan stok masuk dan keluar untuk produk ini.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4">
+            {loadingHistory ? (
+              <TableSkeleton rows={4} />
+            ) : stokHistory.length === 0 ? (
+              <EmptyState message="Belum ada riwayat stok" />
+            ) : (
+              <Table>
+                <TableHeader className="bg-emerald-50">
+                  <TableRow>
+                    <TableHead>Tanggal</TableHead>
+                    <TableHead>Tipe</TableHead>
+                    <TableHead className="text-right">Kuantitas</TableHead>
+                    <TableHead className="text-right">Sisa Stok</TableHead>
+                    <TableHead>Keterangan</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {stokHistory.map((h, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="whitespace-nowrap">{formatDateTime(h.createdAt)}</TableCell>
+                      <TableCell>
+                        <Badge className={h.direction === 'in' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}>
+                          {h.direction === 'in' ? 'Masuk' : 'Keluar'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className={`text-right font-medium ${h.direction === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {h.direction === 'in' ? '+' : '-'}{formatNumber(toNumber(h.quantity), 0)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-emerald-900">
+                        {formatNumber(toNumber(h.stockAfter), 0)}
+                      </TableCell>
+                      <TableCell className="text-sm text-emerald-700/80">
+                        {h.notes || h.reason}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -928,11 +1015,12 @@ function ManajemenProdukTab() {
                 />
                 {(() => {
                   const harga = Number(fHargaJual) || 0
-                  const minPoin = Math.ceil(harga / 100) // 1 poin = Rp 100
+                  const rate = activePointRate > 0 ? activePointRate : 40
+                  const minPoin = Math.ceil(harga / rate)
                   return harga > 0 ? (
                     <p className="text-xs text-amber-700">
                       💡 Harga produk: Rp {harga.toLocaleString('id-ID')} →
-                      Minimum poin: <strong>{minPoin} pt</strong> (1 poin = Rp 100).
+                      Minimum poin: <strong>{minPoin} pt</strong> (1 poin = Rp {rate}).
                       Harga poin tidak boleh kurang dari {minPoin} pt.
                     </p>
                   ) : null
@@ -978,10 +1066,10 @@ function ManajemenProdukTab() {
 // TAB 2: Kategori Produk
 // ============================================================================
 function KategoriProdukTab() {
-  const [data, setData] = React.useState<ProductCategory[]>([])
+  const [data, setData] = React.useState<KategoriProduk[]>([])
   const [loading, setLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
-  const [editing, setEditing] = React.useState<ProductCategory | null>(null)
+  const [editing, setEditing] = React.useState<KategoriProduk | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
 
   const [fNama, setFNama] = React.useState('')
@@ -991,7 +1079,7 @@ function KategoriProdukTab() {
     setLoading(true)
     try {
       const res = await api.toko.adminKategori()
-      setData(res as ProductCategory[])
+      setData(res as KategoriProduk[])
     } catch (e: any) {
       toast.error('Gagal memuat kategori', { description: e.message })
     } finally {
@@ -1005,7 +1093,7 @@ function KategoriProdukTab() {
     setEditing(null); setFNama(''); setFDeskripsi(''); setDialogOpen(true)
   }
 
-  const openEdit = (k: ProductCategory) => {
+  const openEdit = (k: KategoriProduk) => {
     setEditing(k); setFNama(k.name); setFDeskripsi(k.description || ''); setDialogOpen(true)
   }
 
@@ -1029,7 +1117,7 @@ function KategoriProdukTab() {
     }
   }
 
-  const handleDelete = async (k: ProductCategory) => {
+  const handleDelete = async (k: KategoriProduk) => {
     if (!confirm(`Hapus kategori "${k.name}"?`)) return
     try {
       await api.toko.adminKategoriDelete(k.id)
@@ -1176,8 +1264,8 @@ function printPosReceipt(receiptData: any) {
         <tbody>`
     for (const item of receiptData.items) {
       html += `<tr>
-        <td>${item.namaProduk}</td>
-        <td class="center">${toNumber(item.qty)}</td>
+        <td>${item.productNameSnapshot || item.namaProduk || '-'}</td>
+        <td class="center">${toNumber(item.quantity || item.qty)}</td>
         <td class="right">${formatRupiah(toNumber(item.subtotal))}</td>
       </tr>`
     }
@@ -1217,7 +1305,7 @@ function MiniPosTab() {
   const [search, setSearch] = React.useState('')
 
   const [cart, setCart] = React.useState<CartItem[]>([])
-  const [discount, setDiscount] = React.useState('')
+  const [discountPercent, setDiscountPercent] = React.useState('0')
   const [payMethod, setPayMethod] = React.useState<'tunai' | 'transfer'>('tunai')
   const [payAmount, setPayAmount] = React.useState('')
   const [buyerName, setBuyerName] = React.useState('')
@@ -1248,9 +1336,11 @@ function MiniPosTab() {
   )
 
   const addToCart = (produk: TokoProduk) => {
+    const minQty = toNumber(produk.minOrderQty) || 1
+    const maxQty = toNumber(produk.maxOrderQty) || 9999
     const existing = cart.find((c) => c.produk.id === produk.id)
+    
     if (existing) {
-      const maxQty = toNumber(produk.maxOrderQty) || 9999
       if (existing.qty + 1 > maxQty) {
         toast.warning(`Maksimal order ${maxQty} ${produk.satuan}`)
         return
@@ -1261,18 +1351,33 @@ function MiniPosTab() {
       }
       setCart((prev) => prev.map((c) => c.produk.id === produk.id ? { ...c, qty: c.qty + 1 } : c))
     } else {
-      setCart((prev) => [...prev, { produk, qty: 1 }])
+      if (minQty > toNumber(produk.stok)) {
+        toast.warning(`Stok tidak mencukupi untuk minimal order (${minQty} ${produk.satuan})`)
+        return
+      }
+      setCart((prev) => [...prev, { produk, qty: minQty }])
     }
   }
 
   const updateQty = (produkId: string, delta: number) => {
     setCart((prev) => prev.map((c) => {
       if (c.produk.id !== produkId) return c
-      const newQty = c.qty + delta
-      if (newQty <= 0) return c
+      const minQty = toNumber(c.produk.minOrderQty) || 1
       const maxQty = toNumber(c.produk.maxOrderQty) || 9999
-      if (newQty > maxQty) return c
-      if (newQty > toNumber(c.produk.stok)) return c
+      let newQty = c.qty + delta
+      
+      if (newQty < minQty) {
+        toast.warning(`Minimal order ${minQty} ${c.produk.satuan}`)
+        newQty = minQty
+      }
+      if (newQty > maxQty) {
+        toast.warning(`Maksimal order ${maxQty} ${c.produk.satuan}`)
+        return c
+      }
+      if (newQty > toNumber(c.produk.stok)) {
+        toast.warning('Stok tidak mencukupi')
+        return c
+      }
       return { ...c, qty: newQty }
     }))
   }
@@ -1282,19 +1387,19 @@ function MiniPosTab() {
   }
 
   const subtotal = cart.reduce((s, c) => s + toNumber(c.produk.hargaJual) * c.qty, 0)
-  const discountVal = Number(discount) || 0
+  const discountVal = (subtotal * Number(discountPercent)) / 100
   const total = Math.max(0, subtotal - discountVal)
-  const payAmountVal = Number(payAmount) || 0
-  const change = payAmountVal - total
+  const payAmountVal = payMethod === 'tunai' && payAmount ? toNumber(payAmount) : total
+  const change = payMethod === 'tunai' ? Math.max(0, payAmountVal - total) : 0
 
-  const canProcess = cart.length > 0 && total > 0 && buyerName.trim() && (payMethod === 'transfer' || payAmountVal >= total)
+  const canProcess = cart.length > 0 && total > 0 && buyerName.trim() && buyerPhone.trim() && buyerEmail.trim() && payAmountVal >= total
 
   const processTransaction = async () => {
     if (!canProcess) return
     setSubmitting(true)
     try {
       const items = cart.map((c) => ({
-  productId: c.produk.id,
+  produkId: c.produk.id,
   quantity: c.qty,
   pricePerUnit: toNumber(c.produk.hargaJual),
   subtotal: toNumber(c.produk.hargaJual) * c.qty,
@@ -1304,16 +1409,16 @@ function MiniPosTab() {
         discount: discountVal,
         total,
         paymentMethod: payMethod,
-        amountPaid: payMethod === 'tunai' ? payAmountVal : total,
+        amountPaid: total,
         buyerName: buyerName.trim(),
-        buyerPhone: buyerPhone.trim() || undefined,
-        buyerEmail: buyerEmail.trim() || undefined,
+        buyerPhone: buyerPhone.trim(),
+        buyerEmail: buyerEmail.trim(),
       })
       setReceiptData(res)
       setReceiptOpen(true)
       toast.success('Transaksi berhasil diproses' + (buyerEmail.trim() ? ' — struk terkirim ke email pembeli' : ''))
       // Reset cart
-      setCart([]); setDiscount(''); setPayAmount('')
+      setCart([]); setDiscountPercent('0')
       setBuyerName(''); setBuyerPhone(''); setBuyerEmail('')
       load()
     } catch (e: any) {
@@ -1325,7 +1430,7 @@ function MiniPosTab() {
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-      {/* Left Panel: Product Grid */}
+      {/* Left Panel: Produk Grid */}
       <Card className="border-emerald-100 lg:col-span-3">
         <CardHeader className="border-b border-emerald-100/70 pb-3">
           <CardTitle className="flex items-center gap-2 text-emerald-900 text-base">
@@ -1435,8 +1540,26 @@ function MiniPosTab() {
               <span className="font-semibold text-emerald-900">{formatRupiah(subtotal)}</span>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <Label className="text-sm text-emerald-700/70">Diskon (Rp)</Label>
-              <Input type="number" inputMode="numeric" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0" className="w-28 h-8 text-sm border-emerald-200 text-right" />
+              <Label className="text-sm text-emerald-700/70">Diskon</Label>
+              <div className="flex items-center gap-2">
+                {discountVal > 0 && <span className="text-xs text-rose-500 font-medium">-{formatRupiah(discountVal)}</span>}
+                <Select value={discountPercent} onValueChange={setDiscountPercent}>
+                  <SelectTrigger className="w-24 h-8 text-sm border-emerald-200 bg-white">
+                    <SelectValue placeholder="0%" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">0%</SelectItem>
+                    <SelectItem value="5">5%</SelectItem>
+                    <SelectItem value="10">10%</SelectItem>
+                    <SelectItem value="15">15%</SelectItem>
+                    <SelectItem value="20">20%</SelectItem>
+                    <SelectItem value="25">25%</SelectItem>
+                    <SelectItem value="30">30%</SelectItem>
+                    <SelectItem value="40">40%</SelectItem>
+                    <SelectItem value="50">50%</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <Separator className="bg-emerald-100" />
             <div className="flex justify-between text-base">
@@ -1462,13 +1585,19 @@ function MiniPosTab() {
             </div>
 
             {payMethod === 'tunai' && (
-              <div className="space-y-1.5">
-                <Label className="text-sm text-emerald-800">Jumlah Dibayar</Label>
-                <Input type="number" inputMode="numeric" min="0" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} placeholder="0" className="border-emerald-200" />
-                {payAmountVal >= total && total > 0 && (
-                  <p className="text-sm font-semibold text-emerald-700">
-                    Kembalian: {formatRupiah(change)}
-                  </p>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-emerald-800">Jumlah Dibayar</Label>
+                  <Input type="text" value={payAmount ? formatRupiah(toNumber(payAmount)) : ''} onChange={(e) => setPayAmount(sanitizeNumber(e.target.value))} placeholder="0" className="border-emerald-200" />
+                </div>
+                {payAmountVal >= total && payAmountVal > 0 && (
+                  <div className="flex justify-between items-center bg-emerald-50/50 p-2 rounded border border-emerald-100">
+                    <span className="text-sm text-emerald-800">Kembalian</span>
+                    <span className="font-bold text-emerald-900">{formatRupiah(change)}</span>
+                  </div>
+                )}
+                {payAmountVal > 0 && payAmountVal < total && (
+                  <p className="text-xs text-rose-500 font-medium text-right">Uang dibayar kurang {formatRupiah(total - payAmountVal)}</p>
                 )}
               </div>
             )}
@@ -1480,15 +1609,15 @@ function MiniPosTab() {
           <div className="space-y-2">
             <div className="space-y-1.5">
               <Label className="text-sm text-emerald-800">Nama Pembeli <span className="text-rose-500">*</span></Label>
-              <Input value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Nama pembeli" className="border-emerald-200" />
+              <Input value={buyerName} onChange={(e) => setBuyerName(sanitizeName(e.target.value))} placeholder="Nama pembeli" className="border-emerald-200" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-sm text-emerald-800">No. Telepon</Label>
-              <Input value={buyerPhone} onChange={(e) => setBuyerPhone(e.target.value)} placeholder="Opsional" className="border-emerald-200" />
+              <Label className="text-sm text-emerald-800">No. Telepon <span className="text-rose-500">*</span></Label>
+              <Input value={buyerPhone} onChange={(e) => setBuyerPhone(sanitizeNumber(e.target.value))} placeholder="No. telepon pembeli" className="border-emerald-200" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-sm text-emerald-800">Email <span className="text-zinc-400 text-xs">(untuk kirim struk otomatis)</span></Label>
-              <Input type="email" value={buyerEmail} onChange={(e) => setBuyerEmail(e.target.value)} placeholder="email@pembeli.com (opsional)" className="border-emerald-200" />
+              <Label className="text-sm text-emerald-800">Email <span className="text-rose-500">*</span> <span className="text-zinc-400 text-xs">(untuk kirim struk)</span></Label>
+              <Input type="email" value={buyerEmail} onChange={(e) => setBuyerEmail(e.target.value)} placeholder="email@pembeli.com" className="border-emerald-200" />
             </div>
           </div>
 
@@ -1553,8 +1682,8 @@ function MiniPosTab() {
                   <tbody>
                     {(receiptData.items || []).map((item: any, i: number) => (
                       <tr key={i} className="border-b border-dashed border-zinc-100 last:border-0">
-                        <td className="py-1.5 text-zinc-700">{item.namaProduk}</td>
-                        <td className="py-1.5 text-center text-zinc-600">{toNumber(item.qty)}</td>
+                        <td className="py-1.5 text-zinc-700">{item.productNameSnapshot || item.namaProduk || '-'}</td>
+                        <td className="py-1.5 text-center text-zinc-600">{toNumber(item.quantity || item.qty)}</td>
                         <td className="py-1.5 text-right font-medium text-zinc-900">{formatRupiah(toNumber(item.subtotal))}</td>
                       </tr>
                     ))}
@@ -1651,7 +1780,12 @@ function DataPenjualanTab() {
   const [newStatus, setNewStatus] = React.useState('')
   const [kurirNama, setKurirNama] = React.useState('')
   const [noResi, setNoResi] = React.useState('')
+  const [resiPhotoUrl, setResiPhotoUrl] = React.useState('')
+  const [uploadingResi, setUploadingResi] = React.useState(false)
+  const [shippingEtaStart, setShippingEtaStart] = React.useState('')
+  const [shippingEtaEnd, setShippingEtaEnd] = React.useState('')
   const [updatingStatus, setUpdatingStatus] = React.useState(false)
+  const resiFileInputRef = React.useRef<HTMLInputElement>(null)
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -1686,7 +1820,40 @@ function DataPenjualanTab() {
     setNewStatus('')
     setKurirNama(order.kurirNama || '')
     setNoResi(order.noResi || '')
+    // @ts-ignore: resiPhotoUrl might not exist on OrderRow yet, but that's fine
+    setResiPhotoUrl(order.resiPhotoUrl || '')
+    setShippingEtaStart('')
+    setShippingEtaEnd('')
     setStatusDialogOpen(true)
+  }
+
+  const handleResiUpload = async (file: File) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Gunakan JPG, PNG, atau WebP.')
+      return
+    }
+    setUploadingResi(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/toko/admin/produk/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Gagal mengupload gambar')
+        return
+      }
+      setResiPhotoUrl(data.url)
+      toast.success('Bukti resi berhasil diupload')
+    } catch (e: any) {
+      toast.error('Gagal upload: ' + e.message)
+    } finally {
+      setUploadingResi(false)
+      if (resiFileInputRef.current) resiFileInputRef.current.value = ''
+    }
   }
 
   const updateStatus = async () => {
@@ -1697,6 +1864,9 @@ function DataPenjualanTab() {
       if (newStatus === 'dikirim') {
         payload.kurirNama = kurirNama.trim()
         payload.noResi = noResi.trim()
+        payload.resiPhotoUrl = resiPhotoUrl
+        if (shippingEtaStart) payload.shippingEtaStart = shippingEtaStart
+        if (shippingEtaEnd) payload.shippingEtaEnd = shippingEtaEnd
       }
       await api.toko.adminOrderStatus(viewing.id, payload)
       toast.success('Status pesanan berhasil diperbarui')
@@ -1820,6 +1990,7 @@ function DataPenjualanTab() {
                   <TableHead className="text-emerald-800">Tanggal</TableHead>
                   <TableHead className="text-center text-emerald-800">Channel</TableHead>
                   <TableHead className="text-emerald-800">Pembeli</TableHead>
+                  <TableHead className="text-emerald-800">Kontak (Telp & Email)</TableHead>
                   <TableHead className="text-emerald-800">Produk (Qty)</TableHead>
                   <TableHead className="text-right text-emerald-800">Harga/1</TableHead>
                   <TableHead className="text-right text-emerald-800">Total Harga Produk</TableHead>
@@ -1850,9 +2021,12 @@ function DataPenjualanTab() {
                     <TableCell className="text-sm text-emerald-700/80">{formatDateTime(o.createdAt)}</TableCell>
                     <TableCell className="text-center">{channelBadge(o.channel)}</TableCell>
                     <TableCell>
-                      <div>
-                        <p className="text-sm font-medium text-emerald-900">{o.namaPembeli}</p>
-                        {o.telpPembeli && <p className="text-[11px] text-emerald-700/60">{o.telpPembeli}</p>}
+                      <p className="text-sm font-medium text-emerald-900">{o.namaPembeli}</p>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        {o.telpPembeli ? <span className="text-[12px] font-medium text-emerald-800">{o.telpPembeli}</span> : <span className="text-[12px] text-zinc-400">-</span>}
+                        {o.emailPembeli && <span className="text-[11px] text-emerald-700/60 break-all">{o.emailPembeli}</span>}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -1977,6 +2151,12 @@ function DataPenjualanTab() {
                       <span className="text-emerald-900">{viewing.telpPembeli}</span>
                     </div>
                   )}
+                  {viewing.emailPembeli && (
+                    <div className="flex justify-between">
+                      <span className="text-emerald-700/70">Email</span>
+                      <span className="text-emerald-900">{viewing.emailPembeli}</span>
+                    </div>
+                  )}
                   {viewing.alamatPengiriman && (
                     <div>
                       <span className="text-emerald-700/70">Alamat Pengiriman</span>
@@ -2023,7 +2203,7 @@ function DataPenjualanTab() {
               {viewing.statusPesanan === 'dikirim' && (
                 <div className="rounded-lg border border-teal-200 bg-teal-50/40 p-3 text-sm space-y-1">
                   <div className="flex justify-between">
-                    <span className="text-teal-700/70">Kurir</span>
+                    <span className="text-teal-700/70">Ekspedisi</span>
                     <span className="font-medium text-teal-900">{viewing.kurirNama || '-'}</span>
                   </div>
                   <div className="flex justify-between">
@@ -2092,10 +2272,7 @@ function DataPenjualanTab() {
                     </>
                   )}
                   {viewing?.statusPesanan === 'dibayar' && (
-                    <>
-                      <SelectItem value="diproses">Diproses</SelectItem>
-                      <SelectItem value="dibatalkan">Batalkan</SelectItem>
-                    </>
+                    <SelectItem value="diproses">Diproses</SelectItem>
                   )}
                   {viewing?.statusPesanan === 'diproses' && (
                     <SelectItem value="dikirim">Dikirim</SelectItem>
@@ -2108,7 +2285,6 @@ function DataPenjualanTab() {
                       <SelectItem value="diproses">Diproses</SelectItem>
                       <SelectItem value="dikirim">Dikirim</SelectItem>
                       <SelectItem value="diterima">Diterima</SelectItem>
-                      <SelectItem value="dibatalkan">Batalkan</SelectItem>
                     </>
                   )}
                 </SelectContent>
@@ -2119,15 +2295,82 @@ function DataPenjualanTab() {
             </div>
 
             {newStatus === 'dikirim' && (
-              <div className="space-y-3 rounded-lg border border-teal-200 bg-teal-50/40 p-3">
-                <p className="text-sm font-medium text-teal-800">Informasi Pengiriman</p>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-teal-800">Nama Kurir</Label>
-                  <Input value={kurirNama} onChange={(e) => setKurirNama(e.target.value)} placeholder="Nama kurir" className="border-teal-200" />
+              <div className="space-y-4 rounded-lg border border-teal-200 bg-teal-50/40 p-4">
+                <p className="text-sm font-medium text-teal-800 border-b border-teal-200/50 pb-2">Informasi Pengiriman</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <Label className="text-xs text-teal-800">Nama Ekspedisi (Kurir)</Label>
+                    <Input value={kurirNama} onChange={(e) => setKurirNama(sanitizeName(e.target.value))} placeholder="JNE, Sicepat, dll" className="border-teal-200 h-9" />
+                  </div>
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <Label className="text-xs text-teal-800">No. Resi</Label>
+                    <Input value={noResi} onChange={(e) => setNoResi(e.target.value)} placeholder="Nomor resi" className="border-teal-200 h-9" />
+                  </div>
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <Label className="text-xs text-teal-800">Estimasi Tiba (Dari)</Label>
+                    <Input type="date" value={shippingEtaStart} onChange={(e) => setShippingEtaStart(e.target.value)} className="border-teal-200 h-9" />
+                  </div>
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <Label className="text-xs text-teal-800">Estimasi Tiba (Sampai)</Label>
+                    <Input type="date" value={shippingEtaEnd} onChange={(e) => setShippingEtaEnd(e.target.value)} className="border-teal-200 h-9" />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-teal-800">No. Resi</Label>
-                  <Input value={noResi} onChange={(e) => setNoResi(e.target.value)} placeholder="Nomor resi pengiriman" className="border-teal-200" />
+
+                <div className="space-y-2 pt-2">
+                  <Label className="text-xs text-teal-800">Foto Bukti Resi (Opsional)</Label>
+                  <div className="flex gap-4 items-start">
+                    <div className="h-24 w-24 shrink-0 overflow-hidden rounded-md border border-teal-200 bg-white relative">
+                      {resiPhotoUrl ? (
+                        <>
+                          <img src={resiPhotoUrl} alt="Resi" className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => { setResiPhotoUrl(''); if (resiFileInputRef.current) resiFileInputRef.current.value = '' }}
+                            className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white shadow-sm transition-colors hover:bg-rose-600"
+                            title="Hapus foto"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </>
+                      ) : (
+                        <div className="flex h-full w-full flex-col items-center justify-center text-teal-300">
+                          <ImageIcon className="h-6 w-6" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        ref={resiFileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleResiUpload(file)
+                        }}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => resiFileInputRef.current?.click()}
+                        disabled={uploadingResi}
+                        className="flex w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-teal-300 bg-teal-50/50 p-3 text-center transition-colors hover:border-teal-400 hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {uploadingResi ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin text-teal-500" />
+                            <span className="text-[11px] font-medium text-teal-600">Mengupload...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4 text-teal-500" />
+                            <span className="text-[11px] font-medium text-teal-700">
+                              {resiPhotoUrl ? 'Ganti Foto' : 'Upload Foto Resi'}
+                            </span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -2164,7 +2407,7 @@ function PengaturanTokoTab() {
   })
 
   const [aturanList, setAturanList] = React.useState<AturanRow[]>([])
-  const [kategoriList, setKategoriList] = React.useState<ProductCategory[]>([])
+  const [kategoriList, setKategoriList] = React.useState<KategoriProduk[]>([])
 
   const [aturanDialogOpen, setAturanDialogOpen] = React.useState(false)
   const [aturanEditing, setAturanEditing] = React.useState<AturanRow | null>(null)
@@ -2186,7 +2429,7 @@ function PengaturanTokoTab() {
       ])
       if (s) setSettings(mapSettings(s))
       setAturanList((a as any[]).map(mapAturan))
-      setKategoriList(k as ProductCategory[])
+      setKategoriList(k as KategoriProduk[])
     } catch (e: any) {
       toast.error('Gagal memuat pengaturan', { description: e.message })
     } finally {
@@ -2230,7 +2473,7 @@ function PengaturanTokoTab() {
     setAturanSubmitting(true)
     try {
       const payload = {
-        productCategoryId: aKategoriId || undefined,
+        kategoriProdukId: aKategoriId || undefined,
         minPembelian: Number(aMinPembelian),
         maxPembelian: aMaxPembelian ? Number(aMaxPembelian) : undefined,
         berlakuOffline: aBerlakuOffline,
@@ -2556,7 +2799,7 @@ function PengaturanTokoTab() {
 function AturanPenjualanTab() {
   const [data, setData] = React.useState<AturanRow[]>([])
   const [loading, setLoading] = React.useState(true)
-  const [kategoriList, setKategoriList] = React.useState<ProductCategory[]>([])
+  const [kategoriList, setKategoriList] = React.useState<KategoriProduk[]>([])
 
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<AturanRow | null>(null)
@@ -2573,7 +2816,7 @@ function AturanPenjualanTab() {
     try {
       const [a, k] = await Promise.all([api.toko.adminAturan(), api.toko.adminKategori()])
       setData((a as any[]).map(mapAturan))
-      setKategoriList(k as ProductCategory[])
+      setKategoriList(k as KategoriProduk[])
     } catch (e: any) {
       toast.error('Gagal memuat aturan', { description: e.message })
     } finally {

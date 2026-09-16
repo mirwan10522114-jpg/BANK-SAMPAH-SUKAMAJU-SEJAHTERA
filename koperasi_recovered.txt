@@ -1,0 +1,88 @@
+Created At: 2026-09-04T12:28:23+07:00
+Completed At: 2026-09-04T12:28:24+07:00
+
+				The command exited with code 0.
+				Output:
+				
+    const [filterTipe, setFilterTipe] = useState<string>('')
+    const [dariInput, setDariInput] = useState<string>('')
+    const [sampaiInput, setSampaiInput] = useState<string>('')
+    const [dari, setDari] = useState<string>('')
+    const [sampai, setSampai] = useState<string>('')
+>   const [openCatatDialog, setOpenCatatDialog] = useState(false)
+  
+    const load = useCallback(async () => {
+      setLoading(true)
+      try {
+        const res = await api.koperasi.kas(dari, sampai)
+        setData(res)
+      } catch (e: any) {
+        toast.error('Gagal memuat kas koperasi: ' + e.message)
+      } finally {
+        setLoading(false)
+      }
+    }, [dari, sampai])
+  
+    useEffect(() => {
+      load()
+    }, [load])
+  
+    // Client-side filter (the API also supports query, but we filter locally for snappy UX)
+    const filtered = (data?.list || []).filter((k) => {
+      if (filterSumber && k.sumber !== filterSumber) return false
+            <CardDescription>
+              Buku kas koperasi �?" masuk & keluar dari simpanan, pinjaman, angsuran, dan biaya operasional.
+            </CardDescription>
+          </div>
+          <Button
+>           onClick={() => setOpenCatatDialog(true)}
+            className="bg-rose-600 hover:bg-rose-700 text-white font-semibold shadow-xs shrink-0"
+            size="sm"
+          >
+            <Plus className="mr-1.5 h-4 w-4" /> Catat Pengeluaran Operasional
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {loading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-28 w-full rounded-xl" />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Skeleton className="h-24 rounded-xl" />
+                <Skeleton className="h-24 rounded-xl" />
+              </div>
+              <Skeleton className="h-64 w-full rounded-lg" />
+            </div>
+          ) : (
+            <>
+              {/* Big saldo card */}
+              <Card className="overflow-hidden border-0 bg-gradient-to-br from-emerald-600 to-teal-700 text-white">
+                  </Table>
+                </div>
+              </div>
+  
+              <CatatPengeluaranKasDialog
+>               open={openCatatDialog}
+>               onClose={() => setOpenCatatDialog(false)}
+                saldoKas={toNumber(data?.saldo)}
+                onSuccess={load}
+              />
+            </>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
+  
+  // ============================ PENGATURAN KOPERASI TAB ============================
+  function KoperasiSettingTab() {
+    const [loading, setLoading] = useState(true)
+    const [saving, setSaving] = useState(false)
+    const [form, setForm] = useState<any>({
+      namaKoperasi: '', telepon: '', email: '', alamat: '',
+      nominalSimpananPokok: 0, nominalSimpananWajib: 0, biayaAdminPinjaman: 0,
+      minimalBulanAnggota: 3, dendaTerlambatPerHari: 0, sukuBungaPinjaman: 0,
+    })
+  
+
+
+

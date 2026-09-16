@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/format'
+import { expirePendingOnlineOrders } from '@/lib/business'
 
 // GET: Public order tracking by orderNumber
 export async function GET(
@@ -12,7 +13,10 @@ export async function GET(
   const phone = url.searchParams.get('phone') || ''
   const email = url.searchParams.get('email') || ''
 
-  const order = await db.tokoOrder.findUnique({
+  // Auto-expire online orders older than 30 minutes before fetching
+  await expirePendingOnlineOrders()
+
+  const order = await db.pesananToko.findUnique({
     where: { orderNumber },
     include: {
       items: true,
@@ -59,6 +63,7 @@ export async function GET(
     orderStatus: order.orderStatus,
     kurirNama: order.kurirNama,
     noResi: order.noResi,
+    resiPhotoUrl: order.resiPhotoUrl,
     shippedAt: order.shippedAt,
     receivedAt: order.receivedAt,
     notes: order.notes,

@@ -6,15 +6,15 @@ import { toNumber } from '@/lib/format'
 // Frontend calls /toko/track?orderNumber=...&phone=...
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
-  const orderNumber = url.searchParams.get('orderNumber') || ''
-  const phone = url.searchParams.get('phone') || ''
-  const email = url.searchParams.get('email') || ''
+  const orderNumber = (url.searchParams.get('orderNumber') || url.searchParams.get('q') || '').trim()
+  const phone = (url.searchParams.get('phone') || '').trim()
+  const email = (url.searchParams.get('email') || '').trim()
 
   if (!orderNumber) {
     return NextResponse.json({ error: 'Nomor pesanan wajib diisi' }, { status: 400 })
   }
 
-  const order = await db.tokoOrder.findUnique({
+  const order = await db.pesananToko.findUnique({
     where: { orderNumber },
     include: {
       items: true,

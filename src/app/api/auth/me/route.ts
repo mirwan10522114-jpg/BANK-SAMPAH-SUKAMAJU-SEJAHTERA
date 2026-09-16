@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { parseRoles } from '@/lib/format'
 
-// GET /api/auth/me — get current user from token
+// GET /api/auth/me — get current pengguna from token
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   const token = authHeader?.replace('Bearer ', '') || req.headers.get('x-auth-token')
@@ -11,37 +11,37 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
-  // Extract user ID from mock token: mock-{userId}-{timestamp}
+  // Extract pengguna ID from mock token: mock-{penggunaId}-{timestamp}
   const parts = token.split('-')
   if (parts.length < 3 || parts[0] !== 'mock') {
     return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
   }
 
-  const userId = parts[1]
-  const user = await db.user.findUnique({
-    where: { id: userId },
+  const penggunaId = parts[1]
+  const pengguna = await db.pengguna.findUnique({
+    where: { id: penggunaId },
     include: {
       koperasiAnggota: { select: { id: true, nomorAnggota: true, status: true } },
     },
   })
 
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 })
+  if (!pengguna) {
+    return NextResponse.json({ error: 'Pengguna not found' }, { status: 404 })
   }
 
-  const roles = parseRoles(user.roles)
+  const roles = parseRoles(pengguna.roles)
 
   return NextResponse.json({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    memberCode: user.memberCode,
-    anggotaId: user.koperasiAnggota?.id || null,
-    nomorAnggota: user.koperasiAnggota?.nomorAnggota || null,
+    id: pengguna.id,
+    name: pengguna.name,
+    email: pengguna.email,
+    memberCode: pengguna.memberCode,
+    anggotaId: pengguna.koperasiAnggota?.id || null,
+    nomorAnggota: pengguna.koperasiAnggota?.nomorAnggota || null,
     roles,
-    isMember: user.isMember,
-    phone: user.phone,
-    address: user.address,
-    nik: user.nik,
+    isMember: pengguna.isMember,
+    phone: pengguna.phone,
+    address: pengguna.address,
+    nik: pengguna.nik,
   })
 }

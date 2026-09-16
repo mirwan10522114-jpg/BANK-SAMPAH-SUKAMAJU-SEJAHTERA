@@ -31,7 +31,7 @@ const TREN_RANGE_OPTIONS = [
 // ============================================================
 // Nasabah Personal Dashboard Modal
 // ============================================================
-export function NasabahDashboardModal({ userId, open, onOpenChange }: { userId: string | null; open: boolean; onOpenChange: (o: boolean) => void }) {
+export function NasabahDashboardModal({ penggunaId, open, onOpenChange }: { penggunaId: string | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const [state, setState] = useState<{ loading: boolean; data: any }>({ loading: true, data: null })
   const [trenRange, setTrenRange] = useState('6bul')
   const [chartDari, setChartDari] = useState('')
@@ -39,11 +39,11 @@ export function NasabahDashboardModal({ userId, open, onOpenChange }: { userId: 
   const reqId = useRef(0)
 
   useEffect(() => {
-    if (!userId || !open) return
+    if (!penggunaId || !open) return
     const myId = ++reqId.current
     // use microtask to defer setState out of effect body
     Promise.resolve().then(() => setState({ loading: true, data: null }))
-    api.personalDashboard(userId, {
+    api.personalDashboard(penggunaId, {
       chartRange: trenRange,
       chartDari: trenRange === 'custom' ? chartDari : undefined,
       chartSampai: trenRange === 'custom' ? chartSampai : undefined,
@@ -51,7 +51,7 @@ export function NasabahDashboardModal({ userId, open, onOpenChange }: { userId: 
       .then((res) => { if (myId === reqId.current) setState({ loading: false, data: res }) })
       .catch((e) => { if (myId === reqId.current) { toast.error('Gagal memuat dashboard: ' + e.message); setState({ loading: false, data: null }) } })
     return () => { reqId.current++ }
-  }, [userId, open, trenRange, chartDari, chartSampai])
+  }, [penggunaId, open, trenRange, chartDari, chartSampai])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

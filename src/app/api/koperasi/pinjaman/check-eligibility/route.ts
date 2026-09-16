@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/format'
+import { getKoperasiKasBalance } from '@/lib/business'
 
 // GET: check eligibility for pinjaman
 export async function GET(req: NextRequest) {
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
       perbaikanRequests: {
         orderBy: { createdAt: 'desc' },
       },
+      simpananSaldos: true,
     },
   })
 
@@ -95,7 +97,26 @@ export async function GET(req: NextRequest) {
     reasons.push('Pinjaman diblokir. Ajukan permintaan perbaikan eligibilitas.')
   }
 
-  // 5. Check pending perbaikan request
+  // 5. Check Simpanan Pokok (wajib lunas sebelum bisa mengajukan pinjaman)
+  const saldoPokok = await db.koperasiSimpananSaldo.findUnique({
+    where: {
+      koperasiAnggotaId_jenisSimpanan: {
+        koperasiAnggotaId: anggotaId,
+        jenisSimpanan: 'pokok',
+      },
+    },
+  })
+  const nominalSimpananPokok = toNumber(setting?.nominalSimpananPokok ?? 50000)
+  const saldoPokokVal = toNumber(saldoPokok?.saldo ?? 0)
+  const hasPaidPokok = saldoPokokVal > 0 && (nominalSimpananPokok <= 0 || saldoPokokVal >= nominalSimpananPokok)
+
+  if (!hasPaidPokok) {
+    reasons.push(
+      `Belum membayar Simpanan Pokok (wajib membayar ${nominalSimpananPokok > 0 ? 'Rp ' + nominalSimpananPokok.toLocaleString('id-ID') : 'Simpanan Pokok'} terlebih dahulu sebagai biaya registrasi/deposit keanggotaan).`
+    )
+  }
+
+  // 6. Check pending perbaikan request
   const pendingPerbaikan = anggota.perbaikanRequests.find((r) => r.status === 'menunggu') ?? null
 
   let pendingPerbaikanBool: boolean | null = null
@@ -118,6 +139,38 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // 7. Check Minimal Simpanan Pinjaman & Tunggakan Simpanan Wajib
+  const minimalSimpananPinjaman = toNumber(setting?.minimalSimpananPinjaman ?? 0)
+  
+  // Hitung total semua simpanan
+  const totalSimpanan = anggota.simpananSaldos.reduce((acc, curr) => acc + toNumber(curr.saldo), 0)
+  if (minimalSimpananPinjaman > 0 && totalSimpanan < minimalSimpananPinjaman) {
+    reasons.push(
+      `Total saldo simpanan (Rp ${totalSimpanan.toLocaleString('id-ID')}) belum mencapai batas minimal untuk meminjam (Rp ${minimalSimpananPinjaman.toLocaleString('id-ID')}).`
+    )
+  }
+
+  // Hitung ekspektasi simpanan wajib
+  const nominalSimpananWajib = toNumber(setting?.nominalSimpananWajib ?? 0)
+  const saldoWajib = toNumber(anggota.simpananSaldos.find(s => s.jenisSimpanan === 'wajib')?.saldo ?? 0)
+  
+  if (nominalSimpananWajib > 0) {
+    // Anggota wajib membayar 1x per bulan sejak bergabung
+    const expectedBulanBayar = Math.max(1, memberMonths)
+    const expectedSaldoWajib = expectedBulanBayar * nominalSimpananWajib
+    
+    // Cek apakah saldo wajib kurang dari ekspektasi ATAU belum ada setoran bulan ini
+    // Cara sederhana: jika saldoWajib < expectedSaldoWajib berarti ada bulan yang bolong/belum bayar
+    if (saldoWajib < expectedSaldoWajib) {
+      reasons.push(
+        `Terdapat tunggakan Simpanan Wajib atau belum membayar untuk bulan ini (Saldo Wajib saat ini: Rp ${saldoWajib.toLocaleString('id-ID')}, seharusnya: Rp ${expectedSaldoWajib.toLocaleString('id-ID')}).`
+      )
+    }
+  }
+
+  // Get kas koperasi balance
+  const kasKoperasi = await getKoperasiKasBalance()
+
   // Determine final eligibility
   const eligible = reasons.length === 0
 
@@ -130,8 +183,12 @@ export async function GET(req: NextRequest) {
     totalKeterlambatan,
     adaPinjamanAktif,
     pinjamanDiblokir,
+    hasPaidPokok,
+    saldoPokok: saldoPokokVal,
+    nominalSimpananPokok,
     pendingPerbaikan: pendingPerbaikanBool,
     perbaikanInfo,
+    kasKoperasi,
     // Extra info for display
     anggotaInfo: {
       nomorAnggota: anggota.nomorAnggota,

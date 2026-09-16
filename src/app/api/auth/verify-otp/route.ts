@@ -3,58 +3,53 @@ import { db } from '@/lib/db'
 
 // POST /api/auth/verify-otp
 // Verifies the OTP code (REAL — cek OTP yang tersimpan di DB)
-// Marks user as email-verified jika OTP cocok & belum expired
+// Marks pengguna as email-verified jika OTP cocok & belum expired
 export async function POST(req: NextRequest) {
-  const { userId, otp } = await req.json()
+  const { penggunaId, otp } = await req.json()
 
-  if (!userId || !otp) {
-    return NextResponse.json({ error: 'User ID dan OTP wajib diisi' }, { status: 400 })
+  if (!penggunaId || !otp) {
+    return NextResponse.json({ error: 'Pengguna ID dan OTP wajib diisi' }, { status: 400 })
   }
 
   if (otp.length !== 6) {
     return NextResponse.json({ error: 'OTP harus 6 digit' }, { status: 400 })
   }
 
-  const user = await db.user.findUnique({
-    where: { id: userId },
+  const pengguna = await db.pengguna.findUnique({
+    where: { id: penggunaId },
     include: {
-      balance: true,
+      saldo: true,
       koperasiAnggota: { select: { id: true, nomorAnggota: true, status: true } },
     },
   })
 
-  if (!user) {
-    return NextResponse.json({ error: 'User tidak ditemukan' }, { status: 404 })
+  if (!pengguna) {
+    return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
   }
 
   // ============================================================
   // Validasi OTP dari DB (bukan accept any code)
   // ============================================================
 
-  // Cek apakah user sudah verifikasi sebelumnya
-  if (user.emailVerifiedAt) {
-    return NextResponse.json({ error: 'Email sudah terverifikasi sebelumnya' }, { status: 400 })
-  }
-
   // Cek apakah OTP ada di DB
-  if (!user.otpCode || !user.otpExpiresAt) {
+  if (!pengguna.otpCode || !pengguna.otpExpiresAt) {
     return NextResponse.json({
       error: 'OTP belum dibuat. Silakan daftar ulang atau kirim ulang OTP.'
     }, { status: 400 })
   }
 
   // Cek apakah OTP sudah expired (10 menit)
-  if (new Date() > user.otpExpiresAt) {
+  if (new Date() > pengguna.otpExpiresAt) {
     return NextResponse.json({
       error: 'Kode OTP sudah kedaluwarsa. Silakan kirim ulang OTP.'
     }, { status: 400 })
   }
 
   // Cek apakah sudah terlalu banyak percobaan salah (max 5)
-  if (user.otpAttempts >= 5) {
+  if (pengguna.otpAttempts >= 5) {
     // Reset OTP untuk keamanan
-    await db.user.update({
-      where: { id: userId },
+    await db.pengguna.update({
+      where: { id: penggunaId },
       data: {
         otpCode: null,
         otpExpiresAt: null,
@@ -67,46 +62,84 @@ export async function POST(req: NextRequest) {
   }
 
   // Cek apakah OTP cocok
-  if (user.otpCode !== otp) {
+  if (pengguna.otpCode !== otp) {
     // Increment attempt counter
-    await db.user.update({
-      where: { id: userId },
-      data: { otpAttempts: user.otpAttempts + 1 },
+    await db.pengguna.update({
+      where: { id: penggunaId },
+      data: { otpAttempts: pengguna.otpAttempts + 1 },
     })
-    const remainingAttempts = 5 - (user.otpAttempts + 1)
+    const remainingAttempts = 5 - (pengguna.otpAttempts + 1)
     return NextResponse.json({
       error: `Kode OTP salah. Sisa percobaan: ${remainingAttempts} kali.`
     }, { status: 400 })
   }
 
-  // OTP cocok — mark email as verified & clear OTP
-  const updated = await db.user.update({
-    where: { id: userId },
+  // OTP cocok — mark email as verified, clear OTP & set status to pending_admin
+  const updated = await db.pengguna.update({
+    where: { id: penggunaId },
     data: {
       emailVerifiedAt: new Date(),
       otpCode: null,
       otpExpiresAt: null,
       otpAttempts: 0,
+      verificationStatus: 'pending_admin', // Lanjut ke langkah verifikasi Admin
     },
   })
 
   const roles = JSON.parse(updated.roles || '[]')
+  const koperasiAnggota =
+    pengguna.koperasiAnggota ||
+    (await db.koperasiAnggota.findFirst({
+      where: { penggunaId: pengguna.id },
+      select: { id: true, nomorAnggota: true, status: true },
+    }))
+  const isKoperasi = Boolean(koperasiAnggota) || roles.includes('koperasi')
+  let nominalSimpananPokok = 50000
+
+  if (isKoperasi) {
+    try {
+      const setting = await db.koperasiSetting.findFirst()
+      let nominalSimpananWajib = 10000
+      if (setting?.nominalSimpananPokok) {
+        nominalSimpananPokok = Number(setting.nominalSimpananPokok)
+      }
+      if (setting?.nominalSimpananWajib) {
+        nominalSimpananWajib = Number(setting.nominalSimpananWajib)
+      }
+      const { sendSimpananPokokReminderEmail } = await import('@/lib/email')
+      const emailRes = await sendSimpananPokokReminderEmail({
+        to: updated.email,
+        userName: updated.name,
+        nomorAnggota: koperasiAnggota?.nomorAnggota || 'KP001',
+        nominalSimpananPokok,
+        nominalSimpananWajib,
+      })
+      console.log('[Verify OTP] Hasil pengiriman email Simpanan Pokok:', emailRes)
+    } catch (err) {
+      console.error('[Verify OTP] Gagal mengirim email pengingat simpanan pokok:', err)
+    }
+  }
+
   const token = `mock-${updated.id}-${Date.now()}`
 
   return NextResponse.json({
     token,
-    user: {
+    pengguna: {
       id: updated.id,
       name: updated.name,
       email: updated.email,
       memberCode: updated.memberCode,
-      anggotaId: user.koperasiAnggota?.id || null,
-      nomorAnggota: user.koperasiAnggota?.nomorAnggota || null,
+      anggotaId: pengguna.koperasiAnggota?.id || null,
+      nomorAnggota: pengguna.koperasiAnggota?.nomorAnggota || null,
       roles,
       isMember: updated.isMember,
       phone: updated.phone,
       address: updated.address,
       nik: updated.nik,
+      verificationStatus: updated.verificationStatus,
     },
+    mustPaySimpananPokok: isKoperasi,
+    nominalSimpananPokok: isKoperasi ? nominalSimpananPokok : 0,
+    nomorAnggotaKoperasi: pengguna.koperasiAnggota?.nomorAnggota || null,
   })
 }

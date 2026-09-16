@@ -11,7 +11,7 @@ import { Loader2, CheckCircle2, XCircle, Clock, RefreshCw, Home, CreditCard } fr
 // jadi kita tidak bisa pakai route terpisah /payment/return.
 //
 // Flow:
-//   1. User bayar di Midtrans → Midtrans redirect ke ?payment_return=ORDER_NUMBER
+//   1. Pengguna bayar di Midtrans → Midtrans redirect ke ?payment_return=ORDER_NUMBER
 //   2. Halaman utama detect parameter → tampilkan PaymentReturnView
 //   3. Poll /api/payment/status setiap 3 detik
 //   4. Tampilkan status real-time (menunggu / dibayar / expired / gagal)
@@ -174,6 +174,9 @@ export function PaymentReturnView({ orderNumber, onBackToHome }: PaymentReturnVi
                 <p className="mt-1 text-sm text-green-700">
                   Pembayaran Anda telah diterima. Status pesanan: <strong>Dibayar</strong>
                 </p>
+                <p className="mt-2 text-sm font-medium text-emerald-800 bg-emerald-100/50 p-2 rounded-md inline-block border border-emerald-200">
+                  📧 Struk / nota pembelian telah dikirimkan ke email Anda.
+                </p>
               </>
             ) : isExpired ? (
               <>
@@ -292,7 +295,7 @@ export function PaymentReturnView({ orderNumber, onBackToHome }: PaymentReturnVi
           ) : isPending ? (
             <>
               {/* Tombol "Lakukan Pembayaran" — muncul saat status menunggu */}
-              {/* User bisa klik ini untuk buka Midtrans lagi kalau belum bayar */}
+              {/* Pengguna bisa klik ini untuk buka Midtrans lagi kalau belum bayar */}
               <button
                 onClick={handleRetry}
                 disabled={retrying}

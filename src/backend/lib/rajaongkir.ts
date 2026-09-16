@@ -514,7 +514,7 @@ function setCachedRate(key: string, result: ShippingCalcResult): void {
 // =====================================================================
 // Hit counter harian — untuk monitor penggunaan API
 // ---------------------------------------------------------------------
-// Disimpan ke disk supaya bisa survive server restart dan user bisa
+// Disimpan ke disk supaya bisa survive server restart dan pengguna bisa
 // cek sisa quota lewat /api/shipping/usage
 // =====================================================================
 

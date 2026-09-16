@@ -65,6 +65,8 @@ import {
   CheckCircle2,
   XCircle,
   Filter,
+  Users,
+  Printer,
 } from 'lucide-react'
 
 // ===================== Types =====================
@@ -91,7 +93,7 @@ type NasabahBalance = {
   saldoTersedia?: unknown
   saldoTertahan?: unknown
   points?: unknown
-  user?: { name?: string; memberCode?: string | null }
+  pengguna?: { name?: string; memberCode?: string | null }
   saldoTersediaSnapshot?: unknown
   saldoTertahanSnapshot?: unknown
 }
@@ -107,7 +109,7 @@ type WithdrawalRow = {
   bankName?: string | null
   accountNumber?: string | null
   accountName?: string | null
-  user?: { id: string; name: string; memberCode: string | null; phone?: string | null } | null
+  pengguna?: { id: string; name: string; memberCode: string | null; phone?: string | null } | null
   processedBy?: { name: string } | null
 }
 
@@ -296,17 +298,17 @@ function TableSkeleton({ cols = 5, rows = 4 }: { cols?: number; rows?: number })
 function NasabahSearchPicker({
   onPick,
 }: {
-  onPick: (n: NasabahOption, balance: NasabahBalance | null) => void
+  onPick: (n: NasabahOption, saldo: NasabahBalance | null) => void
 }) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<NasabahOption[]>([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<NasabahOption | null>(null)
-  const [balance, setBalance] = useState<NasabahBalance | null>(null)
+  const [saldo, setBalance] = useState<NasabahBalance | null>(null)
   const [balanceLoading, setBalanceLoading] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  // Use ref for onPick so the balance-fetch effect doesn't re-run when parent re-renders
+  // Use ref for onPick so the saldo-fetch effect doesn't re-run when parent re-renders
   const onPickRef = useRef(onPick)
   useEffect(() => { onPickRef.current = onPick })
 
@@ -349,7 +351,7 @@ function NasabahSearchPicker({
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
-  // Fetch balance when selected changes (NOT when onPick changes — uses ref to avoid re-fetch loop)
+  // Fetch saldo when selected changes (NOT when onPick changes — uses ref to avoid re-fetch loop)
   useEffect(() => {
     if (!selected) {
       Promise.resolve().then(() => setBalance(null))
@@ -390,8 +392,8 @@ function NasabahSearchPicker({
     onPick(null as any, null)
   }
 
-  // The nasabahBalance API returns { balance: { saldoTersedia, saldoTertahan, points }, ... }
-  const innerBalance = (balance as any)?.balance ?? balance
+  // The nasabahBalance API returns { saldo: { saldoTersedia, saldoTertahan, points }, ... }
+  const innerBalance = (saldo as any)?.saldo ?? saldo
   const saldoTersedia = toNumber(innerBalance?.saldoTersedia ?? innerBalance?.saldoTersediaSnapshot)
 
   return (
@@ -517,11 +519,11 @@ function printPenarikanReceipt(receipt: any) {
   html += `<div class="struk-section">
     <div class="label">Saldo Setelah Penarikan</div>
     <div class="summary-row"><span class="key">Saldo Tersedia</span><span class="val" style="font-weight:700;color:#047857">${formatRupiah(receipt.saldoTersediaAfter)}</span></div>
-    <div class="summary-row"><span class="key">Kas Institusi</span><span class="val">${formatRupiah(receipt.kasSetelah)}</span></div>
+    <div class="summary-row"><span class="key">Buku Kas Nasabah</span><span class="val">${formatRupiah(receipt.kasSetelah)}</span></div>
   </div>`
   html += `<div class="struk-section">
     <div class="label">Catatan</div>
-    <div class="notes">Penarikan dicatat di Buku Kas Utama sebagai arus kas keluar.</div>
+    <div class="notes">Penarikan dicatat di Buku Kas Nasabah sebagai arus kas keluar.</div>
   </div>`
   html += `<div class="struk-footer">
     <div class="thanks">Terima kasih telah berkontribusi</div>
@@ -642,11 +644,11 @@ function PenarikanTab() {
   const canSubmit =
     !!selectedNasabah && nominal > 0 && cukup && !saving && (method !== 'transfer' || (bankName && accountNumber && accountName))
 
-  const onPick = useCallback((n: NasabahOption | null, balance: NasabahBalance | null) => {
+  const onPick = useCallback((n: NasabahOption | null, saldo: NasabahBalance | null) => {
     setSelectedNasabah(n)
-    // The nasabahBalance API returns { balance: { saldoTersedia, saldoTertahan, points }, ... }
-    // but if balance is already the inner object, use it directly
-    const innerBalance = (balance as any)?.balance ?? balance
+    // The nasabahBalance API returns { saldo: { saldoTersedia, saldoTertahan, points }, ... }
+    // but if saldo is already the inner object, use it directly
+    const innerBalance = (saldo as any)?.saldo ?? saldo
     setSaldoTersedia(toNumber(innerBalance?.saldoTersedia ?? innerBalance?.saldoTersediaSnapshot))
     setAmount('')
   }, [])
@@ -656,7 +658,7 @@ function PenarikanTab() {
     setSaving(true)
     try {
       const res = await api.finansial.penarikanExecute({
-        userId: selectedNasabah.id,
+        penggunaId: selectedNasabah.id,
         amount: nominal,
         method,
         notes: notes.trim(),
@@ -700,27 +702,19 @@ function PenarikanTab() {
         </Button>
       }
     >
-      {/* 2 stat cards */}
+      {/* Stat card */}
       {state.loading ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Skeleton className="h-24 rounded-xl" />
+        <div className="grid grid-cols-1 gap-3 sm:max-w-sm">
           <Skeleton className="h-24 rounded-xl" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:max-w-sm">
           <StatTile
             icon={<Wallet className="size-5" />}
-            label="Kas Institusi"
+            label="Buku Kas Nasabah"
             value={formatRupiah(kasSaldo)}
-            sub="Saldo kas utama bank sampah"
+            sub="Uang fisik hak nasabah hasil penjualan mitra"
             tone="emerald"
-          />
-          <StatTile
-            icon={<ShieldCheck className="size-5" />}
-            label="Total Saldo Tersedia"
-            value={formatRupiah(totalTersedia)}
-            sub="Semua nasabah (siap ditarik)"
-            tone="teal"
           />
         </div>
       )}
@@ -837,9 +831,9 @@ function PenarikanTab() {
                       {formatDateTime(w.processedAt)}
                     </TableCell>
                     <TableCell>
-                      <div className="font-medium text-emerald-900">{w.user?.name || '-'}</div>
+                      <div className="font-medium text-emerald-900">{w.pengguna?.name || '-'}</div>
                       <div className="text-xs text-muted-foreground">
-                        {w.user?.memberCode || '-'}
+                        {w.pengguna?.memberCode || '-'}
                       </div>
                     </TableCell>
                     <TableCell className="text-right font-semibold text-emerald-700">
@@ -1147,8 +1141,8 @@ function PenarikanTab() {
   )
 }
 
-// ===================== Buku Kas Utama Tab =====================
-function BukuKasTab() {
+// ===================== Buku Kas Tab =====================
+function BukuKasTab({ bukuType, title, description, hideStats }: { bukuType: 'utama' | 'nasabah', title: string, description: string, hideStats?: boolean }) {
   const [tipeFilter, setTipeFilter] = useState<string>('all')
   const [sumberFilter, setSumberFilter] = useState<string>('all')
   const [dariInput, setDariInput] = useState<string>('')
@@ -1166,7 +1160,7 @@ function BukuKasTab() {
   const [keterangan, setKeterangan] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const filterKey = `${tipeFilter}|${sumberFilter}|${dari}|${sampai}`
+  const filterKey = `${tipeFilter}|${sumberFilter}|${dari}|${sampai}|${bukuType}`
 
   useEffect(() => {
     let cancelled = false
@@ -1179,7 +1173,8 @@ function BukuKasTab() {
         tipeFilter === 'all' ? '' : tipeFilter,
         sumberFilter === 'all' ? '' : sumberFilter,
         dari,
-        sampai
+        sampai,
+        bukuType
       )
       .then((res) => {
         if (cancelled) return
@@ -1199,7 +1194,7 @@ function BukuKasTab() {
   const kasSaldo = state.data?.kasSaldo ?? 0
   const totalMasuk = state.data?.totalMasuk ?? 0
   const totalKeluar = state.data?.totalKeluar ?? 0
-  const periodeLabel = dari || sampai ? `periode: ${dari || '…'} — ${sampai || '…'}` : 'semua periode'
+  const periodeLabel = dari || sampai ? `(${dari || '...'} s/d ${sampai || '...'})` : '(hari ini)'
 
   const applyPeriode = () => {
     setDari(dariInput)
@@ -1258,50 +1253,54 @@ function BukuKasTab() {
   return (
     <SectionCard
       icon={<Landmark className="size-5" />}
-      title="Buku Kas Utama"
-      description="Buku kas institusi — sumber kebenaran likuiditas bank sampah."
+      title={title}
+      description={description}
       action={
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" className="border-rose-300 text-rose-700 hover:bg-rose-50" onClick={openBiayaDialog}>
-            <Receipt className="size-4" /> Catat Biaya
-          </Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={openDialog}>
-            <Plus className="size-4" /> Top-up Kas
-          </Button>
-        </div>
+        bukuType === 'utama' ? (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" className="border-rose-300 text-rose-700 hover:bg-rose-50" onClick={openBiayaDialog}>
+              <Receipt className="size-4" /> Catat Biaya
+            </Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={openDialog}>
+              <Plus className="size-4" /> Top-up Kas
+            </Button>
+          </div>
+        ) : null
       }
     >
       {/* 3 stat cards */}
-      {state.loading ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Skeleton className="h-24 rounded-xl" />
-          <Skeleton className="h-24 rounded-xl" />
-          <Skeleton className="h-24 rounded-xl" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <StatTile
-            icon={<Wallet className="size-5" />}
-            label="Kas Saldo (saat ini)"
-            value={formatRupiah(kasSaldo)}
-            sub="Saldo berjalan — semua periode"
-            tone={kasSaldo >= 0 ? 'emerald' : 'rose'}
-          />
-          <StatTile
-            icon={<ArrowDownCircle className="size-5" />}
-            label="Total Masuk"
-            value={formatRupiah(totalMasuk)}
-            sub={`(${periodeLabel})`}
-            tone="emerald"
-          />
-          <StatTile
-            icon={<ArrowUpCircle className="size-5" />}
-            label="Total Keluar"
-            value={formatRupiah(totalKeluar)}
-            sub={`(${periodeLabel})`}
-            tone="rose"
-          />
-        </div>
+      {!hideStats && (
+        state.loading ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Skeleton className="h-24 rounded-xl" />
+            <Skeleton className="h-24 rounded-xl" />
+            <Skeleton className="h-24 rounded-xl" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <StatTile
+              icon={<Wallet className="size-5" />}
+              label="Kas Saldo (saat ini)"
+              value={formatRupiah(kasSaldo)}
+              sub="Saldo berjalan — semua periode"
+              tone={kasSaldo >= 0 ? 'emerald' : 'rose'}
+            />
+            <StatTile
+              icon={<ArrowDownCircle className="size-5" />}
+              label="Total Masuk"
+              value={formatRupiah(totalMasuk)}
+              sub={periodeLabel}
+              tone="emerald"
+            />
+            <StatTile
+              icon={<ArrowUpCircle className="size-5" />}
+              label="Total Keluar"
+              value={formatRupiah(totalKeluar)}
+              sub={periodeLabel}
+              tone="rose"
+            />
+          </div>
+        )
       )}
 
       {/* Filters */}
@@ -1583,20 +1582,321 @@ function BukuKasTab() {
   )
 }
 
+function SaldoNasabahTab() {
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [periode, setPeriode] = useState('1thn')
+  const [dari, setDari] = useState('')
+  const [sampai, setSampai] = useState('')
+  const [selectedUser, setSelectedUser] = useState<any>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const d = await api.finansial.saldoNasabah({
+        dari: periode === 'custom' ? dari : undefined,
+        sampai: periode === 'custom' ? sampai : undefined,
+        q: search
+      })
+      setData(d)
+    } catch (e: any) {
+      toast.error(e?.message || 'Gagal memuat saldo nasabah')
+    } finally {
+      setLoading(false)
+    }
+  }, [periode, dari, sampai, search])
+
+  // Debounced search
+  useEffect(() => {
+    const t = setTimeout(() => { load() }, 300)
+    return () => clearTimeout(t)
+  }, [load])
+
+  const loadDetail = async (penggunaId: string) => {
+    setHistoryLoading(true)
+    try {
+      const res = await api.finansial.saldoNasabahDetail(penggunaId)
+      setSelectedUser(res)
+    } catch (e: any) {
+      toast.error('Gagal memuat histori mutasi')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const handlePrint = () => {
+    window.print()
+  }
+
+  if (!data) return <div className="p-8 text-center"><div className="animate-spin size-6 border-2 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4"></div><p className="text-sm text-zinc-500">Memuat data saldo nasabah...</p></div>
+
+  return (
+    <div className="space-y-4" id="printable-saldo">
+      {/* 1. Header & Filters */}
+      <Card className="border-emerald-200 print:hidden">
+        <CardHeader className="pb-3 border-b border-emerald-100/50">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-emerald-900">
+                <Users className="size-5" /> Saldo Nasabah
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Ringkasan uang yang menjadi hak seluruh nasabah.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="w-32">
+                <Label className="text-[11px] text-zinc-500 mb-1 block">Periode</Label>
+                <Select value={periode} onValueChange={setPeriode}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1thn">1 Tahun Terakhir</SelectItem>
+                    <SelectItem value="bulan_ini">Bulan Ini</SelectItem>
+                    <SelectItem value="1bul">30 Hari</SelectItem>
+                    <SelectItem value="3bul">3 Bulan</SelectItem>
+                    <SelectItem value="custom">Kustom...</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {periode === 'custom' && (
+                <>
+                  <div>
+                    <Label className="text-[11px] text-zinc-500 mb-1 block">Dari</Label>
+                    <Input type="date" value={dari} onChange={(e) => setDari(e.target.value)} className="h-9 w-32 text-xs" />
+                  </div>
+                  <div>
+                    <Label className="text-[11px] text-zinc-500 mb-1 block">Sampai</Label>
+                    <Input type="date" value={sampai} onChange={(e) => setSampai(e.target.value)} className="h-9 w-32 text-xs" />
+                  </div>
+                </>
+              )}
+              <Button variant="outline" size="sm" onClick={() => { setPeriode('1thn'); setDari(''); setSampai(''); setSearch('') }} className="h-9 text-xs">
+                Reset
+              </Button>
+              <Button onClick={handlePrint} size="sm" className="h-9 bg-emerald-600 text-white hover:bg-emerald-700">
+                <Printer className="mr-1 size-3.5" aria-hidden="true" /> Cetak
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+
+      {/* Info penting */}
+      <div className="rounded-md border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 flex items-start gap-3">
+        <Info className="size-5 shrink-0 text-amber-600 mt-0.5" />
+        <div>
+          <span className="font-bold">Penting: </span>
+          Saldo nasabah bukan keuntungan Bank Sampah. Saldo ini merupakan uang yang menjadi hak nasabah hasil dari menyetorkan sampah. 
+          Penarikan saldo oleh nasabah bukan pengeluaran/kerugian bagi Bank Sampah.
+        </div>
+      </div>
+
+      {/* 2. Ringkasan Cards */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4">
+          <p className="text-[11px] font-semibold uppercase text-blue-700">Total Saldo Nasabah</p>
+          <p className="mt-1 text-2xl font-black text-blue-900">{formatRupiah(data.ringkasan.totalSaldoNasabah)}</p>
+          <p className="text-[11px] text-blue-600 mt-1">Total uang yang menjadi hak seluruh nasabah saat ini</p>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+          <p className="text-[11px] font-semibold uppercase text-emerald-700">Tabungan Masuk (Hari Ini)</p>
+          <p className="mt-1 text-2xl font-black text-emerald-900">{formatRupiah(data.ringkasan.tabunganMasukHariIni)}</p>
+          <p className="text-[11px] text-emerald-600 mt-1">Total saldo bertambah dari penyetoran hari ini</p>
+        </div>
+        <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4">
+          <p className="text-[11px] font-semibold uppercase text-rose-700">Penarikan (Hari Ini)</p>
+          <p className="mt-1 text-2xl font-black text-rose-900">{formatRupiah(data.ringkasan.totalPenarikanHariIni)}</p>
+          <p className="text-[11px] text-rose-600 mt-1">Total uang yang sudah diambil nasabah hari ini</p>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+          <p className="text-[11px] font-semibold uppercase text-emerald-700">Total Tabungan Masuk</p>
+          <p className="mt-1 text-2xl font-black text-emerald-900">{formatRupiah(data.ringkasan.tabunganMasukKeseluruhan)}</p>
+          <p className="text-[11px] text-emerald-600 mt-1">Total keseluruhan uang tabungan masuk</p>
+        </div>
+        <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4">
+          <p className="text-[11px] font-semibold uppercase text-rose-700">Total Penarikan</p>
+          <p className="mt-1 text-2xl font-black text-rose-900">{formatRupiah(data.ringkasan.totalPenarikanKeseluruhan)}</p>
+          <p className="text-[11px] text-rose-600 mt-1">Total keseluruhan penarikan uang nasabah</p>
+        </div>
+        <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+          <p className="text-[11px] font-semibold uppercase text-zinc-700">Nasabah Aktif</p>
+          <p className="mt-1 text-2xl font-black text-zinc-900">{data.ringkasan.jumlahNasabahAktif} <span className="text-sm font-normal text-zinc-500">orang</span></p>
+          <p className="text-[11px] text-zinc-500 mt-1">Jumlah nasabah dengan aktivitas saldo</p>
+        </div>
+      </div>
+
+      {/* Print header */}
+      <div className="hidden print:block print-header">
+        <h1 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '4px' }}>DAFTAR SALDO NASABAH</h1>
+        <p style={{ fontSize: '12px', marginBottom: '2px' }}>Total Seluruh Saldo: {formatRupiah(data.ringkasan.totalSaldoNasabah)}</p>
+        <hr style={{ margin: '8px 0', border: 'none', borderTop: '1px solid #999' }} />
+      </div>
+
+      {/* 3. Tabel Daftar Saldo */}
+      <Card className="border-emerald-200">
+        <CardHeader className="pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <CardTitle className="text-base text-emerald-900">Daftar Saldo Nasabah</CardTitle>
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-emerald-600" />
+            <Input
+              type="search"
+              placeholder="Cari nama atau nomor anggota..."
+              className="pl-9 border-emerald-200 focus-visible:ring-emerald-500/30 h-9 text-sm"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {data.list.length === 0 ? (
+            <EmptyState text="Belum ada data saldo atau nasabah tidak ditemukan." />
+          ) : (
+            <div className="overflow-auto rounded-lg border border-emerald-100 max-h-[500px]">
+              <Table>
+                <TableHeader className="sticky top-0 bg-emerald-50 z-10 shadow-sm">
+                  <TableRow>
+                    <TableHead className="text-emerald-800 text-xs w-[50px]">No</TableHead>
+                    <TableHead className="text-emerald-800 text-xs">Nama Nasabah</TableHead>
+                    <TableHead className="text-emerald-800 text-xs">No. Anggota</TableHead>
+                    <TableHead className="text-emerald-800 text-xs text-right">Total Tabungan</TableHead>
+                    <TableHead className="text-emerald-800 text-xs text-right">Total Penarikan</TableHead>
+                    <TableHead className="text-emerald-800 text-xs text-right bg-emerald-100/50">Saldo Saat Ini</TableHead>
+                    <TableHead className="text-emerald-800 text-xs text-center">Status</TableHead>
+                    <TableHead className="text-emerald-800 text-xs text-center print:hidden">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.list.map((u: any, idx: number) => (
+                    <TableRow key={u.id} className="border-emerald-50">
+                      <TableCell className="text-zinc-500 text-xs">{idx + 1}</TableCell>
+                      <TableCell className="font-medium text-emerald-900 text-sm">{u.name}</TableCell>
+                      <TableCell className="text-zinc-500 text-xs">{u.memberCode || '-'}</TableCell>
+                      <TableCell className="text-right text-emerald-700 text-xs">{formatRupiah(u.totalTabungan)}</TableCell>
+                      <TableCell className="text-right text-rose-700 text-xs">{formatRupiah(u.totalPenarikan)}</TableCell>
+                      <TableCell className="text-right font-bold text-blue-700 text-sm bg-emerald-50/20">{formatRupiah(u.saldoSaatIni)}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant={u.status === 'active' ? 'default' : 'secondary'} className="text-[10px] font-normal">
+                          {u.status === 'active' ? 'Aktif' : 'Non-aktif'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center print:hidden">
+                        <Button variant="ghost" size="sm" className="text-xs h-8 text-emerald-600 hover:bg-emerald-50" onClick={() => loadDetail(u.id)}>
+                          Lihat Detail
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 4. Drawer/Modal Detail */}
+      {selectedUser && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 print:hidden" onClick={() => setSelectedUser(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            {historyLoading ? (
+               <div className="p-10 flex flex-col items-center justify-center">
+                  <div className="animate-spin size-8 border-4 border-emerald-500 border-t-transparent rounded-full mb-4"></div>
+                  <p className="text-emerald-700">Memuat histori transaksi...</p>
+               </div>
+            ) : (
+              <>
+                <div className="p-5 border-b border-zinc-100 flex items-start justify-between bg-emerald-50/30">
+                  <div>
+                    <h3 className="text-xl font-bold text-emerald-900">{selectedUser.pengguna.name}</h3>
+                    <p className="text-sm text-zinc-500">{selectedUser.pengguna.memberCode || 'Tidak ada nomor anggota'}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-zinc-500">Saldo Saat Ini</p>
+                    <p className="text-2xl font-black text-blue-700">{formatRupiah(selectedUser.pengguna.saldoSaatIni)}</p>
+                  </div>
+                </div>
+                
+                <div className="p-5 flex-1 overflow-auto">
+                  <div className="grid grid-cols-3 gap-3 mb-5">
+                    <div className="border border-emerald-100 bg-emerald-50/50 rounded-lg p-3 text-center">
+                      <p className="text-[10px] text-emerald-600 font-semibold uppercase">Total Tabungan</p>
+                      <p className="text-lg font-bold text-emerald-800 mt-1">{formatRupiah(selectedUser.pengguna.totalTabungan)}</p>
+                    </div>
+                    <div className="border border-rose-100 bg-rose-50/50 rounded-lg p-3 text-center">
+                      <p className="text-[10px] text-rose-600 font-semibold uppercase">Total Penarikan</p>
+                      <p className="text-lg font-bold text-rose-800 mt-1">{formatRupiah(selectedUser.pengguna.totalPenarikan)}</p>
+                    </div>
+                    <div className="border border-zinc-200 bg-zinc-50 rounded-lg p-3 text-center">
+                      <p className="text-[10px] text-zinc-600 font-semibold uppercase">Jumlah Transaksi</p>
+                      <p className="text-lg font-bold text-zinc-800 mt-1">{selectedUser.pengguna.jumlahTransaksi} <span className="text-xs font-normal">kali</span></p>
+                    </div>
+                  </div>
+
+                  <h4 className="font-semibold text-emerald-900 mb-3 text-sm">Histori Mutasi Saldo</h4>
+                  {selectedUser.history.length === 0 ? (
+                    <p className="text-sm text-zinc-500 text-center py-4">Belum ada riwayat transaksi</p>
+                  ) : (
+                    <div className="border border-zinc-200 rounded-lg overflow-hidden">
+                      <Table>
+                        <TableHeader className="bg-zinc-50">
+                          <TableRow>
+                            <TableHead className="text-xs">Tanggal</TableHead>
+                            <TableHead className="text-xs">Jenis</TableHead>
+                            <TableHead className="text-xs">Keterangan</TableHead>
+                            <TableHead className="text-right text-xs text-emerald-700">Saldo Bertambah</TableHead>
+                            <TableHead className="text-right text-xs text-rose-700">Saldo Berkurang</TableHead>
+                            <TableHead className="text-right text-xs font-bold text-blue-700">Sisa Saldo</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedUser.history.map((h: any) => (
+                            <TableRow key={h.id}>
+                              <TableCell className="text-[11px] text-zinc-500">{formatDateTime(h.tanggal)}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={h.jenis === 'Menabung' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}>
+                                  {h.jenis}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-[11px] text-zinc-700">{h.keterangan}</TableCell>
+                              <TableCell className="text-right text-[11px] font-medium text-emerald-600">{h.masuk > 0 ? formatRupiah(h.masuk) : '-'}</TableCell>
+                              <TableCell className="text-right text-[11px] font-medium text-rose-600">{h.keluar > 0 ? formatRupiah(h.keluar) : '-'}</TableCell>
+                              <TableCell className="text-right text-[11px] font-bold text-blue-700">{formatRupiah(h.saldoSetelah)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="p-4 border-t border-zinc-100 text-right bg-zinc-50">
+                  <Button variant="outline" onClick={() => setSelectedUser(null)}>Tutup</Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 // ===================== Main Component =====================
 export function FinansialBankSampah() {
-  const [tab, setTab] = useState('penarikan')
+  const [tab, setTab] = useState('saldo_penarikan')
 
   return (
     <div className="space-y-4">
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="bg-emerald-100/60 p-1 h-auto flex flex-wrap">
           <TabsTrigger
-            value="penarikan"
+            value="saldo_penarikan"
             className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white text-emerald-800 gap-1.5"
           >
-            <Banknote className="size-4" />
-            Penarikan
+            <Wallet className="size-4" />
+            Saldo & Penarikan
           </TabsTrigger>
           <TabsTrigger
             value="kas"
@@ -1607,11 +1907,15 @@ export function FinansialBankSampah() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="penarikan" className="mt-4">
+        <TabsContent value="saldo_penarikan" className="mt-4 space-y-4">
+          <SaldoNasabahTab />
           <PenarikanTab />
+          <div className="pt-4 border-t border-emerald-100">
+            <BukuKasTab bukuType="nasabah" title="Riwayat Buku Kas Nasabah" description="Buku kas yang berisi histori masuknya uang fisik hak nasabah dari hasil penjualan mitra. Digunakan untuk mendanai penarikan." hideStats={true} />
+          </div>
         </TabsContent>
         <TabsContent value="kas" className="mt-4">
-          <BukuKasTab />
+          <BukuKasTab bukuType="utama" title="Buku Kas Utama" description="Buku kas institusi — sumber kebenaran dana operasional dan penjualan merchandise." />
         </TabsContent>
       </Tabs>
     </div>

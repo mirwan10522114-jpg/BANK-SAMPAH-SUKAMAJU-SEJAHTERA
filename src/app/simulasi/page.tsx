@@ -7,11 +7,11 @@ import { Loader2, CreditCard, Truck, CheckCircle2, AlertCircle, Copy } from 'luc
 // Halaman Simulasi Checkout — /simulasi
 // ---------------------------------------------------------------------
 // End-to-end test page for the Midtrans + RajaOngkir integration.
-// User can:
+// Pengguna can:
 //   1. Choose destination city (Bandung / Jakarta / Surabaya / dll)
 //   2. Set subtotal (default Rp 100.000) and weight (default 1000g)
 //   3. Hit "Hitung Ongkir" → shows real RajaOngkir courier options
-//   4. Hit "Buat Order & Snap Token" → creates TokoOrder + Midtrans Snap
+//   4. Hit "Buat Order & Snap Token" → creates PesananToko + Midtrans Snap
 //   5. Click "Bayar dengan Snap" → opens Snap popup with all methods
 //   6. After Snap closes, simulate settlement via "Simulate Webhook" button
 //   7. See final order status in DB
@@ -137,30 +137,30 @@ export default function SimulasiPage() {
     setOrderStatus(null)
     addLog('Membuat order + Snap token via /api/payment/create')
     try {
-      // Use first product from katalog as the line item.
-      // If no real products available, fall back to a virtual item via the
+      // Use first produk from katalog as the line item.
+      // If no real produks available, fall back to a virtual item via the
       // shipping-only payload (subtotal + ongkir). For real test, we use
-      // the existing /api/payment/create which requires a real product.
-      // To keep this page self-contained, we use a fixed virtual product
-      // created specifically for simulation (id "simulasi-product").
-      // But /api/payment/create validates product existence — so we use
-      // a real product from katalog. If none, we mock by calling /api/payment/create
-      // with the first product from katalog.
+      // the existing /api/payment/create which requires a real produk.
+      // To keep this page self-contained, we use a fixed virtual produk
+      // created specifically for simulation (id "simulasi-produk").
+      // But /api/payment/create validates produk existence — so we use
+      // a real produk from katalog. If none, we mock by calling /api/payment/create
+      // with the first produk from katalog.
       const katalogRes = await fetch('/api/toko/katalog')
       const katalog: Array<{ id: string; name: string; price: number; weightGram: number; stock: number }> = await katalogRes.json()
       if (!Array.isArray(katalog) || katalog.length === 0) {
         throw new Error('Tidak ada produk di katalog. Tambahkan produk lewat admin panel dulu.')
       }
-      const product = katalog[0]
+      const produk = katalog[0]
       // Compute quantity to roughly match the desired subtotal
-      const qty = Math.max(1, Math.floor(subtotal / product.price))
-      addLog(`Menggunakan produk "${product.name}" × ${qty} = Rp ${product.price * qty}`)
+      const qty = Math.max(1, Math.floor(subtotal / produk.price))
+      addLog(`Menggunakan produk "${produk.name}" × ${qty} = Rp ${produk.price * qty}`)
 
       const res = await fetch('/api/payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: [{ productId: product.id, quantity: qty }],
+          items: [{ produkId: produk.id, quantity: qty }],
           buyer: {
             name: 'Simulasi Buyer',
             phone: '081234567890',

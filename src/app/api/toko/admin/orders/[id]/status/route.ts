@@ -6,7 +6,7 @@ import { toNumber } from '@/lib/format'
 // Valid state machine transitions
 const VALID_TRANSITIONS: Record<string, string[]> = {
   menunggu_pembayaran: ['dibayar', 'diproses', 'dibatalkan'],
-  dibayar: ['diproses', 'dibatalkan'],
+  dibayar: ['diproses'],
   diproses: ['dikirim'],
   dikirim: ['diterima'],
   dibatalkan: [],
@@ -24,14 +24,30 @@ export async function PUT(
   if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const status = body.status
-  const kurirNama = body.kurirNama || body.kurir || 'Kurir Toko'
-  const noResi = body.noResi || body.resi || body.nomorResi
-  const keterangan = body.keterangan || body.alasan || ''
+  const rawStatus = (body.status || body.orderStatus || body.newStatus || '').toLowerCase()
+  const statusMap: Record<string, string> = {
+    paid: 'dibayar',
+    lunas: 'dibayar',
+    processing: 'diproses',
+    shipped: 'dikirim',
+    selesai: 'diterima',
+    completed: 'diterima',
+    delivered: 'diterima',
+    canceled: 'dibatalkan',
+    cancelled: 'dibatalkan',
+    batal: 'dibatalkan',
+  }
+  const status = statusMap[rawStatus] || rawStatus
+  const kurirNama = body.kurirNama || body.kurir || body.shippingCourier || 'Kurir Toko'
+  const noResi = body.noResi || body.resi || body.nomorResi || body.trackingNumber
+  const resiPhotoUrl = body.resiPhotoUrl || body.shippingResiPhotoUrl || null
+  const shippingEtaStart = body.shippingEtaStart ? new Date(body.shippingEtaStart) : null
+  const shippingEtaEnd = body.shippingEtaEnd ? new Date(body.shippingEtaEnd) : null
+  const keterangan = body.keterangan || body.alasan || body.notes || ''
 
   if (!status) return NextResponse.json({ error: 'Status wajib diisi' }, { status: 400 })
 
-  const order = await db.tokoOrder.findFirst({
+  const order = await db.pesananToko.findFirst({
     where: {
       OR: [
         { id },
@@ -62,6 +78,9 @@ export async function PUT(
   if (status === 'dikirim') {
     updateData.kurirNama = kurirNama
     if (noResi) updateData.noResi = noResi
+    if (resiPhotoUrl) updateData.resiPhotoUrl = resiPhotoUrl
+    if (shippingEtaStart) updateData.shippingEtaStart = shippingEtaStart
+    if (shippingEtaEnd) updateData.shippingEtaEnd = shippingEtaEnd
     updateData.shippedAt = new Date()
   }
   if (status === 'diterima') {
@@ -74,7 +93,7 @@ export async function PUT(
     // Release reserved stock
     for (const item of order.items) {
       const qty = toNumber(item.quantity)
-      await addProductStock(item.productId, qty, 'online_release', 'toko_order', order.id, actor.id, `Pembatalan admin: ${keterangan || ''}`)
+      await addProductStock(item.produkId, qty, 'online_release', 'toko_order', order.id, actor.id, `Pembatalan admin: ${keterangan || ''}`)
     }
   }
 
@@ -87,8 +106,8 @@ export async function PUT(
     // Convert reserved stock to real sale
     for (const item of order.items) {
       const qty = toNumber(item.quantity)
-      await addProductStock(item.productId, qty, 'online_release', 'toko_order', order.id, actor.id, `Konfirmasi manual pesanan ${order.orderNumber}`)
-      await reduceProductStock(item.productId, qty, 'online_sale', 'toko_order', order.id, actor.id, `Penjualan online ${order.orderNumber}`)
+      await addProductStock(item.produkId, qty, 'online_release', 'toko_order', order.id, actor.id, `Konfirmasi manual pesanan ${order.orderNumber}`)
+      await reduceProductStock(item.produkId, qty, 'online_sale', 'toko_order', order.id, actor.id, `Penjualan online ${order.orderNumber}`)
     }
 
     // Record kas masuk
@@ -98,10 +117,10 @@ export async function PUT(
       console.error('Failed to record kas:', e)
     }
 
-    // Create ProductSale for unified reporting
-    const existingSale = await db.productSale.findFirst({ where: { notes: { contains: order.orderNumber } } })
+    // Create PenjualanProduk for unified reporting
+    const existingSale = await db.penjualanProduk.findFirst({ where: { notes: { contains: order.orderNumber } } })
     if (!existingSale) {
-      await db.productSale.create({
+      await db.penjualanProduk.create({
         data: {
           buyerName: order.buyerName,
           buyerPhone: order.buyerPhone,
@@ -114,7 +133,7 @@ export async function PUT(
           createdById: actor.id,
           items: {
             create: order.items.map((i) => ({
-              productId: i.productId,
+              produkId: i.produkId,
               productNameSnapshot: i.productNameSnapshot,
               unitSnapshot: i.unitSnapshot,
               pricePerUnitSnapshot: i.pricePerUnitSnapshot,
@@ -136,8 +155,8 @@ export async function PUT(
     // Convert reserved stock to real sale
     for (const item of order.items) {
       const qty = toNumber(item.quantity)
-      await addProductStock(item.productId, qty, 'online_release', 'toko_order', order.id, actor.id, `Konfirmasi manual pesanan ${order.orderNumber}`)
-      await reduceProductStock(item.productId, qty, 'online_sale', 'toko_order', order.id, actor.id, `Penjualan online ${order.orderNumber}`)
+      await addProductStock(item.produkId, qty, 'online_release', 'toko_order', order.id, actor.id, `Konfirmasi manual pesanan ${order.orderNumber}`)
+      await reduceProductStock(item.produkId, qty, 'online_sale', 'toko_order', order.id, actor.id, `Penjualan online ${order.orderNumber}`)
     }
 
     // Record kas masuk
@@ -147,10 +166,10 @@ export async function PUT(
       console.error('Failed to record kas:', e)
     }
 
-    // Create ProductSale for unified reporting
-    const existingSale = await db.productSale.findFirst({ where: { notes: { contains: order.orderNumber } } })
+    // Create PenjualanProduk for unified reporting
+    const existingSale = await db.penjualanProduk.findFirst({ where: { notes: { contains: order.orderNumber } } })
     if (!existingSale) {
-      await db.productSale.create({
+      await db.penjualanProduk.create({
         data: {
           buyerName: order.buyerName,
           buyerPhone: order.buyerPhone,
@@ -163,7 +182,7 @@ export async function PUT(
           createdById: actor.id,
           items: {
             create: order.items.map((i) => ({
-              productId: i.productId,
+              produkId: i.produkId,
               productNameSnapshot: i.productNameSnapshot,
               unitSnapshot: i.unitSnapshot,
               pricePerUnitSnapshot: i.pricePerUnitSnapshot,
@@ -176,20 +195,93 @@ export async function PUT(
     }
   }
 
-  const updated = await db.tokoOrder.update({
+  const updated = await db.pesananToko.update({
     where: { id },
     data: updateData,
   })
 
   // Create status history
-  await db.tokoOrderStatusHistory.create({
+  await db.riwayatStatusPesananToko.create({
     data: {
-      tokoOrderId: order.id,
+      pesananTokoId: order.id,
       status,
       keterangan: keterangan || `Status diubah ke "${status}" oleh admin`,
       createdById: actor.id,
     },
   })
+
+  // Send Order Confirmation (Struk) if payment was just confirmed manually
+  if (updateData.paymentStatus === 'dibayar' && order.paymentStatus !== 'dibayar' && order.buyerEmail) {
+    try {
+      const { sendOrderConfirmationEmail } = await import('@/lib/email')
+      await sendOrderConfirmationEmail({
+        to: order.buyerEmail,
+        buyerName: order.buyerName,
+        orderNumber: order.orderNumber,
+        items: order.items.map((i) => ({
+          productName: i.productNameSnapshot,
+          quantity: toNumber(i.quantity),
+          unit: i.unitSnapshot,
+          pricePerUnit: toNumber(i.pricePerUnitSnapshot),
+          subtotal: toNumber(i.subtotal),
+        })),
+        subtotal: toNumber(order.subtotalProduk),
+        ongkir: toNumber(order.ongkir),
+        total: toNumber(order.totalBayar),
+        paymentMethod: order.paymentMethod,
+        buyerAddress: order.buyerAddress || '-',
+        buyerPhone: order.buyerPhone,
+        kurirNama: order.kurirNama || '-',
+        notes: order.notes || '-',
+        paidAt: new Date(),
+      })
+    } catch (err) {
+      console.error('Failed to send manual order confirmation email:', err)
+    }
+  }
+
+  // Send status update email (for diproses, dikirim, diterima, dibatalkan)
+  // (We skip this if the status was just moved to 'dibayar' and the confirmation receipt was already sent)
+  if (order.buyerEmail && status !== 'dibayar' && !(status === 'diproses' && updateData.paymentStatus === 'dibayar')) {
+    try {
+      const { sendOrderStatusEmail } = await import('@/lib/email')
+      await sendOrderStatusEmail({
+        to: order.buyerEmail,
+        buyerName: order.buyerName,
+        orderNumber: order.orderNumber,
+        status: status,
+        keterangan: keterangan,
+        noResi: noResi,
+        kurirNama: kurirNama,
+        updatedAt: new Date()
+      })
+    } catch (err) {
+      console.error('Failed to send order status email:', err)
+    }
+  }
+
+  // Send WhatsApp notifikasi
+  if (order.buyerPhone && status !== 'dibayar' && !(status === 'diproses' && updateData.paymentStatus === 'dibayar')) {
+    try {
+      const { sendWhatsAppMessage } = await import('@/lib/whatsapp')
+      
+      let waMessage = `Halo *${order.buyerName}*,\n\nPesanan Anda *#${order.orderNumber}* saat ini berstatus: *${status.toUpperCase()}*.\n`
+      
+      if (status === 'dikirim') {
+        waMessage += `\nKurir: ${kurirNama || '-'}\nNo Resi: ${noResi || '-'}\n`
+      }
+      
+      if (keterangan) {
+        waMessage += `\nCatatan: ${keterangan}\n`
+      }
+      
+      waMessage += `\nTerima kasih telah berbelanja di Bank Sampah Sukamaju Sejahtera!`
+      
+      await sendWhatsAppMessage(order.buyerPhone, waMessage)
+    } catch (err) {
+      console.error('Failed to send order status whatsapp:', err)
+    }
+  }
 
   return NextResponse.json(updated)
 }

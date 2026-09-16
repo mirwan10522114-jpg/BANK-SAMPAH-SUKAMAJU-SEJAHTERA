@@ -96,8 +96,8 @@ export function Dashboard({ onNavigate }: { onNavigate: (s: Section) => void }) 
   const nabungColumns: DetailColumn[] = [
     { key: 'transactedAt', label: 'Tanggal', format: (v) => formatDateTime(v) },
     { key: 'kodeTransaksi', label: 'Kode Transaksi', format: (v, row) => row.kodeTransaksi || '-' },
-    { key: 'user.name', label: 'Nasabah', format: (v, row) => row.user?.name || '-' },
-    { key: 'user.memberCode', label: 'Kode Anggota', format: (v, row) => row.user?.memberCode || '-' },
+    { key: 'pengguna.name', label: 'Nasabah', format: (v, row) => row.pengguna?.name || '-' },
+    { key: 'pengguna.memberCode', label: 'Kode Anggota', format: (v, row) => row.pengguna?.memberCode || '-' },
     { key: 'totalWeight', label: 'Berat (kg)', align: 'right', format: (v) => formatNumber(toNumber(v)) },
     { key: 'totalValue', label: 'Nilai', align: 'right', format: (v) => formatRupiah(toNumber(v)) },
     { key: 'pointsAwarded', label: 'Poin', align: 'right', format: (v) => formatNumber(toNumber(v), 0) },
@@ -106,17 +106,18 @@ export function Dashboard({ onNavigate }: { onNavigate: (s: Section) => void }) 
   const sedekahColumns: DetailColumn[] = [
     { key: 'transactedAt', label: 'Tanggal', format: (v) => formatDateTime(v) },
     { key: 'kodeTransaksi', label: 'Kode Transaksi', format: (v, row) => row.kodeTransaksi || '-' },
-    { key: 'user.name', label: 'Nasabah', format: (v, row) => row.user?.name || row.donorName || '-' },
-    { key: 'user.memberCode', label: 'Kode Anggota', format: (v, row) => row.user?.memberCode || '-' },
+    { key: 'pengguna.name', label: 'Nasabah', format: (v, row) => row.pengguna?.name || row.donorName || '-' },
+    { key: 'pengguna.memberCode', label: 'Kode Anggota', format: (v, row) => row.pengguna?.memberCode || '-' },
     { key: 'totalWeight', label: 'Berat Bersih (kg)', align: 'right', format: (v) => formatNumber(toNumber(v)) },
     { key: 'totalWeightKotor', label: 'Berat Kotor (kg)', align: 'right', format: (v) => formatNumber(toNumber(v)) },
     { key: 'qcStatus', label: 'QC', format: (v) => v === 'passed' || v === 'tidak_perlu' ? 'Lolos' : v === 'adjusted' ? 'Disesuaikan' : v === 'pending' ? 'Menunggu' : v },
+    { key: 'qcNotes', label: 'Keterangan', format: (v, row) => row.qcNotes || row.notes || '-' },
   ]
   const penarikanColumns: DetailColumn[] = [
     { key: 'processedAt', label: 'Tanggal', format: (v) => formatDateTime(v) },
     { key: 'receiptNo', label: 'No. Ref' },
-    { key: 'user.name', label: 'Nasabah', format: (v, row) => row.user?.name || '-' },
-    { key: 'user.memberCode', label: 'Kode', format: (v, row) => row.user?.memberCode || '-' },
+    { key: 'pengguna.name', label: 'Nasabah', format: (v, row) => row.pengguna?.name || '-' },
+    { key: 'pengguna.memberCode', label: 'Kode', format: (v, row) => row.pengguna?.memberCode || '-' },
     { key: 'amount', label: 'Nominal', align: 'right', format: (v) => formatRupiah(toNumber(v)) },
     { key: 'method', label: 'Metode', format: (v) => v === 'cash' ? 'Tunai' : v === 'transfer' ? 'Transfer' : v },
     { key: 'status', label: 'Status' },
@@ -196,7 +197,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (s: Section) => void }) 
       detail: {
         title: 'Detail Sedekah Sah Hari Ini',
         description: 'Transaksi sedekah yang selesai dan sah hari ini.',
-        apiPath: '/operasional/sedekah', columns: sedekahColumns,
+        apiPath: '/operasional/sedekah', columns: sedekahColumns, expandableItems: true,
         sumField: 'totalWeight', sumLabel: 'Total Berat (kg)', sumFormat: 'qty' as const,
         baseParams: { dari: new Date().toISOString().split('T')[0] },
       },
@@ -206,8 +207,8 @@ export function Dashboard({ onNavigate }: { onNavigate: (s: Section) => void }) 
       detail: {
         title: 'Detail Nilai Masuk Hari Ini',
         description: 'Total nilai tabungan sampah yang sah hari ini.',
-        apiPath: '/operasional/nabung', columns: nabungColumns,
-        sumField: 'totalValue', sumLabel: 'Total Nilai Masuk', sumFormat: 'currency' as const,
+        apiPath: '/operasional/nabung', columns: nabungColumns, expandableItems: true,
+        sumField: 'totalValue', sumLabel: 'Total Nilai (Rp)', sumFormat: 'currency' as const,
         baseParams: { dari: new Date().toISOString().split('T')[0] },
       },
     },

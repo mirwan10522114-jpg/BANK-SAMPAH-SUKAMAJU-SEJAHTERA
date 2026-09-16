@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
-  const products = await db.product.findMany({
+  const produks = await db.produk.findMany({
     orderBy: { name: 'asc' },
     include: { prices: { orderBy: { effectiveFrom: 'desc' }, take: 1 } },
   })
-  return NextResponse.json(products)
+  return NextResponse.json(produks)
 }
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const slug = body.slug || body.name.toLowerCase().replace(/\s+/g, '-')
-  const p = await db.product.create({
+  const p = await db.produk.create({
     data: {
       name: body.name,
       slug,
@@ -26,8 +28,8 @@ export async function POST(req: NextRequest) {
     },
   })
   if (body.price) {
-    await db.productPrice.create({
-      data: { productId: p.id, pricePerUnit: body.price, effectiveFrom: new Date() },
+    await db.hargaProduk.create({
+      data: { produkId: p.id, pricePerUnit: body.price, effectiveFrom: new Date() },
     })
   }
   return NextResponse.json(p, { status: 201 })

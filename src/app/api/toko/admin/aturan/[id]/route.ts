@@ -15,23 +15,23 @@ export async function PUT(
   if (!rule) return NextResponse.json({ error: 'Aturan tidak ditemukan' }, { status: 404 })
 
   const body = await req.json()
-  const { productCategoryId, minPembelian, maxPembelian, berlakuOffline, berlakuOnline } = body as {
-    productCategoryId?: string | null
+  const { kategoriProdukId, minPembelian, maxPembelian, berlakuOffline, berlakuOnline } = body as {
+    kategoriProdukId?: string | null
     minPembelian?: number
     maxPembelian?: number
     berlakuOffline?: boolean
     berlakuOnline?: boolean
   }
 
-  if (productCategoryId) {
-    const cat = await db.productCategory.findUnique({ where: { id: productCategoryId } })
+  if (kategoriProdukId) {
+    const cat = await db.kategoriProduk.findUnique({ where: { id: kategoriProdukId } })
     if (!cat) return NextResponse.json({ error: 'Kategori tidak ditemukan' }, { status: 400 })
   }
 
   const updated = await db.aturanPenjualan.update({
     where: { id },
     data: {
-      productCategoryId: productCategoryId !== undefined ? productCategoryId : rule.productCategoryId,
+      kategoriProdukId: kategoriProdukId !== undefined ? kategoriProdukId : rule.kategoriProdukId,
       minPembelian: minPembelian !== undefined ? minPembelian : rule.minPembelian,
       maxPembelian: maxPembelian !== undefined ? maxPembelian : rule.maxPembelian,
       berlakuOffline: berlakuOffline !== undefined ? berlakuOffline : rule.berlakuOffline,
